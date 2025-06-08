@@ -342,4 +342,4 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginHorizontal: 16,
   },
-});
+});// Force rebuild for rork.com - improved error handling Sun Jun  8 16:24:08 EDT 2025
