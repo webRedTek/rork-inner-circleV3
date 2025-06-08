@@ -139,40 +139,8 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           isLoading: false 
         });
       } else {
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        const newMessage: Message = {
-          id: `msg-${Date.now()}`,
-          senderId: currentUser.id,
-          receiverId,
-          content,
-          type: 'text',
-          createdAt: Date.now(),
-          read: false
-        };
-        
-        // Get existing messages for this conversation
-        const { messages } = get();
-        const conversationMessages = messages[conversationId] || [];
-        
-        // Add new message
-        const updatedMessages = [...conversationMessages, newMessage];
-        
-        // Store in AsyncStorage
-        const mockMessages = await AsyncStorage.getItem('mockMessages');
-        const allMessages = mockMessages ? JSON.parse(mockMessages) : {};
-        allMessages[conversationId] = updatedMessages;
-        await AsyncStorage.setItem('mockMessages', JSON.stringify(allMessages));
-        
-        // Update state
-        set({ 
-          messages: { 
-            ...messages, 
-            [conversationId]: updatedMessages 
-          }, 
-          isLoading: false 
-        });
+        // Supabase is required - no fallback to mock data
+        throw new Error('Database connection required. Please check your internet connection and try again.');
       }
     } catch (error) {
       console.error('Error sending message:', getReadableError(error));
@@ -260,42 +228,8 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           isLoading: false 
         });
       } else {
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        const newMessage: Message = {
-          id: `msg-${Date.now()}`,
-          senderId: currentUser.id,
-          receiverId,
-          content: 'Voice message',
-          type: 'voice',
-          voiceUrl,
-          voiceDuration: duration,
-          createdAt: Date.now(),
-          read: false
-        };
-        
-        // Get existing messages for this conversation
-        const { messages } = get();
-        const conversationMessages = messages[conversationId] || [];
-        
-        // Add new message
-        const updatedMessages = [...conversationMessages, newMessage];
-        
-        // Store in AsyncStorage
-        const mockMessages = await AsyncStorage.getItem('mockMessages');
-        const allMessages = mockMessages ? JSON.parse(mockMessages) : {};
-        allMessages[conversationId] = updatedMessages;
-        await AsyncStorage.setItem('mockMessages', JSON.stringify(allMessages));
-        
-        // Update state
-        set({ 
-          messages: { 
-            ...messages, 
-            [conversationId]: updatedMessages 
-          }, 
-          isLoading: false 
-        });
+        // Supabase is required - no fallback to mock data
+        throw new Error('Database connection required. Please check your internet connection and try again.');
       }
     } catch (error) {
       console.error('Error sending voice message:', getReadableError(error));
@@ -351,23 +285,8 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           isLoading: false 
         });
       } else {
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // Get messages from storage
-        const mockMessages = await AsyncStorage.getItem('mockMessages');
-        const allMessages = mockMessages ? JSON.parse(mockMessages) : {};
-        
-        const conversationMessages = allMessages[conversationId] || [];
-        
-        // Update state
-        set({ 
-          messages: { 
-            ...get().messages, 
-            [conversationId]: conversationMessages 
-          }, 
-          isLoading: false 
-        });
+        // Supabase is required - no fallback to mock data
+        throw new Error('Database connection required. Please check your internet connection and try again.');
       }
     } catch (error) {
       console.error('Error getting messages:', getReadableError(error));
@@ -423,27 +342,8 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           }
         });
       } else {
-        // Mark messages as read
-        const updatedMessages = conversationMessages.map(msg => {
-          if (msg.receiverId === currentUser.id && !msg.read) {
-            return { ...msg, read: true };
-          }
-          return msg;
-        });
-        
-        // Store in AsyncStorage
-        const mockMessages = await AsyncStorage.getItem('mockMessages');
-        const allMessages = mockMessages ? JSON.parse(mockMessages) : {};
-        allMessages[conversationId] = updatedMessages;
-        await AsyncStorage.setItem('mockMessages', JSON.stringify(allMessages));
-        
-        // Update state
-        set({ 
-          messages: { 
-            ...messages, 
-            [conversationId]: updatedMessages 
-          }
-        });
+        // Supabase is required - no fallback to mock data
+        console.warn('Database connection required to mark messages as read');
       }
     } catch (error) {
       console.error('Failed to mark messages as read:', getReadableError(error));
