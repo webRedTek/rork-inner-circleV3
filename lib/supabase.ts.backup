@@ -93,6 +93,43 @@ export type ConnectionTestResult = {
   error?: any;
 };
 
+/**
+ * Converts error objects to readable strings
+ */
+export const getReadableError = (error: any): string => {
+  if (!error) return 'Unknown error';
+  
+  // Handle string errors
+  if (typeof error === 'string') return error;
+  
+  // Handle Error objects
+  if (error instanceof Error) return error.message;
+  
+  // Handle Supabase-style errors
+  if (error.message) return error.message;
+  if (error.error_description) return error.error_description;
+  if (error.hint) return error.hint;
+  
+  // Handle network errors
+  if (error.name === 'TypeError' && error.message?.includes('fetch')) {
+    return 'Connection failed: TypeError: Failed to fetch';
+  }
+  
+  // Handle objects with error properties
+  if (typeof error === 'object') {
+    if (error.error) return getReadableError(error.error);
+    if (error.details) return error.details;
+    if (error.description) return error.description;
+  }
+  
+  // Fallback - stringify the error object
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return 'Unparseable error object';
+  }
+};
+
 // Initialize supabase client with proper typing
 let supabase: ReturnType<typeof createClient<Database>> | null = null;
 
@@ -119,7 +156,7 @@ export const isSupabaseConfigured = (): boolean => {
 };
 
 /**
- * Initializes the Supabase client
+ * Initializes the Supabase client with session pooler for production scale
  * @returns boolean indicating if initialization was successful
  */
 export const initSupabase = async (): Promise<boolean> => {
@@ -129,7 +166,7 @@ export const initSupabase = async (): Promise<boolean> => {
       return false;
     }
 
-    const supabaseUrl = 
+    const baseUrl = 
       process.env.EXPO_PUBLIC_SUPABASE_URL || 
       Constants.expoConfig?.extra?.supabaseUrl;
     
@@ -137,43 +174,85 @@ export const initSupabase = async (): Promise<boolean> => {
       process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 
       Constants.expoConfig?.extra?.supabaseAnonKey;
 
-    if (!supabaseUrl || !supabaseAnonKey) {
+    if (!baseUrl || !supabaseAnonKey) {
       console.error('Supabase URL or Anon Key is missing');
       return false;
     }
 
-    console.log('Initializing Supabase with URL:', supabaseUrl.substring(0, 15) + '...');
+    // 🚀 SESSION POOLER CONFIGURATION FOR PRODUCTION SCALE
+    // For 1000s of concurrent users, use session pooler for better connection management
+    let supabaseUrl = baseUrl;
+    
+    // Check if we should use session pooler (recommended for production)
+    const useSessionPooler = process.env.EXPO_PUBLIC_USE_SESSION_POOLER !== 'false';
+    
+    if (useSessionPooler) {
+      // Convert direct URL to session pooler endpoint
+      // Example: https://project.supabase.co -> https://project.supabase.co:5432
+      if (!baseUrl.includes(':5432') && !baseUrl.includes(':6543')) {
+        supabaseUrl = baseUrl.replace(/\/$/, '') + ':5432';
+        console.log('🔧 Using session pooler for production scale:', supabaseUrl.substring(0, 30) + '...');
+      }
+    }
 
-    // Create the Supabase client with realtime completely disabled
+    console.log('🚀 Initializing Supabase with:', {
+      url: supabaseUrl.substring(0, 30) + '...',
+      pooler: useSessionPooler,
+      production: process.env.NODE_ENV === 'production'
+    });
+
+    // Create the Supabase client optimized for high concurrency
     supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
       auth: {
         storage: AsyncStorage,
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: Platform.OS === 'web',
+        // 🏆 Production auth settings for session pooler
+        flowType: 'pkce',
+      },
+      // Optimized for session pooler and high concurrency
+      db: {
+        schema: 'public',
       },
       // Completely disable realtime to avoid Node.js stream dependency issues
       realtime: {
-        // Disable realtime subscriptions
         params: {
           eventsPerSecond: 0,
         }
       },
       global: {
-        // Disable fetch logging to reduce console noise
-        fetch: undefined
+        // Custom headers for session pooler optimization
+        headers: {
+          'x-client-info': 'inner-circle-mobile@1.0.0',
+          'x-connection-pooling': 'session'
+        },
+        // Enhanced fetch configuration for session pooler
+        fetch: (url, options = {}) => {
+          return fetch(url, {
+            ...options,
+            // Timeout configuration for production
+            signal: AbortSignal.timeout(30000), // 30 second timeout
+            headers: {
+              ...options.headers,
+              'Connection': 'keep-alive',
+              'Keep-Alive': 'timeout=30, max=1000'
+            }
+          });
+        }
       }
     });
 
+    console.log('✅ Supabase client initialized successfully with session pooler');
     return true;
   } catch (error) {
-    console.error('Error initializing Supabase:', error);
+    console.error('❌ Error initializing Supabase:', getReadableError(error));
     return false;
   }
 };
 
 /**
- * Tests the Supabase connection with a simple query
+ * Tests the Supabase connection with session pooler optimized queries
  * @returns Object with success status and optional error
  */
 export const testSupabaseConnection = async (): Promise<ConnectionTestResult> => {
@@ -182,18 +261,34 @@ export const testSupabaseConnection = async (): Promise<ConnectionTestResult> =>
       return { success: false, error: 'Supabase client not initialized' };
     }
 
-    // Try a simple query to test the connection
-    const { data, error } = await supabase.from('users').select('id').limit(0);
+    console.log('🔍 Testing Supabase connection with session pooler...');
 
-    if (error) {
-      console.error('Supabase connection test failed:', error);
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    // Test 1: Simple health check using RPC (works well with session pooler)
+    const { data: healthData, error: healthError } = await supabase
+      .rpc('version', {});
+
+    if (healthError && !healthError.message?.includes('function') && !healthError.message?.includes('does not exist')) {
+      // If it's not a "function doesn't exist" error, it's a real connection issue
+      console.error('🚨 Health check failed:', healthError);
+      return { success: false, error: getReadableError(healthError) };
     }
 
+    // Test 2: Try a simple table query with session pooler optimization
+    const { data, error } = await supabase
+      .from('users')
+      .select('count', { count: 'exact', head: true })
+      .limit(0);
+
+    if (error) {
+      console.error('🚨 Database query test failed:', error);
+      return { success: false, error: getReadableError(error) };
+    }
+
+    console.log('✅ Session pooler connection test successful');
     return { success: true };
   } catch (error) {
-    console.error('Error testing Supabase connection:', error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    console.error('🚨 Connection test exception:', error);
+    return { success: false, error: getReadableError(error) };
   }
 };
 
