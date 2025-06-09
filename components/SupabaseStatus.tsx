@@ -3,14 +3,11 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'rea
 import { useRouter } from 'expo-router';
 import Colors from '@/constants/colors';
 import { isSupabaseConfigured, testSupabaseConnection } from '@/lib/supabase';
-import { hasSeededDemoData } from '@/utils/seed-supabase';
 import { CheckCircle2, XCircle, AlertCircle, Database } from 'lucide-react-native';
 
 export function SupabaseStatus() {
   const [isConfigured, setIsConfigured] = useState<boolean | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'untested' | 'success' | 'error'>('untested');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isDemoDataSeeded, setIsDemoDataSeeded] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   
@@ -25,22 +22,12 @@ export function SupabaseStatus() {
       setIsConfigured(configured);
       
       if (configured) {
-        // Test the connection
         const testResult = await testSupabaseConnection();
-        if (testResult.success) {
-          setConnectionStatus('success');
-          
-          // Check if database has data
-          setIsDemoDataSeeded(true); // Always true since data is manually seeded
-        } else {
-          setConnectionStatus('error');
-          setErrorMessage(testResult.error || 'Unknown error');
-        }
+        setConnectionStatus(testResult.success ? 'success' : 'error');
       }
     } catch (error) {
       console.error('Error checking Supabase status:', error);
       setConnectionStatus('error');
-      setErrorMessage(error instanceof Error ? error.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
@@ -97,18 +84,6 @@ export function SupabaseStatus() {
         </Text>
       </View>
       
-      {errorMessage && connectionStatus === 'error' && (
-        <Text style={styles.errorText}>{errorMessage}</Text>
-      )}
-      
-      {isConfigured && connectionStatus === 'success' && isDemoDataSeeded !== null && (
-        <View style={styles.demoDataContainer}>
-          <Text style={styles.demoDataText}>
-            {isDemoDataSeeded ? 'Database has data' : 'Database is empty'}
-          </Text>
-        </View>
-      )}
-      
       {(!isConfigured || connectionStatus === 'error') && (
         <View style={styles.actionContainer}>
           <Database size={16} color={Colors.dark.accent} />
@@ -149,20 +124,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: Colors.dark.text,
     marginLeft: 8,
-  },
-  errorText: {
-    fontSize: 12,
-    color: Colors.dark.error,
-    marginTop: 4,
-    marginLeft: 28,
-  },
-  demoDataContainer: {
-    marginTop: 8,
-    marginLeft: 28,
-  },
-  demoDataText: {
-    fontSize: 12,
-    color: Colors.dark.textSecondary,
   },
   actionContainer: {
     flexDirection: 'row',

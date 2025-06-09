@@ -5,39 +5,11 @@ import Colors from '@/constants/colors';
 import { Input } from './Input';
 import { Button } from './Button';
 import { initSupabase, isSupabaseConfigured, testSupabaseConnection } from '@/lib/supabase';
-import { hasSeededDemoData } from '@/utils/seed-supabase';
 import { Database } from 'lucide-react-native';
 
 interface SupabaseSetupProps {
   onSetupComplete: () => void;
 }
-
-// Helper function to extract readable error message
-const getReadableError = (error: any): string => {
-  if (!error) return 'Unknown error occurred';
-  
-  // If it's a string, return it directly
-  if (typeof error === 'string') return error;
-  
-  // If it has a message property, return that
-  if (error.message) return error.message;
-  
-  // If it has an error property with a message (nested error)
-  if (error.error && error.error.message) return error.error.message;
-  
-  // If it has a details property
-  if (error.details) return String(error.details);
-  
-  // If it has a code property
-  if (error.code) return `Error code: ${error.code}`;
-  
-  // Last resort: stringify the object
-  try {
-    return JSON.stringify(error);
-  } catch (e) {
-    return 'An error occurred';
-  }
-};
 
 export function SupabaseSetup({ onSetupComplete }: SupabaseSetupProps) {
   const [supabaseUrl, setSupabaseUrl] = useState('');
@@ -45,7 +17,7 @@ export function SupabaseSetup({ onSetupComplete }: SupabaseSetupProps) {
   const [loading, setLoading] = useState(false);
   const [urlError, setUrlError] = useState('');
   const [keyError, setKeyError] = useState('');
-  const [testStatus, setTestStatus] = useState<{success: boolean, message: string, error?: string;} | null>(null);
+  const [testStatus, setTestStatus] = useState<{success: boolean, message: string} | null>(null);
   
   const validateInputs = () => {
     let isValid = true;
@@ -80,27 +52,18 @@ export function SupabaseSetup({ onSetupComplete }: SupabaseSetupProps) {
     setTestStatus(null);
     
     try {
-      console.log('Saving Supabase configuration...');
-      
-      // Store Supabase credentials in AsyncStorage
       await AsyncStorage.setItem('SUPABASE_URL', supabaseUrl.trim());
       await AsyncStorage.setItem('SUPABASE_KEY', supabaseKey.trim());
       
-      // Try to initialize Supabase with the new credentials
       const initialized = await initSupabase();
       
       if (initialized && isSupabaseConfigured()) {
-        console.log('Supabase initialized successfully, testing connection...');
-        
-        // Test the connection
         const testResult = await testSupabaseConnection();
-        
         if (testResult.success) {
           setTestStatus({
             success: true,
             message: 'Connection test successful!'
           });
-          
           Alert.alert(
             'Success', 
             'Supabase configuration saved and connection verified successfully!',
@@ -109,32 +72,23 @@ export function SupabaseSetup({ onSetupComplete }: SupabaseSetupProps) {
         } else {
           setTestStatus({
             success: false,
-            message: `Connection test failed`,
-            error: getReadableError(testResult.error),
+            message: 'Connection test failed'
           });
-          
           Alert.alert(
-            'Partial Success', 
-            'Supabase configuration saved, but connection test failed. You may need to check your database setup.',
-            [{ text: 'OK', onPress: onSetupComplete }]
+            'Error', 
+            'Supabase configuration saved, but connection test failed.'
           );
         }
       } else {
-        throw new Error('Failed to initialize Supabase with the provided credentials');
+        throw new Error('Failed to initialize Supabase');
       }
     } catch (error) {
-      console.error('Error saving Supabase configuration:', getReadableError(error));
-      
+      console.error('Error saving Supabase configuration:', error);
       setTestStatus({
         success: false,
-        message: 'Failed to connect to Supabase',
-        error: getReadableError(error),
+        message: 'Failed to connect to Supabase'
       });
-      
-      Alert.alert(
-        'Error', 
-        `Failed to connect to Supabase: ${getReadableError(error)}`
-      );
+      Alert.alert('Error', 'Failed to connect to Supabase');
     } finally {
       setLoading(false);
     }
@@ -196,11 +150,6 @@ export function SupabaseSetup({ onSetupComplete }: SupabaseSetupProps) {
             ]}>
               {testStatus.message}
             </Text>
-						{testStatus.error && !testStatus.success && (
-            <Text style={[styles.testStatusText, styles.testErrorText]}>
-            Details: {testStatus.error}
-            </Text>
-            )}
           </View>
         )}
         
@@ -217,9 +166,6 @@ export function SupabaseSetup({ onSetupComplete }: SupabaseSetupProps) {
       <View style={styles.helpContainer}>
         <Text style={styles.helpText}>
           Don't have a Supabase project? Visit supabase.com to create one.
-        </Text>
-        <Text style={styles.helpText}>
-          Make sure your Supabase project has the required tables and RLS policies.
         </Text>
       </View>
     </View>
