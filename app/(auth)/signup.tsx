@@ -204,7 +204,7 @@ export default function SignupScreen() {
             zipCode,
             timezone,
             successHighlight,
-            membershipTier: 'silver',
+            membershipTier: 'basic',
             businessVerified: false,
             joinedGroups: [],
             createdAt: Date.now()

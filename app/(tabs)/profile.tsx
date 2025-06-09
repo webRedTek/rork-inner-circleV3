@@ -6,14 +6,13 @@ import { useAuthStore } from '@/store/auth-store';
 import Colors from '@/constants/colors';
 import { Button } from '@/components/Button';
 import { ProfileDetailCard } from '@/components/ProfileDetailCard';
-import { PortfolioItem } from '@/components/PortfolioItem';
 import { SupabaseStatus } from '@/components/SupabaseStatus';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { Settings, Edit, LogOut, Database } from 'lucide-react-native';
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { user, logout, isLoading } = useAuthStore();
+  const { user, tierSettings, logout, isLoading } = useAuthStore();
   const [isSupabaseReady, setIsSupabaseReady] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -179,6 +178,26 @@ export default function ProfileScreen() {
           />
         )}
         
+        {tierSettings && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Membership Benefits</Text>
+            <View style={styles.benefitsContainer}>
+              <View style={styles.benefitItem}>
+                <Text style={styles.benefitValue}>{tierSettings.daily_swipe_limit}</Text>
+                <Text style={styles.benefitLabel}>Daily Swipes</Text>
+              </View>
+              <View style={styles.benefitItem}>
+                <Text style={styles.benefitValue}>{tierSettings.daily_match_limit}</Text>
+                <Text style={styles.benefitLabel}>Daily Matches</Text>
+              </View>
+              <View style={styles.benefitItem}>
+                <Text style={styles.benefitValue}>{tierSettings.message_sending_limit}</Text>
+                <Text style={styles.benefitLabel}>Messages</Text>
+              </View>
+            </View>
+          </View>
+        )}
+        
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Supabase Status</Text>
           <SupabaseStatus />
@@ -324,6 +343,29 @@ const styles = StyleSheet.create({
   tagText: {
     color: Colors.dark.accent,
     fontSize: 14,
+  },
+  benefitsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  benefitItem: {
+    alignItems: 'center',
+    backgroundColor: Colors.dark.background,
+    padding: 12,
+    borderRadius: 8,
+    flex: 1,
+    marginHorizontal: 4,
+  },
+  benefitValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: Colors.dark.accent,
+    marginBottom: 4,
+  },
+  benefitLabel: {
+    fontSize: 12,
+    color: Colors.dark.textSecondary,
   },
   supabaseActions: {
     flexDirection: 'row',

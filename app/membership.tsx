@@ -17,7 +17,7 @@ import { MembershipTier } from '@/types/user';
 
 export default function MembershipScreen() {
   const router = useRouter();
-  const { user, updateMembership, isLoading } = useAuthStore();
+  const { user, tierSettings, updateMembership, isLoading } = useAuthStore();
   const [selectedTier, setSelectedTier] = useState<MembershipTier>(user?.membershipTier || 'basic');
   const [loading, setLoading] = useState(false);
   
@@ -87,7 +87,7 @@ export default function MembershipScreen() {
             <View style={styles.planFeatures}>
               {renderFeature('Create a basic profile', true)}
               {renderFeature('Discover entrepreneurs', true)}
-              {renderFeature('Limited swipes per day (10)', true)}
+              {renderFeature(`Limited swipes per day (${tierSettings?.daily_swipe_limit || 10})`, true)}
               {renderFeature('Message your matches', true)}
               {renderFeature('Join groups', false)}
               {renderFeature('Create a portfolio', false)}
@@ -117,7 +117,7 @@ export default function MembershipScreen() {
             
             <View style={styles.planFeatures}>
               {renderFeature('All Basic features', true)}
-              {renderFeature('Increased swipes per day (25)', true)}
+              {renderFeature(`Increased swipes per day (30)`, true)}
               {renderFeature('Join 1 group', true)}
               {renderFeature('Create a basic portfolio', true)}
               {renderFeature('See who liked you', true)}

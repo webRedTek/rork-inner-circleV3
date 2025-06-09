@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import { UserProfile } from '@/types/user';
 import Colors from '@/constants/colors';
 import { Shield, Award } from 'lucide-react-native';
+import { useAuthStore } from '@/store/auth-store';
 
 interface ProfileHeaderProps {
   profile: UserProfile;
@@ -10,6 +11,8 @@ interface ProfileHeaderProps {
 }
 
 export const ProfileHeader: React.FC<ProfileHeaderProps> = ({ profile, onPress }) => {
+  const { tierSettings } = useAuthStore();
+  
   const getTierColor = () => {
     switch (profile.membershipTier) {
       case 'gold':
