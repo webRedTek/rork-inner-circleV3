@@ -249,7 +249,7 @@ export const seedTestData = async (): Promise<TestResult> => {
         email: 'test1@example.com',
         name: 'Test User 1',
         business_field: 'Technology',
-        entrepreneur_status: 'Founder',
+        entrepreneur_status: 'current',
         membership_tier: 'basic',
         business_verified: false,
         created_at: Date.now()
