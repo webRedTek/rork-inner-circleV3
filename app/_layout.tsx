@@ -241,13 +241,6 @@ function RootLayoutNav({ supabaseStatus }: { supabaseStatus: boolean | null }) {
           animation: 'slide_from_right',
         }}
       />
-      <Stack.Screen
-        name="supabase-test"
-        options={{
-          title: "Supabase Test",
-          animation: 'slide_from_right',
-        }}
-      />
     </Stack>
   );
 }
