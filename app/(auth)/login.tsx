@@ -140,15 +140,6 @@ export default function LoginScreen() {
             style={styles.button}
           />
           
-          <Button
-            title="Demo Login"
-            onPress={handleDemoLogin}
-            variant="outline"
-            size="large"
-            loading={isLoading || localLoading}
-            style={styles.demoButton}
-          />
-          
         </View>
         
         <View style={styles.footer}>
