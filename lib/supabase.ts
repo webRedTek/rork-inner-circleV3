@@ -183,10 +183,7 @@ export const testSupabaseConnection = async (): Promise<ConnectionTestResult> =>
     }
 
     // Try a simple query to test the connection
-    const { data, error } = await supabase
-      .from('users')
-      .select('id')
-      .limit(1);
+    const { data, error } = await supabase.rpc('version');
 
     if (error) {
       console.error('Supabase connection test failed:', error);
