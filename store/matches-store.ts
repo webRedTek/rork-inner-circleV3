@@ -161,8 +161,67 @@ export const useMatchesStore = create<MatchesState>()(
             
             set({ potentialMatches: filteredMatches, isLoading: false });
           } else {
-            // Supabase is required - no fallback to mock data
-            throw new Error('Database connection required. Please check your internet connection and try again.');
+            // Simulate API call
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // For demo, we'll get users from AsyncStorage
+            const mockUsers = await AsyncStorage.getItem('mockUsers');
+            const users = mockUsers ? JSON.parse(mockUsers) : [];
+            
+            // Filter out users that have already been matched or passed
+            // In a real app, this would be handled by the backend
+            const { matches } = get();
+            
+            const matchedUserIds = matches.map(m => 
+              m.userId === currentUser.id ? m.matchedUserId : m.userId
+            );
+            
+            // Simulate global discovery based on membership tier
+            const isGlobalDiscovery = currentUser.membershipTier === 'gold';
+            
+            // Filter users based on location if not global discovery
+            let filteredUsers = users.filter((u: UserProfile) => u.id !== currentUser.id);
+            
+            if (!isGlobalDiscovery && currentUser?.zipCode) {
+              // Simulate distance filtering based on ZIP code
+              // In a real app, this would use geolocation data
+              filteredUsers = filteredUsers.filter((u: UserProfile) => {
+                // If user has no ZIP code, exclude them
+                if (!u.zipCode) return false;
+                
+                // Simple mock distance calculation (first digit difference)
+                const zipDiff = Math.abs(
+                  parseInt(u.zipCode.substring(0, 1)) - 
+                  parseInt((currentUser?.zipCode || '0').substring(0, 1))
+                );
+                
+                // Convert to "miles" (mock)
+                const distance = zipDiff * 10;
+                return distance <= maxDistance;
+              });
+            }
+            
+            const potentialMatches = filteredUsers
+              .filter((u: UserProfile) => !matchedUserIds.includes(u.id))
+              .map(({ password, ...user }: any) => user);
+            
+            // Log the action in mock audit log
+            const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
+            const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
+            auditLogs.push({
+              id: `log-${Date.now()}`,
+              user_id: currentUser.id,
+              action: 'fetch_potential_matches',
+              details: { 
+                count: potentialMatches.length,
+                max_distance: maxDistance,
+                global_discovery: isGlobalDiscovery
+              },
+              timestamp: new Date().toISOString()
+            });
+            await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
+            
+            set({ potentialMatches, isLoading: false });
           }
         } catch (error) {
           console.error('Error fetching potential matches:', getReadableError(error));
@@ -319,8 +378,126 @@ export const useMatchesStore = create<MatchesState>()(
             set({ potentialMatches: updatedPotentialMatches, isLoading: false });
             return match;
           } else {
-            // Supabase is required - no fallback to mock data
-            throw new Error('Database connection required. Please check your internet connection and try again.');
+            // Simulate API call
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Get tier settings from mock data
+            const tierLimits: Record<string, { swipes: number, matches: number }> = {
+              basic: { swipes: 10, matches: 5 },
+              bronze: { swipes: 10, matches: 5 },
+              silver: { swipes: 30, matches: 15 },
+              gold: { swipes: 100, matches: 50 }
+            };
+            
+            const userTier = currentUser.membershipTier || 'basic';
+            const dailySwipeLimit = tierLimits[userTier]?.swipes || 10;
+            const dailyMatchLimit = tierLimits[userTier]?.matches || 5;
+            
+            // Check if user has reached daily swipe limit
+            const mockLikes = await AsyncStorage.getItem('mockLikes');
+            const likes = mockLikes ? JSON.parse(mockLikes) : [];
+            
+            // Count today's likes
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const todayTimestamp = today.getTime();
+            
+            const todayLikes = likes.filter((like: any) => 
+              like.likerId === currentUser.id && like.timestamp >= todayTimestamp
+            ).length;
+            
+            if (todayLikes >= dailySwipeLimit) {
+              throw new Error(`You've reached your daily swipe limit of ${dailySwipeLimit}. Upgrade your membership for more swipes!`);
+            }
+            
+            // Store the like
+            likes.push({
+              likerId: currentUser.id,
+              likedId: userId,
+              timestamp: Date.now()
+            });
+            
+            await AsyncStorage.setItem('mockLikes', JSON.stringify(likes));
+            
+            // Check if the other user has already liked the current user
+            const isMatch = likes.some((like: any) => 
+              like.likerId === userId && like.likedId === currentUser.id
+            );
+            
+            // If it's a match, create a match record
+            let match = null;
+            if (isMatch) {
+              // Check if user has reached daily match limit
+              const mockMatches = await AsyncStorage.getItem('mockMatches');
+              const storedMatches = mockMatches ? JSON.parse(mockMatches) : [];
+              
+              // Count today's matches
+              const todayMatches = storedMatches.filter((m: any) => 
+                m.userId === currentUser.id && m.createdAt >= todayTimestamp
+              ).length;
+              
+              if (todayMatches >= dailyMatchLimit) {
+                // Log the match limit reached
+                const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
+                const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
+                auditLogs.push({
+                  id: `log-${Date.now()}`,
+                  user_id: currentUser.id,
+                  action: 'match_limit_reached',
+                  details: { matched_user_id: userId },
+                  timestamp: new Date().toISOString()
+                });
+                await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
+              } else {
+                // Create the match
+                const newMatch: Match = {
+                  id: `match-${Date.now()}`,
+                  userId: currentUser.id,
+                  matchedUserId: userId,
+                  createdAt: Date.now()
+                };
+                
+                storedMatches.push(newMatch);
+                await AsyncStorage.setItem('mockMatches', JSON.stringify(storedMatches));
+                
+                // Log the match
+                const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
+                const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
+                auditLogs.push({
+                  id: `log-${Date.now()}`,
+                  user_id: currentUser.id,
+                  action: 'new_match',
+                  details: { matched_user_id: userId },
+                  timestamp: new Date().toISOString()
+                });
+                await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
+                
+                const { matches } = get();
+                set({ matches: [...matches, newMatch] });
+                match = newMatch;
+              }
+            } else {
+              // Log the like
+              const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
+              const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
+              auditLogs.push({
+                id: `log-${Date.now()}`,
+                user_id: currentUser.id,
+                action: 'like_user',
+                details: { liked_user_id: userId },
+                timestamp: new Date().toISOString()
+              });
+              await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
+            }
+            
+            // Remove the liked user from potential matches
+            const { potentialMatches } = get();
+            const updatedPotentialMatches = potentialMatches.filter(
+              (u: UserProfile) => u.id !== userId
+            );
+            
+            set({ potentialMatches: updatedPotentialMatches, isLoading: false });
+            return match;
           }
         } catch (error) {
           console.error('Error liking user:', getReadableError(error));
@@ -353,8 +530,17 @@ export const useMatchesStore = create<MatchesState>()(
               console.warn('Failed to log pass_user action:', getReadableError(logError));
             }
           } else {
-            // Supabase is required - no fallback to mock data
-            throw new Error('Database connection required. Please check your internet connection and try again.');
+            // Log the pass action in mock audit log
+            const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
+            const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
+            auditLogs.push({
+              id: `log-${Date.now()}`,
+              user_id: currentUser.id,
+              action: 'pass_user',
+              details: { passed_user_id: userId },
+              timestamp: new Date().toISOString()
+            });
+            await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
           }
           
           // Remove the passed user from potential matches
@@ -408,8 +594,31 @@ export const useMatchesStore = create<MatchesState>()(
             
             set({ matches: typedMatches, isLoading: false });
           } else {
-            // Supabase is required - no fallback to mock data
-            throw new Error('Database connection required. Please check your internet connection and try again.');
+            // Simulate API call
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Get matches from storage
+            const mockMatches = await AsyncStorage.getItem('mockMatches');
+            const allMatches = mockMatches ? JSON.parse(mockMatches) : [];
+            
+            // Filter matches for the current user
+            const userMatches = allMatches.filter((match: Match) => 
+              match.userId === currentUser.id || match.matchedUserId === currentUser.id
+            );
+            
+            // Log the action in mock audit log
+            const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
+            const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
+            auditLogs.push({
+              id: `log-${Date.now()}`,
+              user_id: currentUser.id,
+              action: 'view_matches',
+              details: { count: userMatches.length },
+              timestamp: new Date().toISOString()
+            });
+            await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
+            
+            set({ matches: userMatches, isLoading: false });
           }
         } catch (error) {
           console.error('Error getting matches:', getReadableError(error));

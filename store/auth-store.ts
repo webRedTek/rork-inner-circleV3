@@ -186,8 +186,41 @@ export const useAuthStore = create<AuthState>()(
               });
             }
           } else {
-            // Supabase is required - no fallback to mock authentication
-            throw new Error('Database connection required. Please check your internet connection and try again.');
+            // Fall back to mock authentication
+            // Simulate API call
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // For demo, we'll check if the user exists in our mock data
+            const mockUsers = await AsyncStorage.getItem('mockUsers');
+            const users = mockUsers ? JSON.parse(mockUsers) : [];
+            
+            const user = users.find((u: any) => 
+              u.email === email && u.password === password
+            );
+            
+            if (!user) {
+              throw new Error('Invalid email or password');
+            }
+            
+            const { password: _, ...userWithoutPassword } = user;
+            
+            // Log the login action in mock audit log
+            const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
+            const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
+            auditLogs.push({
+              id: `log-${Date.now()}`,
+              user_id: user.id,
+              action: 'login',
+              details: { source: 'app' },
+              timestamp: new Date().toISOString()
+            });
+            await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
+            
+            set({ 
+              user: userWithoutPassword as UserProfile, 
+              isAuthenticated: true, 
+              isLoading: false 
+            });
           }
         } catch (error) {
           console.error('Login error:', getReadableError(error));
@@ -367,8 +400,68 @@ export const useAuthStore = create<AuthState>()(
               });
             }
           } else {
-            // Supabase is required - no fallback to mock authentication
-            throw new Error('Database connection required. Please check your internet connection and try again.');
+            // Fall back to mock authentication
+            // Simulate API call
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // For demo, we'll store the user in AsyncStorage
+            const mockUsers = await AsyncStorage.getItem('mockUsers');
+            const users = mockUsers ? JSON.parse(mockUsers) : [];
+            
+            // Check if email already exists
+            if (users.some((u: any) => u.email === userData.email)) {
+              throw new Error('Email already in use');
+            }
+            
+            const newUser = {
+              id: `user-${Date.now()}`,
+              email: userData.email!,
+              name: userData.name || userData.email!.split('@')[0],
+              bio: userData.bio || '',
+              location: userData.location || '',
+              zipCode: userData.zipCode || '',
+              businessField: userData.businessField || 'Technology',
+              entrepreneurStatus: userData.entrepreneurStatus || 'upcoming',
+              photoUrl: userData.photoUrl || '',
+              membershipTier: 'basic' as MembershipTier,
+              businessVerified: false,
+              joinedGroups: [],
+              createdAt: Date.now(),
+              lookingFor: userData.lookingFor || [],
+              businessStage: userData.businessStage || 'Idea Phase',
+              skillsOffered: userData.skillsOffered || [],
+              skillsSeeking: userData.skillsSeeking || [],
+              keyChallenge: userData.keyChallenge || '',
+              industryFocus: userData.industryFocus || '',
+              availabilityLevel: userData.availabilityLevel || [],
+              timezone: userData.timezone || '',
+              successHighlight: userData.successHighlight || '',
+              ...userData,
+              password // In a real app, this would be hashed
+            };
+            
+            users.push(newUser);
+            await AsyncStorage.setItem('mockUsers', JSON.stringify(users));
+            
+            // Log the signup action in mock audit log
+            const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
+            const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
+            auditLogs.push({
+              id: `log-${Date.now()}`,
+              user_id: newUser.id,
+              action: 'signup',
+              details: { source: 'app' },
+              timestamp: new Date().toISOString()
+            });
+            await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
+            
+            const { password: _, ...userWithoutPassword } = newUser;
+            
+            set({ 
+              user: userWithoutPassword as UserProfile, 
+              isAuthenticated: true, 
+              isLoading: false 
+            });
           }
         } catch (error) {
           console.error('Signup error:', getReadableError(error));
@@ -468,10 +561,40 @@ export const useAuthStore = create<AuthState>()(
               user: { ...user, ...data },
               isLoading: false,
             });
-                  } else {
-          // Supabase is required - no fallback to mock data
-          throw new Error('Database connection required. Please check your internet connection and try again.');
-        }
+          } else {
+            // Simulate API call
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Update in mock storage
+            const mockUsers = await AsyncStorage.getItem('mockUsers');
+            const users = mockUsers ? JSON.parse(mockUsers) : [];
+            
+            const updatedUsers = users.map((u: any) => {
+              if (u.id === user.id) {
+                return { ...u, ...data };
+              }
+              return u;
+            });
+            
+            await AsyncStorage.setItem('mockUsers', JSON.stringify(updatedUsers));
+            
+            // Log the profile update in mock audit log
+            const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
+            const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
+            auditLogs.push({
+              id: `log-${Date.now()}`,
+              user_id: user.id,
+              action: 'update_profile',
+              details: { fields: Object.keys(data) },
+              timestamp: new Date().toISOString()
+            });
+            await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
+            
+            set({ 
+              user: { ...user, ...data }, 
+              isLoading: false 
+            });
+          }
         } catch (error) {
           console.error('Update profile error:', getReadableError(error));
           set({ 
@@ -514,10 +637,40 @@ export const useAuthStore = create<AuthState>()(
               user: { ...user, membershipTier: tier },
               isLoading: false,
             });
-                  } else {
-          // Supabase is required - no fallback to mock data
-          throw new Error('Database connection required. Please check your internet connection and try again.');
-        }
+          } else {
+            // Simulate API call
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Update in mock storage
+            const mockUsers = await AsyncStorage.getItem('mockUsers');
+            const users = mockUsers ? JSON.parse(mockUsers) : [];
+            
+            const updatedUsers = users.map((u: any) => {
+              if (u.id === user.id) {
+                return { ...u, membershipTier: tier };
+              }
+              return u;
+            });
+            
+            await AsyncStorage.setItem('mockUsers', JSON.stringify(updatedUsers));
+            
+            // Log the membership update in mock audit log
+            const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
+            const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
+            auditLogs.push({
+              id: `log-${Date.now()}`,
+              user_id: user.id,
+              action: 'update_membership',
+              details: { tier },
+              timestamp: new Date().toISOString()
+            });
+            await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
+            
+            set({ 
+              user: { ...user, membershipTier: tier }, 
+              isLoading: false 
+            });
+          }
         } catch (error) {
           console.error('Update membership error:', getReadableError(error));
           set({ 
