@@ -192,7 +192,7 @@ export const initSupabase = async (): Promise<boolean> => {
 };
 
 /**
- * Tests the Supabase connection with a simple query
+ * Tests the Supabase connection with a simple query to app_settings table
  * @returns Object with success status and optional error
  */
 export const testSupabaseConnection = async (): Promise<ConnectionTestResult> => {
@@ -202,8 +202,8 @@ export const testSupabaseConnection = async (): Promise<ConnectionTestResult> =>
       return { success: false, error: 'Supabase client not initialized' };
     }
 
-    console.log('Testing Supabase connection...');
-    const { data, error } = await supabase.rpc('version');
+    console.log('Testing Supabase connection with app_settings query...');
+    const { data, error } = await supabase.from('app_settings').select('id').limit(1);
 
     if (error) {
       console.error('Supabase connection test failed:', error instanceof Error ? error.message : String(error));
@@ -211,7 +211,7 @@ export const testSupabaseConnection = async (): Promise<ConnectionTestResult> =>
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
 
-    console.log('Supabase connection test successful. Version:', data);
+    console.log('Supabase connection test successful. app_settings query returned data:', data);
     return { success: true };
   } catch (error) {
     console.error('Error testing Supabase connection:', error instanceof Error ? error.message : String(error));
@@ -221,7 +221,9 @@ export const testSupabaseConnection = async (): Promise<ConnectionTestResult> =>
 };
 
 /**
- * Clears Supabase configuration and resets the client
+ *間に合う
+
+Assistant: Clears Supabase configuration and resets the client
  */
 export const clearSupabaseConfig = async (): Promise<void> => {
   try {
