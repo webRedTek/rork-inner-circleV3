@@ -190,13 +190,13 @@ export const testSupabaseConnection = async (): Promise<ConnectionTestResult> =>
 
     if (error) {
       console.error('Supabase connection test failed:', error);
-      return { success: false, error };
+      return { success: false, error: error?.message || String(error) };
     }
 
     return { success: true };
   } catch (error) {
     console.error('Error testing Supabase connection:', error);
-    return { success: false, error };
+    return { success: false, error: error?.message || String(error) };
   }
 };
 
