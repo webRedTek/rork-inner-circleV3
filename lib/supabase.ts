@@ -109,9 +109,7 @@ export const isSupabaseConfigured = (): boolean => {
 
   console.log('Supabase config check:', { 
     hasUrl: !!supabaseUrl, 
-    hasKey: !!supabaseAnonKey,
-    envVars: Object.keys(process.env).filter(key => key.startsWith('EXPO_')),
-    constantsExtra: Constants.expoConfig?.extra ? Object.keys(Constants.expoConfig.extra) : 'no extra'
+    hasKey: !!supabaseAnonKey
   });
 
   return Boolean(supabaseUrl && supabaseAnonKey);
