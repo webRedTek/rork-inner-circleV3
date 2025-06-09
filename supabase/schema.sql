@@ -125,6 +125,156 @@ begin
 end;
 $$ language plpgsql security definer;
 
+-- Create function to get user tier settings
+create or replace function get_user_tier_settings(user_id uuid)
+returns jsonb as $$
+declare
+  user_tier text;
+  settings jsonb;
+begin
+  -- Get user's membership tier
+  select membership_tier into user_tier
+  from public.users
+  where id = user_id;
+  
+  -- Return settings based on tier
+  case user_tier
+    when 'basic' then
+      settings := jsonb_build_object(
+        'daily_swipe_limit', 10,
+        'daily_match_limit', 5,
+        'message_sending_limit', 20,
+        'can_see_who_liked_you', false,
+        'can_rewind_last_swipe', false,
+        'boost_duration', 0,
+        'boost_frequency', 0,
+        'profile_visibility_control', false,
+        'priority_listing', false,
+        'premium_filters_access', false,
+        'global_discovery', false
+      );
+    when 'bronze' then
+      settings := jsonb_build_object(
+        'daily_swipe_limit', 10,
+        'daily_match_limit', 5,
+        'message_sending_limit', 20,
+        'can_see_who_liked_you', false,
+        'can_rewind_last_swipe', false,
+        'boost_duration', 0,
+        'boost_frequency', 0,
+        'profile_visibility_control', false,
+        'priority_listing', false,
+        'premium_filters_access', false,
+        'global_discovery', false
+      );
+    when 'silver' then
+      settings := jsonb_build_object(
+        'daily_swipe_limit', 30,
+        'daily_match_limit', 15,
+        'message_sending_limit', 50,
+        'can_see_who_liked_you', true,
+        'can_rewind_last_swipe', true,
+        'boost_duration', 30,
+        'boost_frequency', 1,
+        'profile_visibility_control', true,
+        'priority_listing', false,
+        'premium_filters_access', true,
+        'global_discovery', false
+      );
+    when 'gold' then
+      settings := jsonb_build_object(
+        'daily_swipe_limit', 100,
+        'daily_match_limit', 50,
+        'message_sending_limit', 200,
+        'can_see_who_liked_you', true,
+        'can_rewind_last_swipe', true,
+        'boost_duration', 60,
+        'boost_frequency', 3,
+        'profile_visibility_control', true,
+        'priority_listing', true,
+        'premium_filters_access', true,
+        'global_discovery', true
+      );
+    else
+      settings := jsonb_build_object(
+        'daily_swipe_limit', 10,
+        'daily_match_limit', 5,
+        'message_sending_limit', 20,
+        'can_see_who_liked_you', false,
+        'can_rewind_last_swipe', false,
+        'boost_duration', 0,
+        'boost_frequency', 0,
+        'profile_visibility_control', false,
+        'priority_listing', false,
+        'premium_filters_access', false,
+        'global_discovery', false
+      );
+  end case;
+  
+  return settings;
+end;
+$$ language plpgsql security definer;
+
+-- Create function to find users within distance
+create or replace function find_users_within_distance(user_id uuid, max_distance integer, global_search boolean default false)
+returns table (
+  id uuid,
+  email text,
+  name text,
+  bio text,
+  location text,
+  zip_code text,
+  business_field text,
+  entrepreneur_status text,
+  photo_url text,
+  membership_tier text,
+  business_verified boolean,
+  joined_groups uuid[],
+  created_at bigint,
+  skills_offered text[],
+  skills_seeking text[],
+  industry_focus text,
+  business_stage text,
+  key_challenge text,
+  availability_level text[],
+  timezone text,
+  success_highlight text,
+  looking_for text[]
+) as $$
+begin
+  if global_search then
+    -- Return all users except the input user
+    return query
+    select 
+      u.id, u.email, u.name, u.bio, u.location, u.zip_code, 
+      u.business_field, u.entrepreneur_status, u.photo_url, 
+      u.membership_tier, u.business_verified, u.joined_groups, 
+      u.created_at, u.skills_offered, u.skills_seeking, 
+      u.industry_focus, u.business_stage, u.key_challenge, 
+      u.availability_level, u.timezone, u.success_highlight, 
+      u.looking_for
+    from public.users u
+    where u.id != user_id;
+  else
+    -- Return users within max_distance (mocked based on zip code)
+    return query
+    select 
+      u.id, u.email, u.name, u.bio, u.location, u.zip_code, 
+      u.business_field, u.entrepreneur_status, u.photo_url, 
+      u.membership_tier, u.business_verified, u.joined_groups, 
+      u.created_at, u.skills_offered, u.skills_seeking, 
+      u.industry_focus, u.business_stage, u.key_challenge, 
+      u.availability_level, u.timezone, u.success_highlight, 
+      u.looking_for
+    from public.users u
+    where u.id != user_id
+    and u.zip_code is not null;
+    -- In a real implementation, this would use geospatial data
+    -- For now, we're just returning users with zip codes as a mock
+  end if;
+end;
+$$ language plpgsql security definer;
+
 -- Create RLS policies
 
 -- Users table policies
