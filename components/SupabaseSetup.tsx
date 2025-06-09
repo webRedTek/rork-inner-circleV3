@@ -72,11 +72,11 @@ export function SupabaseSetup({ onSetupComplete }: SupabaseSetupProps) {
         } else {
           setTestStatus({
             success: false,
-            message: 'Connection test failed'
+            message: 'Connection test failed: ' + (testResult.error || 'Unknown error')
           });
           Alert.alert(
             'Error', 
-            'Supabase configuration saved, but connection test failed.'
+            'Supabase configuration saved, but connection test failed: ' + (testResult.error || 'Unknown error')
           );
         }
       } else {
@@ -86,9 +86,9 @@ export function SupabaseSetup({ onSetupComplete }: SupabaseSetupProps) {
       console.error('Error saving Supabase configuration:', error);
       setTestStatus({
         success: false,
-        message: 'Failed to connect to Supabase'
+        message: 'Failed to connect to Supabase: ' + (error instanceof Error ? error.message : String(error))
       });
-      Alert.alert('Error', 'Failed to connect to Supabase');
+      Alert.alert('Error', 'Failed to connect to Supabase: ' + (error instanceof Error ? error.message : String(error)));
     } finally {
       setLoading(false);
     }

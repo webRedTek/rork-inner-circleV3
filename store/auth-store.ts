@@ -76,16 +76,22 @@ export const useAuthStore = create<AuthState>()(
       login: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
         try {
+          console.log('Login attempt with email:', email);
           await initSupabase();
           
           if (isSupabaseConfigured() && supabase) {
+            console.log('Using Supabase for login');
             const { data, error } = await supabase.auth.signInWithPassword({
               email,
               password,
             });
 
-            if (error) throw error;
+            if (error) {
+              console.error('Supabase login error:', error);
+              throw error;
+            }
 
+            console.log('Supabase login successful, fetching profile...');
             const { data: profileData, error: profileError } = await supabase
               .from('users')
               .select('*')
@@ -93,6 +99,7 @@ export const useAuthStore = create<AuthState>()(
               .single();
 
             if (profileError) {
+              console.error('Profile fetch error:', profileError);
               if (profileError.code === 'PGRST116') {
                 const newProfile: UserProfile = {
                   id: data.user.id,
@@ -121,11 +128,15 @@ export const useAuthStore = create<AuthState>()(
                 
                 const profileRecord = convertToSnakeCase(newProfile);
                 
+                console.log('Creating new profile in Supabase...');
                 const { error: insertError } = await supabase
                   .from('users')
                   .insert(profileRecord);
                 
-                if (insertError) throw insertError;
+                if (insertError) {
+                  console.error('Profile insert error:', insertError);
+                  throw insertError;
+                }
                 
                 set({
                   user: newProfile,
@@ -137,6 +148,7 @@ export const useAuthStore = create<AuthState>()(
               }
             } else {
               const userProfile = supabaseToUserProfile(profileData);
+              console.log('Profile fetched successfully:', userProfile.name);
               
               set({
                 user: userProfile,
@@ -145,6 +157,7 @@ export const useAuthStore = create<AuthState>()(
               });
             }
           } else {
+            console.log('Using mock data for login');
             await new Promise(resolve => setTimeout(resolve, 1000));
             
             const mockUsers = await AsyncStorage.getItem('mockUsers');

@@ -225,7 +225,7 @@ export default function SignupScreen() {
             setSignupError('');
           }, 60000);
         } else {
-          setSignupError(errorMessage || 'Signup failed. Please try again.');
+          setSignupError(errorMessage || 'Signup failed. Please check your network connection and try again.');
         }
       } finally {
         setLocalLoading(false);

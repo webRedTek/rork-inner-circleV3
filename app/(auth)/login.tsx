@@ -65,7 +65,7 @@ export default function LoginScreen() {
       } catch (err) {
         console.error('Login error in component:', 
           err instanceof Error ? err.message : 'Unknown error');
-        setLoginError('Login failed. Please check your credentials.');
+        setLoginError('Login failed. Please check your credentials or network connection.');
         setLocalLoading(false);
       }
     }

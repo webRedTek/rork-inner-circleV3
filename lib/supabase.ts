@@ -125,6 +125,29 @@ export const initSupabase = async (): Promise<boolean> => {
   try {
     if (!isSupabaseConfigured()) {
       console.warn('Supabase is not configured. Please set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in your environment.');
+      // Check AsyncStorage for saved values
+      const savedUrl = await AsyncStorage.getItem('SUPABASE_URL');
+      const savedKey = await AsyncStorage.getItem('SUPABASE_KEY');
+      if (savedUrl && savedKey) {
+        console.log('Using saved Supabase configuration from AsyncStorage');
+        supabase = createClient<Database>(savedUrl, savedKey, {
+          auth: {
+            storage: AsyncStorage,
+            autoRefreshToken: true,
+            persistSession: true,
+            detectSessionInUrl: Platform.OS === 'web',
+          },
+          realtime: {
+            params: {
+              eventsPerSecond: 0,
+            }
+          },
+          global: {
+            fetch: undefined
+          }
+        });
+        return true;
+      }
       return false;
     }
 
@@ -201,6 +224,10 @@ export const clearSupabaseConfig = async (): Promise<void> => {
     }
     
     supabase = null;
+    
+    // Clear saved configuration
+    await AsyncStorage.removeItem('SUPABASE_URL');
+    await AsyncStorage.removeItem('SUPABASE_KEY');
     
     console.log('Supabase configuration cleared');
   } catch (error) {
