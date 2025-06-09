@@ -29,15 +29,6 @@ const getReadableError = (error: any): string => {
   // If it has a message property, return that
   if (error.message) return error.message;
   
-  // If it has an error property with a message (nested error)
-  if (error.error && error.error.message) return error.error.message;
-  
-  // If it has a details property
-  if (error.details) return String(error.details);
-  
-  // If it has a code property
-  if (error.code) return `Error code: ${error.code}`;
-  
   // Last resort: stringify the object
   try {
     return JSON.stringify(error);
@@ -145,17 +136,6 @@ export const useAuthStore = create<AuthState>()(
                 
                 if (insertError) throw insertError;
                 
-                // Log the login action
-                try {
-                  await supabase.rpc('log_user_action', {
-                    user_id: data.user.id,
-                    action: 'login',
-                    details: { source: 'app', first_login: true }
-                  });
-                } catch (logError) {
-                  console.warn('Failed to log login action:', getReadableError(logError));
-                }
-                
                 set({
                   user: newProfile,
                   isAuthenticated: true,
@@ -165,17 +145,6 @@ export const useAuthStore = create<AuthState>()(
                 throw profileError;
               }
             } else {
-              // Log the login action
-              try {
-                await supabase.rpc('log_user_action', {
-                  user_id: data.user.id,
-                  action: 'login',
-                  details: { source: 'app' }
-                });
-              } catch (logError) {
-                console.warn('Failed to log login action:', getReadableError(logError));
-              }
-              
               // Convert Supabase response to UserProfile with proper type checking
               const userProfile = supabaseToUserProfile(profileData);
               
@@ -203,18 +172,6 @@ export const useAuthStore = create<AuthState>()(
             }
             
             const { password: _, ...userWithoutPassword } = user;
-            
-            // Log the login action in mock audit log
-            const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
-            const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
-            auditLogs.push({
-              id: `log-${Date.now()}`,
-              user_id: user.id,
-              action: 'login',
-              details: { source: 'app' },
-              timestamp: new Date().toISOString()
-            });
-            await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
             
             set({ 
               user: userWithoutPassword as UserProfile, 
@@ -262,10 +219,6 @@ export const useAuthStore = create<AuthState>()(
 
               if (error) {
                 console.error('Supabase signup error details:', getReadableError(error));
-                // Handle rate limiting error specifically
-                if (error.message && error.message.includes('security purposes')) {
-                  throw new Error('Please wait a moment before trying again (rate limit)');
-                }
                 throw error;
               }
 
@@ -311,18 +264,6 @@ export const useAuthStore = create<AuthState>()(
               }
               
               console.log('User profile created successfully in Supabase');
-
-              // Log the signup action in audit log
-              try {
-                await supabase.rpc('log_user_action', {
-                  user_id: newUser.id,
-                  action: 'signup',
-                  details: { source: 'app' }
-                });
-              } catch (logError) {
-                console.warn('Failed to log signup action:', getReadableError(logError));
-              }
-
               set({
                 user: newUser,
                 isAuthenticated: true,
@@ -330,74 +271,7 @@ export const useAuthStore = create<AuthState>()(
               });
             } catch (supabaseError) {
               console.error('Supabase signup error:', getReadableError(supabaseError));
-              
-              // Check if it's a rate limiting error
-              const errorMessage = getReadableError(supabaseError);
-              if (errorMessage.includes('security purposes') || errorMessage.includes('rate limit')) {
-                throw new Error('For security purposes, please wait a minute before trying again.');
-              }
-              
-              // If Supabase fails, fall back to mock authentication
-              console.log('Falling back to mock authentication after Supabase error');
-              
-              // For demo, we'll store the user in AsyncStorage
-              const mockUsers = await AsyncStorage.getItem('mockUsers');
-              const users = mockUsers ? JSON.parse(mockUsers) : [];
-              
-              // Check if email already exists
-              if (users.some((u: any) => u.email === userData.email)) {
-                throw new Error('Email already in use');
-              }
-              
-              const newUser = {
-                id: `user-${Date.now()}`,
-                email: userData.email!,
-                name: userData.name || userData.email!.split('@')[0],
-                bio: userData.bio || '',
-                location: userData.location || '',
-                zipCode: userData.zipCode || '',
-                businessField: userData.businessField || 'Technology',
-                entrepreneurStatus: userData.entrepreneurStatus || 'upcoming',
-                photoUrl: userData.photoUrl || '',
-                membershipTier: 'basic' as MembershipTier,
-                businessVerified: false,
-                joinedGroups: [],
-                createdAt: Date.now(),
-                lookingFor: userData.lookingFor || [],
-                businessStage: userData.businessStage || 'Idea Phase',
-                skillsOffered: userData.skillsOffered || [],
-                skillsSeeking: userData.skillsSeeking || [],
-                keyChallenge: userData.keyChallenge || '',
-                industryFocus: userData.industryFocus || '',
-                availabilityLevel: userData.availabilityLevel || [],
-                timezone: userData.timezone || '',
-                successHighlight: userData.successHighlight || '',
-                ...userData,
-                password // In a real app, this would be hashed
-              };
-              
-              users.push(newUser);
-              await AsyncStorage.setItem('mockUsers', JSON.stringify(users));
-              
-              // Log the signup action in mock audit log
-              const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
-              const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
-              auditLogs.push({
-                id: `log-${Date.now()}`,
-                user_id: newUser.id,
-                action: 'signup',
-                details: { source: 'app' },
-                timestamp: new Date().toISOString()
-              });
-              await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
-              
-              const { password: _, ...userWithoutPassword } = newUser;
-              
-              set({ 
-                user: userWithoutPassword as UserProfile, 
-                isAuthenticated: true, 
-                isLoading: false 
-              });
+              throw new Error('Signup failed with Supabase');
             }
           } else {
             // Fall back to mock authentication
@@ -443,18 +317,6 @@ export const useAuthStore = create<AuthState>()(
             users.push(newUser);
             await AsyncStorage.setItem('mockUsers', JSON.stringify(users));
             
-            // Log the signup action in mock audit log
-            const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
-            const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
-            auditLogs.push({
-              id: `log-${Date.now()}`,
-              user_id: newUser.id,
-              action: 'signup',
-              details: { source: 'app' },
-              timestamp: new Date().toISOString()
-            });
-            await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
-            
             const { password: _, ...userWithoutPassword } = newUser;
             
             set({ 
@@ -478,35 +340,12 @@ export const useAuthStore = create<AuthState>()(
           const { user } = get();
           
           if (isSupabaseConfigured() && supabase && user) {
-            // Log the logout action in audit log
-            try {
-              await supabase.rpc('log_user_action', {
-                user_id: user.id,
-                action: 'logout',
-                details: { source: 'app' }
-              });
-            } catch (logError) {
-              console.warn('Failed to log logout action:', getReadableError(logError));
-            }
-            
             // Sign out from Supabase
             const { error } = await supabase.auth.signOut();
             if (error) {
               console.warn('Supabase signOut error:', getReadableError(error));
               // Continue with logout even if Supabase signOut fails
             }
-          } else if (user) {
-            // Log the logout action in mock audit log
-            const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
-            const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
-            auditLogs.push({
-              id: `log-${Date.now()}`,
-              user_id: user.id,
-              action: 'logout',
-              details: { source: 'app' },
-              timestamp: new Date().toISOString()
-            });
-            await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
           }
           
           // Clear persisted state
@@ -546,17 +385,6 @@ export const useAuthStore = create<AuthState>()(
 
             if (error) throw error;
 
-            // Log the profile update in audit log
-            try {
-              await supabase.rpc('log_user_action', {
-                user_id: user.id,
-                action: 'update_profile',
-                details: { fields: Object.keys(data) }
-              });
-            } catch (logError) {
-              console.warn('Failed to log profile update action:', getReadableError(logError));
-            }
-
             set({
               user: { ...user, ...data },
               isLoading: false,
@@ -577,18 +405,6 @@ export const useAuthStore = create<AuthState>()(
             });
             
             await AsyncStorage.setItem('mockUsers', JSON.stringify(updatedUsers));
-            
-            // Log the profile update in mock audit log
-            const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
-            const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
-            auditLogs.push({
-              id: `log-${Date.now()}`,
-              user_id: user.id,
-              action: 'update_profile',
-              details: { fields: Object.keys(data) },
-              timestamp: new Date().toISOString()
-            });
-            await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
             
             set({ 
               user: { ...user, ...data }, 
@@ -622,17 +438,6 @@ export const useAuthStore = create<AuthState>()(
 
             if (error) throw error;
 
-            // Log the membership update in audit log
-            try {
-              await supabase.rpc('log_user_action', {
-                user_id: user.id,
-                action: 'update_membership',
-                details: { tier }
-              });
-            } catch (logError) {
-              console.warn('Failed to log membership update action:', getReadableError(logError));
-            }
-
             set({
               user: { ...user, membershipTier: tier },
               isLoading: false,
@@ -653,18 +458,6 @@ export const useAuthStore = create<AuthState>()(
             });
             
             await AsyncStorage.setItem('mockUsers', JSON.stringify(updatedUsers));
-            
-            // Log the membership update in mock audit log
-            const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
-            const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
-            auditLogs.push({
-              id: `log-${Date.now()}`,
-              user_id: user.id,
-              action: 'update_membership',
-              details: { tier },
-              timestamp: new Date().toISOString()
-            });
-            await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
             
             set({ 
               user: { ...user, membershipTier: tier }, 
