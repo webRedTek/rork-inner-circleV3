@@ -70,4 +70,4 @@ If you encounter TypeScript errors related to types:
 
 ## Database Schema
 
-See `supabase/schema.sql` for the database schema and `supabase/README.md` for setup instructions.// Force deployment Sun Jun  8 19:23:11 EDT 2025
+See `supabase/schema.sql` for the database schema and `supabase/README.md` for setup instructions.
