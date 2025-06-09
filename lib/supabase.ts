@@ -221,9 +221,7 @@ export const testSupabaseConnection = async (): Promise<ConnectionTestResult> =>
 };
 
 /**
- *間に合う
-
-Assistant: Clears Supabase configuration and resets the client
+ * Clears Supabase configuration and resets the client
  */
 export const clearSupabaseConfig = async (): Promise<void> => {
   try {
