@@ -101,6 +101,7 @@ export const useMatchesStore = create<MatchesState>()(
         set({ isLoading: true, error: null });
         try {
           const currentUser = useAuthStore.getState().user;
+          const tierSettings = useAuthStore.getState().tierSettings;
           
           if (!currentUser) {
             throw new Error('User not authenticated');
@@ -108,12 +109,12 @@ export const useMatchesStore = create<MatchesState>()(
           
           if (isSupabaseConfigured() && supabase) {
             // Get user's tier settings to check if global discovery is enabled
-            const { data: tierSettings, error: tierError } = await supabase
+            const { data: tierSettingsData, error: tierError } = await supabase
               .rpc('get_user_tier_settings', { user_id: currentUser.id });
               
             if (tierError) throw tierError;
             
-            const tierData = tierSettings as Record<string, any> || {};
+            const tierData = tierSettingsData as Record<string, any> || {};
             const globalDiscovery = tierData && typeof tierData === 'object' && 'global_discovery' in tierData 
               ? Boolean(tierData.global_discovery) 
               : false;
@@ -177,7 +178,7 @@ export const useMatchesStore = create<MatchesState>()(
             );
             
             // Simulate global discovery based on membership tier
-            const isGlobalDiscovery = currentUser.membershipTier === 'gold';
+            const isGlobalDiscovery = tierSettings?.global_discovery || false;
             
             // Filter users based on location if not global discovery
             let filteredUsers = users.filter((u: UserProfile) => u.id !== currentUser.id);
@@ -236,6 +237,7 @@ export const useMatchesStore = create<MatchesState>()(
         set({ isLoading: true, error: null });
         try {
           const currentUser = useAuthStore.getState().user;
+          const tierSettings = useAuthStore.getState().tierSettings;
           
           if (!currentUser) {
             throw new Error('User not authenticated');
@@ -243,12 +245,12 @@ export const useMatchesStore = create<MatchesState>()(
           
           if (isSupabaseConfigured() && supabase) {
             // Check user's daily like limit
-            const { data: tierSettings, error: tierError } = await supabase
+            const { data: tierSettingsData, error: tierError } = await supabase
               .rpc('get_user_tier_settings', { user_id: currentUser.id });
               
             if (tierError) throw tierError;
             
-            const tierData = tierSettings as Record<string, any> || {};
+            const tierData = tierSettingsData as Record<string, any> || {};
             const dailySwipeLimit = tierData && typeof tierData === 'object' && 'daily_swipe_limit' in tierData 
               ? Number(tierData.daily_swipe_limit) 
               : 10;
@@ -381,17 +383,9 @@ export const useMatchesStore = create<MatchesState>()(
             // Simulate API call
             await new Promise(resolve => setTimeout(resolve, 1000));
             
-            // Get tier settings from mock data
-            const tierLimits: Record<string, { swipes: number, matches: number }> = {
-              basic: { swipes: 10, matches: 5 },
-              bronze: { swipes: 10, matches: 5 },
-              silver: { swipes: 30, matches: 15 },
-              gold: { swipes: 100, matches: 50 }
-            };
-            
-            const userTier = currentUser.membershipTier || 'basic';
-            const dailySwipeLimit = tierLimits[userTier]?.swipes || 10;
-            const dailyMatchLimit = tierLimits[userTier]?.matches || 5;
+            // Get tier settings from auth store
+            const dailySwipeLimit = tierSettings?.daily_swipe_limit || 10;
+            const dailyMatchLimit = tierSettings?.daily_match_limit || 5;
             
             // Check if user has reached daily swipe limit
             const mockLikes = await AsyncStorage.getItem('mockLikes');

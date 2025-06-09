@@ -1,12 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { UserProfile, MembershipTier } from '@/types/user';
+import { UserProfile, MembershipTier, TierSettings } from '@/types/user';
 import { isSupabaseConfigured, supabase, initSupabase, convertToCamelCase, convertToSnakeCase } from '@/lib/supabase';
 import { Platform } from 'react-native';
 
 interface AuthState {
   user: UserProfile | null;
+  tierSettings: TierSettings | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
@@ -15,6 +16,7 @@ interface AuthState {
   logout: () => Promise<void>;
   updateProfile: (data: Partial<UserProfile>) => Promise<void>;
   updateMembership: (tier: MembershipTier) => Promise<void>;
+  fetchTierSettings: (userId: string) => Promise<void>;
   clearError: () => void;
   clearCache: () => Promise<void>;
 }
@@ -69,6 +71,7 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       user: null,
+      tierSettings: null,
       isAuthenticated: false,
       isLoading: false,
       error: null,
@@ -143,6 +146,8 @@ export const useAuthStore = create<AuthState>()(
                   isAuthenticated: true,
                   isLoading: false,
                 });
+                // Fetch tier settings after creating profile
+                await get().fetchTierSettings(data.user.id);
               } else {
                 throw profileError;
               }
@@ -155,6 +160,8 @@ export const useAuthStore = create<AuthState>()(
                 isAuthenticated: true,
                 isLoading: false,
               });
+              // Fetch tier settings after login
+              await get().fetchTierSettings(data.user.id);
             }
           } else {
             console.log('Using mock data for login');
@@ -178,6 +185,22 @@ export const useAuthStore = create<AuthState>()(
               isAuthenticated: true, 
               isLoading: false 
             });
+            // Set mock tier settings
+            const tier = userWithoutPassword.membershipTier || 'basic';
+            const mockTierSettings = {
+              daily_swipe_limit: tier === 'gold' ? 100 : tier === 'silver' ? 30 : 10,
+              daily_match_limit: tier === 'gold' ? 50 : tier === 'silver' ? 15 : 5,
+              message_sending_limit: tier === 'gold' ? 200 : tier === 'silver' ? 50 : 20,
+              can_see_who_liked_you: tier === 'gold' || tier === 'silver',
+              can_rewind_last_swipe: tier === 'gold' || tier === 'silver',
+              boost_duration: tier === 'gold' ? 60 : tier === 'silver' ? 30 : 0,
+              boost_frequency: tier === 'gold' ? 3 : tier === 'silver' ? 1 : 0,
+              profile_visibility_control: tier === 'gold' || tier === 'silver',
+              priority_listing: tier === 'gold',
+              premium_filters_access: tier === 'gold' || tier === 'silver',
+              global_discovery: tier === 'gold'
+            };
+            set({ tierSettings: mockTierSettings });
           }
         } catch (error) {
           console.error('Login error:', getReadableError(error));
@@ -263,6 +286,10 @@ export const useAuthStore = create<AuthState>()(
                 isAuthenticated: true,
                 isLoading: false,
               });
+              // Fetch tier settings after signup
+              if (data.user?.id) {
+                await get().fetchTierSettings(data.user.id);
+              }
             } catch (supabaseError) {
               console.error('Supabase signup error:', getReadableError(supabaseError));
               throw new Error('Signup failed with Supabase');
@@ -314,6 +341,22 @@ export const useAuthStore = create<AuthState>()(
               isAuthenticated: true, 
               isLoading: false 
             });
+            // Set mock tier settings
+            const tier = userWithoutPassword.membershipTier || 'basic';
+            const mockTierSettings = {
+              daily_swipe_limit: tier === 'gold' ? 100 : tier === 'silver' ? 30 : 10,
+              daily_match_limit: tier === 'gold' ? 50 : tier === 'silver' ? 15 : 5,
+              message_sending_limit: tier === 'gold' ? 200 : tier === 'silver' ? 50 : 20,
+              can_see_who_liked_you: tier === 'gold' || tier === 'silver',
+              can_rewind_last_swipe: tier === 'gold' || tier === 'silver',
+              boost_duration: tier === 'gold' ? 60 : tier === 'silver' ? 30 : 0,
+              boost_frequency: tier === 'gold' ? 3 : tier === 'silver' ? 1 : 0,
+              profile_visibility_control: tier === 'gold' || tier === 'silver',
+              priority_listing: tier === 'gold',
+              premium_filters_access: tier === 'gold' || tier === 'silver',
+              global_discovery: tier === 'gold'
+            };
+            set({ tierSettings: mockTierSettings });
           }
         } catch (error) {
           console.error('Signup error:', getReadableError(error));
@@ -338,14 +381,14 @@ export const useAuthStore = create<AuthState>()(
           
           await AsyncStorage.removeItem('auth-storage');
           
-          set({ user: null, isAuthenticated: false, isLoading: false });
+          set({ user: null, tierSettings: null, isAuthenticated: false, isLoading: false });
           
           console.log('Logout successful');
           return;
         } catch (error) {
           console.error('Logout error:', getReadableError(error));
           await AsyncStorage.removeItem('auth-storage');
-          set({ user: null, isAuthenticated: false, isLoading: false });
+          set({ user: null, tierSettings: null, isAuthenticated: false, isLoading: false });
         }
       },
 
@@ -420,6 +463,8 @@ export const useAuthStore = create<AuthState>()(
               user: { ...user, membershipTier: tier },
               isLoading: false,
             });
+            // Refresh tier settings after membership update
+            await get().fetchTierSettings(user.id);
           } else {
             await new Promise(resolve => setTimeout(resolve, 1000));
             
@@ -439,9 +484,47 @@ export const useAuthStore = create<AuthState>()(
               user: { ...user, membershipTier: tier }, 
               isLoading: false 
             });
+            // Set mock tier settings
+            const mockTierSettings = {
+              daily_swipe_limit: tier === 'gold' ? 100 : tier === 'silver' ? 30 : 10,
+              daily_match_limit: tier === 'gold' ? 50 : tier === 'silver' ? 15 : 5,
+              message_sending_limit: tier === 'gold' ? 200 : tier === 'silver' ? 50 : 20,
+              can_see_who_liked_you: tier === 'gold' || tier === 'silver',
+              can_rewind_last_swipe: tier === 'gold' || tier === 'silver',
+              boost_duration: tier === 'gold' ? 60 : tier === 'silver' ? 30 : 0,
+              boost_frequency: tier === 'gold' ? 3 : tier === 'silver' ? 1 : 0,
+              profile_visibility_control: tier === 'gold' || tier === 'silver',
+              priority_listing: tier === 'gold',
+              premium_filters_access: tier === 'gold' || tier === 'silver',
+              global_discovery: tier === 'gold'
+            };
+            set({ tierSettings: mockTierSettings });
           }
         } catch (error) {
           console.error('Update membership error:', getReadableError(error));
+          set({ 
+            error: getReadableError(error), 
+            isLoading: false 
+          });
+        }
+      },
+
+      fetchTierSettings: async (userId: string) => {
+        set({ isLoading: true, error: null });
+        try {
+          if (isSupabaseConfigured() && supabase) {
+            const { data: tierSettings, error: tierError } = await supabase
+              .rpc('get_user_tier_settings', { user_id: userId });
+              
+            if (tierError) throw tierError;
+            
+            set({ tierSettings: tierSettings as TierSettings, isLoading: false });
+          } else {
+            // Mock tier settings are set in login/signup/updateMembership
+            set({ isLoading: false });
+          }
+        } catch (error) {
+          console.error('Fetch tier settings error:', getReadableError(error));
           set({ 
             error: getReadableError(error), 
             isLoading: false 
@@ -458,6 +541,7 @@ export const useAuthStore = create<AuthState>()(
           
           set({ 
             user: null, 
+            tierSettings: null,
             isAuthenticated: false, 
             isLoading: false,
             error: null

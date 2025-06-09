@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { Group, UserProfile } from '@/types/user';
 import { mockGroups } from '@/mocks/users';
 import { isSupabaseConfigured, supabase, convertToCamelCase, convertToSnakeCase } from '@/lib/supabase';
+import { useAuthStore } from './auth-store';
 
 // Helper function to extract readable error message from Supabase error
 const getReadableError = (error: any): string => {
@@ -162,19 +163,20 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
   joinGroup: async (groupId: string) => {
     set({ isLoading: true, error: null });
     try {
-      // Get current user
+      // Get current user and tier settings
       const currentUser = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}')?.state?.user;
+      const tierSettings = useAuthStore.getState().tierSettings;
       
       if (!currentUser) {
         throw new Error('User not authenticated');
       }
       
-      // Check membership tier restrictions
-      if (currentUser.membershipTier === 'bronze') {
-        throw new Error('Bronze members cannot join groups. Please upgrade to Silver or Gold.');
+      // Check membership tier restrictions using tier settings
+      if (!tierSettings || tierSettings.daily_swipe_limit <= 10) { // Basic or Bronze tier (based on swipe limit)
+        throw new Error('Basic/Bronze members cannot join groups. Please upgrade to Silver or Gold.');
       }
       
-      if (currentUser.membershipTier === 'silver') {
+      if (tierSettings.daily_swipe_limit <= 30) { // Silver tier (based on swipe limit)
         // Silver members can only join one group
         const userGroups = get().userGroups;
         if (userGroups.length >= 1) {
@@ -434,16 +436,17 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
   createGroup: async (groupData: Partial<Group>) => {
     set({ isLoading: true, error: null });
     try {
-      // Get current user
+      // Get current user and tier settings
       const currentUser = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}')?.state?.user;
+      const tierSettings = useAuthStore.getState().tierSettings;
       
       if (!currentUser) {
         throw new Error('User not authenticated');
       }
       
-      // Check membership tier restrictions
-      if (currentUser.membershipTier === 'bronze') {
-        throw new Error('Bronze members cannot create groups. Please upgrade to Silver or Gold.');
+      // Check membership tier restrictions using tier settings
+      if (!tierSettings || tierSettings.daily_swipe_limit <= 10) { // Basic or Bronze tier (based on swipe limit)
+        throw new Error('Basic/Bronze members cannot create groups. Please upgrade to Silver or Gold.');
       }
       
       if (isSupabaseConfigured() && supabase) {

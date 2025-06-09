@@ -156,6 +156,20 @@ export interface AppSettings {
   updatedAt: string;
 }
 
+export interface TierSettings {
+  daily_swipe_limit: number;
+  daily_match_limit: number;
+  message_sending_limit: number;
+  can_see_who_liked_you: boolean;
+  can_rewind_last_swipe: boolean;
+  boost_duration: number;
+  boost_frequency: number;
+  profile_visibility_control: boolean;
+  priority_listing: boolean;
+  premium_filters_access: boolean;
+  global_discovery: boolean;
+}
+
 export interface AuditLogEntry {
   id: string;
   userId: string;
