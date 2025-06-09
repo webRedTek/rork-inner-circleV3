@@ -139,6 +139,14 @@ export default function LoginScreen() {
             loading={isLoading || localLoading}
             style={styles.button}
           />
+					<Button
+           title="Configure Supabase"
+           onPress={handleSupabaseSetup}
+           variant="outline"
+           size="large"
+           style={styles.configButton}
+           disabled={isLoading || localLoading}
+          />
           
         </View>
         
