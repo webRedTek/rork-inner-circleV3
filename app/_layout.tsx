@@ -72,12 +72,10 @@ export default function RootLayout() {
         }
         
         // Initialize mock data regardless of Supabase status
-        // This ensures the app works even if Supabase is not available
         console.log('Initializing mock data...');
         const existingUsers = await AsyncStorage.getItem('mockUsers');
         if (!existingUsers) {
           console.log('Creating mock users...');
-          // Add passwords for mock users
           const usersWithPasswords = mockUsers.map(user => ({
             ...user,
             password: 'password123'
@@ -107,14 +105,11 @@ export default function RootLayout() {
             if (supabaseInitialized) {
               console.log("Supabase configured successfully");
               
-              // Test the connection with a simple query
               const testResult = await testSupabaseConnection();
               if (testResult.success) {
                 console.log("Supabase connection test successful");
               } else {
                 console.warn("Supabase connection test failed:", testResult.error);
-                // Still consider it initialized if the client was created
-                // The test might fail due to permissions or missing tables
               }
               
               break;
@@ -122,7 +117,6 @@ export default function RootLayout() {
               console.warn(`Supabase initialization attempt ${retryCount + 1}/${maxRetries + 1} failed`);
               retryCount++;
               if (retryCount <= maxRetries) {
-                // Wait before retrying
                 await new Promise(resolve => setTimeout(resolve, 1000));
               }
             }
@@ -130,7 +124,6 @@ export default function RootLayout() {
             console.error(`Supabase initialization error (attempt ${retryCount + 1}/${maxRetries + 1}):`, err);
             retryCount++;
             if (retryCount <= maxRetries) {
-              // Wait before retrying
               await new Promise(resolve => setTimeout(resolve, 1000));
             }
           }
@@ -141,17 +134,15 @@ export default function RootLayout() {
         console.log('App initialization complete');
       } catch (err) {
         console.error("Failed to initialize data:", err);
-        // Mark that we had an error
         await AsyncStorage.setItem('app_had_error', 'true');
         setSupabaseStatus(false);
-        setIsInitialized(true); // Still mark as initialized so the app can proceed
+        setIsInitialized(true);
       }
     };
 
     const clearCaches = async () => {
       try {
         console.log('Clearing caches...');
-        // Clear auth store cache
         await clearCache();
         console.log('Caches cleared successfully');
       } catch (error) {
@@ -165,7 +156,6 @@ export default function RootLayout() {
     }
   }, [loaded, clearCache]);
 
-  // Redirect to auth if not authenticated
   useEffect(() => {
     if (isInitialized && !isAuthenticated && !user) {
       router.replace('/(auth)');

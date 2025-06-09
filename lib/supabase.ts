@@ -82,7 +82,6 @@ export type Database = {
           looking_for?: string[] | null;
         };
       };
-      // Add other tables as needed
     };
   };
 };
@@ -144,7 +143,6 @@ export const initSupabase = async (): Promise<boolean> => {
 
     console.log('Initializing Supabase with URL:', supabaseUrl.substring(0, 15) + '...');
 
-    // Create the Supabase client with realtime completely disabled
     supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
       auth: {
         storage: AsyncStorage,
@@ -152,15 +150,12 @@ export const initSupabase = async (): Promise<boolean> => {
         persistSession: true,
         detectSessionInUrl: Platform.OS === 'web',
       },
-      // Completely disable realtime to avoid Node.js stream dependency issues
       realtime: {
-        // Disable realtime subscriptions
         params: {
           eventsPerSecond: 0,
         }
       },
       global: {
-        // Disable fetch logging to reduce console noise
         fetch: undefined
       }
     });
@@ -182,8 +177,7 @@ export const testSupabaseConnection = async (): Promise<ConnectionTestResult> =>
       return { success: false, error: 'Supabase client not initialized' };
     }
 
-    // Try a simple query to test the connection
-    const { data, error } = await supabase.from('users').select('id').limit(0);
+    const { data, error } = await supabase.rpc('version');
 
     if (error) {
       console.error('Supabase connection test failed:', error);
@@ -202,12 +196,10 @@ export const testSupabaseConnection = async (): Promise<ConnectionTestResult> =>
  */
 export const clearSupabaseConfig = async (): Promise<void> => {
   try {
-    // Sign out if there's an active session
     if (supabase?.auth) {
       await supabase.auth.signOut();
     }
     
-    // Reset the client
     supabase = null;
     
     console.log('Supabase configuration cleared');

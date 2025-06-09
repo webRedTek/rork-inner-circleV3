@@ -35,7 +35,6 @@ export default function LoginScreen() {
     let isValid = true;
     setLoginError('');
     
-    // Email validation
     if (!email.trim()) {
       setEmailError('Email is required');
       isValid = false;
@@ -46,7 +45,6 @@ export default function LoginScreen() {
       setEmailError('');
     }
     
-    // Password validation
     if (!password) {
       setPasswordError('Password is required');
       isValid = false;
@@ -61,7 +59,7 @@ export default function LoginScreen() {
     if (validateForm()) {
       try {
         setLocalLoading(true);
-        console.log('Attempting login with:', email, password);
+        console.log('Attempting login with:', email);
         await login(email, password);
         setLocalLoading(false);
       } catch (err) {
@@ -72,8 +70,6 @@ export default function LoginScreen() {
       }
     }
   };
-  
-
   
   const handleSupabaseSetup = () => {
     router.push('/supabase-setup');
@@ -139,15 +135,14 @@ export default function LoginScreen() {
             loading={isLoading || localLoading}
             style={styles.button}
           />
-					<Button
-           title="Configure Supabase"
-           onPress={handleSupabaseSetup}
-           variant="outline"
-           size="large"
-           style={styles.configButton}
-           disabled={isLoading || localLoading}
+          <Button
+            title="Configure Supabase"
+            onPress={handleSupabaseSetup}
+            variant="outline"
+            size="large"
+            style={styles.configButton}
+            disabled={isLoading || localLoading}
           />
-          
         </View>
         
         <View style={styles.footer}>

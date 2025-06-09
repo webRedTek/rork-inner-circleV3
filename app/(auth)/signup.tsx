@@ -15,7 +15,6 @@ export default function SignupScreen() {
   const router = useRouter();
   const { signup, isAuthenticated, isLoading, error, clearError } = useAuthStore();
   
-  // Basic info
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -24,7 +23,6 @@ export default function SignupScreen() {
   const [entrepreneurStatus, setEntrepreneurStatus] = useState<EntrepreneurStatus>('upcoming');
   const [bio, setBio] = useState('');
   
-  // Enhanced profile fields
   const [lookingFor, setLookingFor] = useState<LookingFor[]>([]);
   const [businessStage, setBusinessStage] = useState<BusinessStage>('Idea Phase');
   const [skillsOffered, setSkillsOffered] = useState<Skill[]>([]);
@@ -37,7 +35,6 @@ export default function SignupScreen() {
   const [timezone, setTimezone] = useState('');
   const [successHighlight, setSuccessHighlight] = useState('');
   
-  // Validation errors
   const [nameError, setNameError] = useState('');
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
@@ -48,11 +45,9 @@ export default function SignupScreen() {
   const [localLoading, setLocalLoading] = useState(false);
   const [rateLimitCooldown, setRateLimitCooldown] = useState(false);
   
-  // Supabase status
   const [isSupabaseReady, setIsSupabaseReady] = useState<boolean | null>(null);
   const [checkingSupabase, setCheckingSupabase] = useState(true);
   
-  // Options for select fields
   const lookingForOptions: LookingFor[] = ['Partners', 'Mentor', 'Bounce Ideas', 'Peers', 'Mentoring others', 'Meetups', 'Funding'];
   const businessStageOptions: BusinessStage[] = ['Idea Phase', 'Pre-Seed/Startup', 'Growth Stage', 'Established/Scaling', 'Exited'];
   const skillOptions: Skill[] = ['Marketing', 'Sales', 'Development', 'UI/UX', 'Fundraising', 'Product Management', 'Operations', 'Finance', 'Legal', 'HR', 'Customer Service', 'Content Creation', 'Data Analysis', 'Strategy'];
@@ -75,7 +70,6 @@ export default function SignupScreen() {
       setIsSupabaseReady(configured);
       
       if (configured) {
-        // Test the connection
         const testResult = await testSupabaseConnection();
         setIsSupabaseReady(testResult.success);
         
@@ -96,16 +90,14 @@ export default function SignupScreen() {
   
   useEffect(() => {
     if (error) {
-      // Check for rate limiting error
       if (error.includes('security purposes') || error.includes('rate limit')) {
         setSignupError('For security purposes, please wait a minute before trying again.');
         setRateLimitCooldown(true);
         
-        // Set a timer to clear the rate limit cooldown
         const timer = setTimeout(() => {
           setRateLimitCooldown(false);
           setSignupError('');
-        }, 60000); // 60 seconds cooldown
+        }, 60000);
         
         return () => clearTimeout(timer);
       } else {
@@ -119,7 +111,6 @@ export default function SignupScreen() {
     let isValid = true;
     setSignupError('');
     
-    // Name validation
     if (!name.trim()) {
       setNameError('Name is required');
       isValid = false;
@@ -127,7 +118,6 @@ export default function SignupScreen() {
       setNameError('');
     }
     
-    // Email validation
     if (!email.trim()) {
       setEmailError('Email is required');
       isValid = false;
@@ -138,7 +128,6 @@ export default function SignupScreen() {
       setEmailError('');
     }
     
-    // Password validation
     if (!password) {
       setPasswordError('Password is required');
       isValid = false;
@@ -149,7 +138,6 @@ export default function SignupScreen() {
       setPasswordError('');
     }
     
-    // Confirm password validation
     if (password !== confirmPassword) {
       setConfirmPasswordError('Passwords do not match');
       isValid = false;
@@ -157,7 +145,6 @@ export default function SignupScreen() {
       setConfirmPasswordError('');
     }
     
-    // Bio validation
     if (!bio.trim()) {
       setBioError('Please provide a brief introduction');
       isValid = false;
@@ -165,7 +152,6 @@ export default function SignupScreen() {
       setBioError('');
     }
     
-    // Zip code validation
     if (!zipCode.trim()) {
       setZipCodeError('ZIP code is required for location-based matching');
       isValid = false;
@@ -198,7 +184,6 @@ export default function SignupScreen() {
         setLocalLoading(true);
         setSignupError('');
         
-        // Add a delay to avoid rate limiting
         await new Promise(resolve => setTimeout(resolve, 2000));
         
         await signup(
@@ -230,17 +215,15 @@ export default function SignupScreen() {
         console.error('Signup error in component:', 
           err instanceof Error ? err.message : 'Unknown error');
         
-        // Check for rate limiting error
         const errorMessage = err instanceof Error ? err.message : String(err);
         if (errorMessage.includes('security purposes') || errorMessage.includes('rate limit')) {
           setSignupError('For security purposes, please wait a minute before trying again.');
           setRateLimitCooldown(true);
           
-          // Set a timer to clear the rate limit cooldown
           setTimeout(() => {
             setRateLimitCooldown(false);
             setSignupError('');
-          }, 60000); // 60 seconds cooldown
+          }, 60000);
         } else {
           setSignupError(errorMessage || 'Signup failed. Please try again.');
         }

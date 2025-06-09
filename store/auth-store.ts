@@ -23,13 +23,10 @@ interface AuthState {
 const getReadableError = (error: any): string => {
   if (!error) return 'Unknown error occurred';
   
-  // If it's a string, return it directly
   if (typeof error === 'string') return error;
   
-  // If it has a message property, return that
   if (error.message) return error.message;
   
-  // Last resort: stringify the object
   try {
     return JSON.stringify(error);
   } catch (e) {
@@ -39,7 +36,6 @@ const getReadableError = (error: any): string => {
 
 // Helper function to convert Supabase response to UserProfile type
 const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
-  // First convert snake_case to camelCase
   const camelCaseData = convertToCamelCase(data);
   
   return {
@@ -80,11 +76,9 @@ export const useAuthStore = create<AuthState>()(
       login: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
         try {
-          // Try to initialize Supabase if not already done
           await initSupabase();
           
           if (isSupabaseConfigured() && supabase) {
-            // Use Supabase Auth
             const { data, error } = await supabase.auth.signInWithPassword({
               email,
               password,
@@ -92,7 +86,6 @@ export const useAuthStore = create<AuthState>()(
 
             if (error) throw error;
 
-            // Fetch user profile from Supabase
             const { data: profileData, error: profileError } = await supabase
               .from('users')
               .select('*')
@@ -100,7 +93,6 @@ export const useAuthStore = create<AuthState>()(
               .single();
 
             if (profileError) {
-              // If profile doesn't exist, create a basic one
               if (profileError.code === 'PGRST116') {
                 const newProfile: UserProfile = {
                   id: data.user.id,
@@ -127,7 +119,6 @@ export const useAuthStore = create<AuthState>()(
                   successHighlight: '',
                 };
                 
-                // Convert UserProfile to snake_case for Supabase
                 const profileRecord = convertToSnakeCase(newProfile);
                 
                 const { error: insertError } = await supabase
@@ -145,7 +136,6 @@ export const useAuthStore = create<AuthState>()(
                 throw profileError;
               }
             } else {
-              // Convert Supabase response to UserProfile with proper type checking
               const userProfile = supabaseToUserProfile(profileData);
               
               set({
@@ -155,11 +145,8 @@ export const useAuthStore = create<AuthState>()(
               });
             }
           } else {
-            // Fall back to mock authentication
-            // Simulate API call
             await new Promise(resolve => setTimeout(resolve, 1000));
             
-            // For demo, we'll check if the user exists in our mock data
             const mockUsers = await AsyncStorage.getItem('mockUsers');
             const users = mockUsers ? JSON.parse(mockUsers) : [];
             
@@ -191,18 +178,14 @@ export const useAuthStore = create<AuthState>()(
       signup: async (userData: Partial<UserProfile>, password: string) => {
         set({ isLoading: true, error: null });
         try {
-          // Try to initialize Supabase if not already done
           await initSupabase();
           
           if (isSupabaseConfigured() && supabase) {
-            // Use Supabase Auth
             try {
-              // Add delay to avoid rate limiting
               await new Promise(resolve => setTimeout(resolve, 2000));
               
               console.log('Attempting Supabase signup with email:', userData.email);
               
-              // Check if we have valid credentials
               if (!supabase.auth) {
                 throw new Error('Supabase auth is not initialized properly');
               }
@@ -222,7 +205,6 @@ export const useAuthStore = create<AuthState>()(
                 throw error;
               }
 
-              // Create user profile in Supabase
               const newUser: UserProfile = {
                 id: data.user?.id || `user-${Date.now()}`,
                 email: userData.email!,
@@ -249,7 +231,6 @@ export const useAuthStore = create<AuthState>()(
                 ...userData
               };
 
-              // Convert UserProfile to snake_case for Supabase
               const profileRecord = convertToSnakeCase(newUser);
               
               console.log('Creating user profile in Supabase:', profileRecord);
@@ -274,15 +255,11 @@ export const useAuthStore = create<AuthState>()(
               throw new Error('Signup failed with Supabase');
             }
           } else {
-            // Fall back to mock authentication
-            // Simulate API call
             await new Promise(resolve => setTimeout(resolve, 1000));
             
-            // For demo, we'll store the user in AsyncStorage
             const mockUsers = await AsyncStorage.getItem('mockUsers');
             const users = mockUsers ? JSON.parse(mockUsers) : [];
             
-            // Check if email already exists
             if (users.some((u: any) => u.email === userData.email)) {
               throw new Error('Email already in use');
             }
@@ -311,7 +288,7 @@ export const useAuthStore = create<AuthState>()(
               timezone: userData.timezone || '',
               successHighlight: userData.successHighlight || '',
               ...userData,
-              password // In a real app, this would be hashed
+              password
             };
             
             users.push(newUser);
@@ -340,25 +317,20 @@ export const useAuthStore = create<AuthState>()(
           const { user } = get();
           
           if (isSupabaseConfigured() && supabase && user) {
-            // Sign out from Supabase
             const { error } = await supabase.auth.signOut();
             if (error) {
               console.warn('Supabase signOut error:', getReadableError(error));
-              // Continue with logout even if Supabase signOut fails
             }
           }
           
-          // Clear persisted state
           await AsyncStorage.removeItem('auth-storage');
           
-          // Set user to null and isAuthenticated to false
           set({ user: null, isAuthenticated: false, isLoading: false });
           
           console.log('Logout successful');
           return;
         } catch (error) {
           console.error('Logout error:', getReadableError(error));
-          // Still clear the user state even if there's an error
           await AsyncStorage.removeItem('auth-storage');
           set({ user: null, isAuthenticated: false, isLoading: false });
         }
@@ -370,12 +342,9 @@ export const useAuthStore = create<AuthState>()(
           const { user } = get();
           if (!user) throw new Error('Not authenticated');
           
-          // Try to initialize Supabase if not already done
           await initSupabase();
           
           if (isSupabaseConfigured() && supabase) {
-            // Update profile in Supabase
-            // Convert to snake_case for Supabase
             const profileRecord = convertToSnakeCase(data);
             
             const { error } = await supabase
@@ -390,10 +359,8 @@ export const useAuthStore = create<AuthState>()(
               isLoading: false,
             });
           } else {
-            // Simulate API call
             await new Promise(resolve => setTimeout(resolve, 1000));
             
-            // Update in mock storage
             const mockUsers = await AsyncStorage.getItem('mockUsers');
             const users = mockUsers ? JSON.parse(mockUsers) : [];
             
@@ -426,11 +393,9 @@ export const useAuthStore = create<AuthState>()(
           const { user } = get();
           if (!user) throw new Error('Not authenticated');
           
-          // Try to initialize Supabase if not already done
           await initSupabase();
           
           if (isSupabaseConfigured() && supabase) {
-            // Update membership in Supabase
             const { error } = await supabase
               .from('users')
               .update({ membership_tier: tier })
@@ -443,10 +408,8 @@ export const useAuthStore = create<AuthState>()(
               isLoading: false,
             });
           } else {
-            // Simulate API call
             await new Promise(resolve => setTimeout(resolve, 1000));
             
-            // Update in mock storage
             const mockUsers = await AsyncStorage.getItem('mockUsers');
             const users = mockUsers ? JSON.parse(mockUsers) : [];
             
@@ -478,10 +441,8 @@ export const useAuthStore = create<AuthState>()(
       clearCache: async () => {
         try {
           console.log('Clearing auth cache...');
-          // Clear persisted auth state
           await AsyncStorage.removeItem('auth-storage');
           
-          // Reset state
           set({ 
             user: null, 
             isAuthenticated: false, 
