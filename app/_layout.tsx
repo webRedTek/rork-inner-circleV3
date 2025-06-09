@@ -101,6 +101,7 @@ export default function RootLayout() {
         
         while (retryCount <= maxRetries && !supabaseInitialized) {
           try {
+            console.log(`Supabase initialization attempt ${retryCount + 1}/${maxRetries + 1}`);
             supabaseInitialized = await initSupabase();
             if (supabaseInitialized) {
               console.log("Supabase configured successfully");
@@ -131,7 +132,7 @@ export default function RootLayout() {
         
         setSupabaseStatus(supabaseInitialized);
         setIsInitialized(true);
-        console.log('App initialization complete');
+        console.log('App initialization complete', { supabaseInitialized });
       } catch (err) {
         console.error("Failed to initialize data:", err);
         await AsyncStorage.setItem('app_had_error', 'true');

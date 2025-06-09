@@ -146,6 +146,7 @@ export const initSupabase = async (): Promise<boolean> => {
         });
         return true;
       }
+      console.error('No saved configuration found in AsyncStorage.');
       return false;
     }
 
@@ -158,7 +159,7 @@ export const initSupabase = async (): Promise<boolean> => {
       Constants.expoConfig?.extra?.supabaseAnonKey;
 
     if (!supabaseUrl || !supabaseAnonKey) {
-      console.error('Supabase URL or Anon Key is missing');
+      console.error('Supabase URL or Anon Key is missing in environment variables.');
       return false;
     }
 
@@ -181,9 +182,11 @@ export const initSupabase = async (): Promise<boolean> => {
       }
     });
 
+    console.log('Supabase client initialized successfully.');
     return true;
   } catch (error) {
-    console.error('Error initializing Supabase:', error);
+    console.error('Error initializing Supabase:', error instanceof Error ? error.message : String(error));
+    console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');
     return false;
   }
 };
@@ -195,19 +198,24 @@ export const initSupabase = async (): Promise<boolean> => {
 export const testSupabaseConnection = async (): Promise<ConnectionTestResult> => {
   try {
     if (!supabase) {
+      console.error('Supabase client not initialized during connection test.');
       return { success: false, error: 'Supabase client not initialized' };
     }
 
+    console.log('Testing Supabase connection...');
     const { data, error } = await supabase.rpc('version');
 
     if (error) {
-      console.error('Supabase connection test failed:', error);
+      console.error('Supabase connection test failed:', error instanceof Error ? error.message : String(error));
+      console.error('Error details:', JSON.stringify(error, null, 2));
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
 
+    console.log('Supabase connection test successful. Version:', data);
     return { success: true };
   } catch (error) {
-    console.error('Error testing Supabase connection:', error);
+    console.error('Error testing Supabase connection:', error instanceof Error ? error.message : String(error));
+    console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 };
