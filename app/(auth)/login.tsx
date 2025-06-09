@@ -73,21 +73,7 @@ export default function LoginScreen() {
     }
   };
   
-  const handleDemoLogin = async () => {
-    setEmail('alex@example.com');
-    setPassword('password123');
-    try {
-      setLocalLoading(true);
-      console.log('Attempting demo login');
-      await login('alex@example.com', 'password123');
-      setLocalLoading(false);
-    } catch (err) {
-      console.error('Demo login error:', 
-        err instanceof Error ? err.message : 'Unknown error');
-      setLoginError('Demo login failed. Please try again.');
-      setLocalLoading(false);
-    }
-  };
+
   
   const handleSupabaseSetup = () => {
     router.push('/supabase-setup');
@@ -163,14 +149,6 @@ export default function LoginScreen() {
             style={styles.demoButton}
           />
           
-          <Button
-            title="Configure Supabase"
-            onPress={handleSupabaseSetup}
-            variant="outline"
-            size="large"
-            style={styles.configButton}
-            disabled={isLoading || localLoading}
-          />
         </View>
         
         <View style={styles.footer}>
@@ -224,9 +202,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   button: {
-    marginBottom: 16,
-  },
-  demoButton: {
     marginBottom: 16,
   },
   configButton: {
