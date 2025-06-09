@@ -538,6 +538,12 @@ export const useAuthStore = create<AuthState>()(
         try {
           console.log('Clearing auth cache...');
           await AsyncStorage.removeItem('auth-storage');
+          await AsyncStorage.removeItem('matches-storage');
+          await AsyncStorage.removeItem('mockUsers');
+          await AsyncStorage.removeItem('mockMatches');
+          await AsyncStorage.removeItem('mockLikes');
+          await AsyncStorage.removeItem('mockGroups');
+          await AsyncStorage.removeItem('mockAuditLog');
           
           set({ 
             user: null, 

@@ -8,11 +8,11 @@ import { Button } from '@/components/Button';
 import { ProfileDetailCard } from '@/components/ProfileDetailCard';
 import { SupabaseStatus } from '@/components/SupabaseStatus';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { Settings, Edit, LogOut, Database } from 'lucide-react-native';
+import { Settings, Edit, LogOut, Database, RefreshCw } from 'lucide-react-native';
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { user, tierSettings, logout, isLoading } = useAuthStore();
+  const { user, tierSettings, logout, clearCache, isLoading } = useAuthStore();
   const [isSupabaseReady, setIsSupabaseReady] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -54,6 +54,27 @@ export default function ProfileScreen() {
 
   const handleSupabaseSetup = () => {
     router.push('/supabase-setup');
+  };
+
+  const handleClearCache = async () => {
+    Alert.alert(
+      'Clear Cache & Restart',
+      'Are you sure you want to clear the app cache? This will log you out and reset the app to its initial state.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Clear & Restart',
+          onPress: async () => {
+            await clearCache();
+            router.replace('/(auth)');
+          },
+          style: 'destructive',
+        },
+      ]
+    );
   };
 
   if (!user) {
@@ -212,6 +233,19 @@ export default function ProfileScreen() {
               style={styles.supabaseButton}
             />
           </View>
+        </View>
+        
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>App Data</Text>
+          <Button
+            title="Clear Cache & Restart"
+            onPress={handleClearCache}
+            variant="danger"
+            size="large"
+            icon={<RefreshCw size={18} color={Colors.dark.error} />}
+            style={styles.clearCacheButton}
+            loading={isLoading}
+          />
         </View>
         
         <Button
@@ -379,6 +413,9 @@ const styles = StyleSheet.create({
   logoutButton: {
     marginHorizontal: 16,
     marginBottom: 32,
+  },
+  clearCacheButton: {
+    marginTop: 8,
   },
   loadingContainer: {
     flex: 1,
