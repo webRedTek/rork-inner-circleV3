@@ -444,6 +444,59 @@ begin
 end;
 $$ language plpgsql security definer;
 
+-- Create function to check and enforce swipe/match limits
+create or replace function check_user_limits(user_id uuid, action_type text)
+returns jsonb as $$
+declare
+  today_timestamp bigint;
+  daily_swipe_limit integer;
+  daily_match_limit integer;
+  today_swipe_count integer;
+  today_match_count integer;
+  user_tier_settings jsonb;
+  is_allowed boolean;
+begin
+  -- Get today's timestamp for limit checks
+  today_timestamp := extract(epoch from (current_date)) * 1000;
+  
+  -- Get user's tier settings
+  select get_user_tier_settings(user_id) into user_tier_settings;
+  daily_swipe_limit := (user_tier_settings->>'daily_swipe_limit')::integer;
+  daily_match_limit := (user_tier_settings->>'daily_match_limit')::integer;
+  
+  -- Count today's swipes for the user
+  select count(*) into today_swipe_count
+  from public.likes
+  where liker_id = user_id
+  and timestamp >= today_timestamp;
+  
+  -- Count today's matches for the user
+  select count(*) into today_match_count
+  from public.matches
+  where user_id = user_id
+  and created_at >= today_timestamp;
+  
+  -- Determine if the action is allowed based on type
+  if action_type = 'swipe' then
+    is_allowed := today_swipe_count < daily_swipe_limit;
+  elsif action_type = 'match' then
+    is_allowed := today_match_count < daily_match_limit;
+  else
+    is_allowed := false;
+  end if;
+  
+  -- Return the result with current usage stats
+  return jsonb_build_object(
+    'is_allowed', is_allowed,
+    'action_type', action_type,
+    'current_swipe_count', today_swipe_count,
+    'swipe_limit', daily_swipe_limit,
+    'current_match_count', today_match_count,
+    'match_limit', daily_match_limit
+  );
+end;
+$$ language plpgsql security definer;
+
 -- Create RLS policies
 
 -- Users table policies
