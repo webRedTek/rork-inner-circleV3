@@ -12,6 +12,7 @@ import { useRouter } from 'expo-router';
 import Colors from '@/constants/colors';
 import { SwipeCards } from '@/components/SwipeCards';
 import { useMatchesStore, startBatchProcessing, stopBatchProcessing } from '@/store/matches-store';
+import { useAuthStore } from '@/store/auth-store';
 import { UserProfile } from '@/types/user';
 import { Button } from '@/components/Button';
 import * as Haptics from 'expo-haptics';
@@ -35,6 +36,8 @@ export default function DiscoverScreen() {
     newMatch,
     clearNewMatch
   } = useMatchesStore();
+  
+  const { user } = useAuthStore();
   
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [matchedUser, setMatchedUser] = useState<UserProfile | null>(null);
@@ -65,7 +68,7 @@ export default function DiscoverScreen() {
           // Get the matched user's profile
           const mockUsers = await AsyncStorage.getItem('mockUsers');
           const users = mockUsers ? JSON.parse(mockUsers) : [];
-          const currentUser = useMatchesStore.getState().user;
+          const currentUser = user;
           const matchedUserId = newMatch.userId === currentUser?.id ? newMatch.matchedUserId : newMatch.userId;
           const matchedProfile = users.find((u: UserProfile) => u.id === matchedUserId);
           
@@ -87,7 +90,7 @@ export default function DiscoverScreen() {
     };
     
     checkNewMatch();
-  }, [newMatch, clearNewMatch]);
+  }, [newMatch, clearNewMatch, user]);
   
   const handleSwipeRight = async (profile: UserProfile) => {
     if (Platform.OS !== 'web') {
