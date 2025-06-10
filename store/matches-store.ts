@@ -769,7 +769,7 @@ export const useMatchesStore = create<MatchesState>()(
 );
 
 // Set up interval for processing swipe batches periodically
-let batchProcessingInterval: NodeJS.Timeout | number | null = null;
+let batchProcessingInterval: NodeJS.Timeout | null = null;
 
 export const startBatchProcessing = () => {
   if (batchProcessingInterval) return;
@@ -788,7 +788,7 @@ export const startBatchProcessing = () => {
 
 export const stopBatchProcessing = () => {
   if (batchProcessingInterval) {
-    clearInterval(batchProcessingInterval as NodeJS.Timeout);
+    clearInterval(batchProcessingInterval);
     batchProcessingInterval = null;
     console.log('Batch swipe processing stopped');
   }
