@@ -781,7 +781,7 @@ export const startBatchProcessing = () => {
       console.log(`Periodic batch processing: ${swipeQueue.length} swipes in queue`);
       await useMatchesStore.getState().processSwipeBatch();
     }
-  }, intervalMs);
+  }, intervalMs) as unknown as NodeJS.Timeout;
   
   console.log('Batch swipe processing started');
 };
