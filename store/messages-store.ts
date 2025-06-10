@@ -69,7 +69,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   sendMessage: async (conversationId: string, content: string, receiverId: string) => {
     set({ isLoading: true, error: null });
     try {
-      const currentUser = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}')?.state?.user;
+      const currentUser = useAuthStore.getState().user;
       const tierSettings = useAuthStore.getState().tierSettings;
       
       if (!currentUser) {
@@ -228,7 +228,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   sendVoiceMessage: async (conversationId: string, voiceUrl: string, duration: number, receiverId: string) => {
     set({ isLoading: true, error: null });
     try {
-      const currentUser = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}')?.state?.user;
+      const currentUser = useAuthStore.getState().user;
       const tierSettings = useAuthStore.getState().tierSettings;
       
       if (!currentUser) {
@@ -392,7 +392,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   getMessages: async (conversationId: string) => {
     set({ isLoading: true, error: null });
     try {
-      const currentUser = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}')?.state?.user;
+      const currentUser = useAuthStore.getState().user;
       
       if (!currentUser) {
         throw new Error('User not authenticated');
@@ -468,7 +468,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       
       if (conversationMessages.length === 0) return;
       
-      const currentUser = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}')?.state?.user;
+      const currentUser = useAuthStore.getState().user;
       
       if (!currentUser) return;
       

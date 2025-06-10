@@ -148,16 +148,8 @@ export const useMatchesStore = create<MatchesState>()(
           }
           
           if (isSupabaseConfigured() && supabase) {
-            // Get user's tier settings to check if global discovery is enabled
-            const { data: tierSettingsData, error: tierError } = await supabase
-              .rpc('get_user_tier_settings', { user_id: currentUser.id });
-              
-            if (tierError) throw tierError;
-            
-            const tierData = tierSettingsData as Record<string, any> || {};
-            const globalDiscovery = tierData && typeof tierData === 'object' && 'global_discovery' in tierData 
-              ? Boolean(tierData.global_discovery) 
-              : false;
+            // Use cached tier settings for global discovery
+            const globalDiscovery = tierSettings?.global_discovery || false;
             
             // Get potential matches based on location and tier settings
             const { data: potentialUsers, error: matchError } = await supabase
@@ -306,16 +298,8 @@ export const useMatchesStore = create<MatchesState>()(
           }
           
           if (isSupabaseConfigured() && supabase) {
-            // Get user's tier settings to check if global discovery is enabled
-            const { data: tierSettingsData, error: tierError } = await supabase
-              .rpc('get_user_tier_settings', { user_id: currentUser.id });
-              
-            if (tierError) throw tierError;
-            
-            const tierData = tierSettingsData as Record<string, any> || {};
-            const globalDiscovery = tierData && typeof tierData === 'object' && 'global_discovery' in tierData 
-              ? Boolean(tierData.global_discovery) 
-              : false;
+            // Use cached tier settings for global discovery
+            const globalDiscovery = tierSettings?.global_discovery || false;
             
             // Get potential matches based on location and tier settings
             const { data: potentialUsers, error: matchError } = await supabase

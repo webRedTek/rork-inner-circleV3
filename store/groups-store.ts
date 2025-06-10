@@ -74,7 +74,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       // Get current user
-      const currentUser = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}')?.state?.user;
+      const currentUser = useAuthStore.getState().user;
       
       if (!currentUser) {
         throw new Error('User not authenticated');
@@ -164,7 +164,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       // Get current user and tier settings
-      const currentUser = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}')?.state?.user;
+      const currentUser = useAuthStore.getState().user;
       const tierSettings = useAuthStore.getState().tierSettings;
       
       if (!currentUser) {
@@ -306,7 +306,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       // Get current user
-      const currentUser = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}')?.state?.user;
+      const currentUser = useAuthStore.getState().user;
       
       if (!currentUser) {
         throw new Error('User not authenticated');
@@ -437,7 +437,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       // Get current user and tier settings
-      const currentUser = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}')?.state?.user;
+      const currentUser = useAuthStore.getState().user;
       const tierSettings = useAuthStore.getState().tierSettings;
       
       if (!currentUser) {
