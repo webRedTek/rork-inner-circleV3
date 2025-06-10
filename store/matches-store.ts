@@ -592,7 +592,7 @@ export const useMatchesStore = create<MatchesState>()(
             let likes = mockLikes ? JSON.parse(mockLikes) : [];
             
             // Count today's likes
-            const todayLikes = likes.filter((like: any) => 
+            let todayLikes = likes.filter((like: any) => 
               like.likerId === currentUser?.id && like.timestamp >= todayTimestamp
             ).length;
             
@@ -769,7 +769,7 @@ export const useMatchesStore = create<MatchesState>()(
 );
 
 // Set up interval for processing swipe batches periodically
-let batchProcessingInterval: NodeJS.Timeout | null = null;
+let batchProcessingInterval: ReturnType<typeof setInterval> | null = null;
 
 export const startBatchProcessing = () => {
   if (batchProcessingInterval) return;
