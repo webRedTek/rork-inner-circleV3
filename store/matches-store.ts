@@ -89,6 +89,8 @@ interface MatchesState {
   isPrefetching: boolean;
   error: string | null;
   newMatch: Match | null;
+  swipeLimitReached: boolean;
+  matchLimitReached: boolean;
   fetchPotentialMatches: (maxDistance?: number, forceRefresh?: boolean) => Promise<void>;
   prefetchNextBatch: (maxDistance?: number) => Promise<void>;
   likeUser: (userId: string) => Promise<Match | null>;
@@ -99,6 +101,8 @@ interface MatchesState {
   refreshCandidates: () => Promise<void>;
   clearError: () => void;
   clearNewMatch: () => void;
+  checkSwipeLimits: () => Promise<boolean>;
+  syncUsageCounters: () => Promise<void>;
 }
 
 export const useMatchesStore = create<MatchesState>()(
@@ -115,6 +119,8 @@ export const useMatchesStore = create<MatchesState>()(
       isPrefetching: false,
       error: null,
       newMatch: null,
+      swipeLimitReached: false,
+      matchLimitReached: false,
 
       fetchPotentialMatches: async (maxDistance = 50, forceRefresh = false) => {
         if (get().isLoading && !forceRefresh) return;
@@ -439,6 +445,19 @@ export const useMatchesStore = create<MatchesState>()(
             throw new Error('User not authenticated');
           }
           
+          // Check swipe limits before proceeding
+          const canSwipe = await get().checkSwipeLimits();
+          if (!canSwipe) {
+            set({ swipeLimitReached: true, isLoading: false });
+            throw new Error('Daily swipe limit reached');
+          }
+
+          // Check match limits
+          if (get().matchLimitReached) {
+            set({ isLoading: false });
+            throw new Error('Daily match limit reached');
+          }
+          
           // Add to swipe queue instead of processing immediately
           await get().queueSwipe(userId, 'right');
           
@@ -482,6 +501,13 @@ export const useMatchesStore = create<MatchesState>()(
           
           if (!currentUser) {
             throw new Error('User not authenticated');
+          }
+          
+          // Check swipe limits before proceeding
+          const canSwipe = await get().checkSwipeLimits();
+          if (!canSwipe) {
+            set({ swipeLimitReached: true, isLoading: false });
+            throw new Error('Daily swipe limit reached');
           }
           
           // Add to swipe queue instead of processing immediately
@@ -572,6 +598,16 @@ export const useMatchesStore = create<MatchesState>()(
                 newMatch: typedMatches[0] // Set the first new match for UI notification
               }));
               
+              // Check if match limit is reached
+              const tierSettings = useAuthStore.getState().tierSettings;
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const todayTimestamp = today.getTime();
+              const todayMatches = typedMatches.filter(m => m.createdAt >= todayTimestamp).length;
+              if (tierSettings && todayMatches >= tierSettings.daily_match_limit) {
+                set({ matchLimitReached: true });
+              }
+              
               // Return the first match for immediate feedback if needed
               // In the UI, you might want to show a match animation or notification
               console.log(`Batch processing created ${typedMatches.length} new matches`);
@@ -607,6 +643,7 @@ export const useMatchesStore = create<MatchesState>()(
             for (const swipe of swipeQueue) {
               if (todayLikesCount >= dailySwipeLimit) {
                 console.log("Swipe limit reached in mock batch processing");
+                set({ swipeLimitReached: true });
                 break;
               }
               
@@ -639,6 +676,8 @@ export const useMatchesStore = create<MatchesState>()(
                       createdAt: swipe.swipe_timestamp
                     };
                     newMatches.push(match);
+                  } else {
+                    set({ matchLimitReached: true });
                   }
                 }
                 
@@ -766,7 +805,121 @@ export const useMatchesStore = create<MatchesState>()(
 
       clearError: () => set({ error: null }),
       
-      clearNewMatch: () => set({ newMatch: null })
+      clearNewMatch: () => set({ newMatch: null }),
+
+      checkSwipeLimits: async () => {
+        try {
+          const currentUser = useAuthStore.getState().user;
+          const tierSettings = useAuthStore.getState().tierSettings;
+          
+          if (!currentUser || !tierSettings) {
+            return false;
+          }
+          
+          const dailySwipeLimit = tierSettings.daily_swipe_limit || 10;
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const todayTimestamp = today.getTime();
+          
+          if (isSupabaseConfigured() && supabase) {
+            const { data: likesData, error } = await supabase
+              .from('likes')
+              .select('id, timestamp')
+              .eq('liker_id', currentUser.id)
+              .gte('timestamp', todayTimestamp);
+              
+            if (error) {
+              console.error('Error checking swipe limits:', error);
+              return true; // Allow swipe in case of error to not block user
+            }
+            
+            const todaySwipes = likesData ? likesData.length : 0;
+            const canSwipe = todaySwipes < dailySwipeLimit;
+            set({ swipeLimitReached: !canSwipe });
+            return canSwipe;
+          } else {
+            const mockLikes = await AsyncStorage.getItem('mockLikes');
+            const likes = mockLikes ? JSON.parse(mockLikes) : [];
+            const todaySwipes = likes.filter((like: any) => 
+              like.likerId === currentUser.id && like.timestamp >= todayTimestamp
+            ).length;
+            
+            const canSwipe = todaySwipes < dailySwipeLimit;
+            set({ swipeLimitReached: !canSwipe });
+            return canSwipe;
+          }
+        } catch (error) {
+          console.error('Error checking swipe limits:', error);
+          return true; // Allow swipe in case of error to not block user
+        }
+      },
+
+      syncUsageCounters: async () => {
+        try {
+          const currentUser = useAuthStore.getState().user;
+          const tierSettings = useAuthStore.getState().tierSettings;
+          
+          if (!currentUser || !tierSettings) {
+            return;
+          }
+          
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const todayTimestamp = today.getTime();
+          
+          if (isSupabaseConfigured() && supabase) {
+            // Sync swipe count
+            const { data: likesData, error: likesError } = await supabase
+              .from('likes')
+              .select('id, timestamp')
+              .eq('liker_id', currentUser.id)
+              .gte('timestamp', todayTimestamp);
+              
+            if (likesError) {
+              console.error('Error syncing swipe count:', likesError);
+            } else {
+              const todaySwipes = likesData ? likesData.length : 0;
+              const swipeLimitReached = todaySwipes >= tierSettings.daily_swipe_limit;
+              set({ swipeLimitReached });
+            }
+            
+            // Sync match count
+            const { data: matchesData, error: matchesError } = await supabase
+              .from('matches')
+              .select('id, created_at')
+              .eq('user_id', currentUser.id)
+              .gte('created_at', todayTimestamp);
+              
+            if (matchesError) {
+              console.error('Error syncing match count:', matchesError);
+            } else {
+              const todayMatches = matchesData ? matchesData.length : 0;
+              const matchLimitReached = todayMatches >= tierSettings.daily_match_limit;
+              set({ matchLimitReached });
+            }
+          } else {
+            // Sync swipe count for mock data
+            const mockLikes = await AsyncStorage.getItem('mockLikes');
+            const likes = mockLikes ? JSON.parse(mockLikes) : [];
+            const todaySwipes = likes.filter((like: any) => 
+              like.likerId === currentUser.id && like.timestamp >= todayTimestamp
+            ).length;
+            const swipeLimitReached = todaySwipes >= tierSettings.daily_swipe_limit;
+            set({ swipeLimitReached });
+            
+            // Sync match count for mock data
+            const mockMatches = await AsyncStorage.getItem('mockMatches');
+            const matches = mockMatches ? JSON.parse(mockMatches) : [];
+            const todayMatches = matches.filter((match: any) => 
+              match.userId === currentUser.id && match.createdAt >= todayTimestamp
+            ).length;
+            const matchLimitReached = todayMatches >= tierSettings.daily_match_limit;
+            set({ matchLimitReached });
+          }
+        } catch (error) {
+          console.error('Error syncing usage counters:', error);
+        }
+      }
     }),
     {
       name: 'matches-storage',
@@ -788,7 +941,9 @@ export const startBatchProcessing = () => {
       console.log(`Periodic batch processing: ${swipeQueue.length} swipes in queue`);
       await useMatchesStore.getState().processSwipeBatch();
     }
-  }, intervalMs) as unknown as NodeJS.Timeout;
+    // Sync usage counters periodically
+    await useMatchesStore.getState().syncUsageCounters();
+  }, intervalMs) as NodeJS.Timeout;
   
   console.log('Batch swipe processing started');
 };

@@ -34,7 +34,10 @@ export default function DiscoverScreen() {
     isPrefetching,
     error,
     newMatch,
-    clearNewMatch
+    clearNewMatch,
+    swipeLimitReached,
+    matchLimitReached,
+    syncUsageCounters
   } = useMatchesStore();
   
   const { user } = useAuthStore();
@@ -43,10 +46,12 @@ export default function DiscoverScreen() {
   const [matchedUser, setMatchedUser] = useState<UserProfile | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<UserProfile | null>(null);
   const [showProfileDetail, setShowProfileDetail] = useState(false);
+  const [showLimitModal, setShowLimitModal] = useState(false);
   
   useEffect(() => {
     fetchPotentialMatches();
     startBatchProcessing();
+    syncUsageCounters();
     
     return () => {
       stopBatchProcessing();
@@ -92,9 +97,21 @@ export default function DiscoverScreen() {
     checkNewMatch();
   }, [newMatch, clearNewMatch, user]);
   
+  useEffect(() => {
+    // Show limit modal if swipe or match limit is reached
+    if (swipeLimitReached || matchLimitReached) {
+      setShowLimitModal(true);
+    }
+  }, [swipeLimitReached, matchLimitReached]);
+  
   const handleSwipeRight = async (profile: UserProfile) => {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    
+    if (swipeLimitReached) {
+      setShowLimitModal(true);
+      return;
     }
     
     const match = await likeUser(profile.id);
@@ -113,6 +130,11 @@ export default function DiscoverScreen() {
   const handleSwipeLeft = async (profile: UserProfile) => {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    
+    if (swipeLimitReached) {
+      setShowLimitModal(true);
+      return;
     }
     
     await passUser(profile.id);
@@ -138,6 +160,15 @@ export default function DiscoverScreen() {
   
   const handleRefresh = () => {
     refreshCandidates();
+  };
+  
+  const handleCloseLimitModal = () => {
+    setShowLimitModal(false);
+  };
+  
+  const handleUpgradePlan = () => {
+    router.push('/membership');
+    setShowLimitModal(false);
   };
   
   if (isLoading && potentialMatches.length === 0) {
@@ -185,6 +216,36 @@ export default function DiscoverScreen() {
             <Button
               title="Keep Browsing"
               onPress={handleCloseMatchModal}
+              variant="outline"
+              size="large"
+              style={styles.keepBrowsingButton}
+            />
+          </View>
+        </View>
+      ) : showLimitModal ? (
+        <View style={styles.matchModalContainer}>
+          <View style={styles.matchModal}>
+            <Text style={styles.matchTitle}>
+              {swipeLimitReached ? 'Swipe Limit Reached' : 'Match Limit Reached'}
+            </Text>
+            <Text style={styles.matchSubtitle}>
+              {swipeLimitReached 
+                ? "You've reached your daily swipe limit. Upgrade your plan for more swipes." 
+                : "You've reached your daily match limit. Upgrade your plan for more matches."
+              }
+            </Text>
+            
+            <Button
+              title="Upgrade Plan"
+              onPress={handleUpgradePlan}
+              variant="primary"
+              size="large"
+              style={styles.messageButton}
+            />
+            
+            <Button
+              title="Continue Browsing"
+              onPress={handleCloseLimitModal}
               variant="outline"
               size="large"
               style={styles.keepBrowsingButton}
@@ -260,6 +321,7 @@ export default function DiscoverScreen() {
                     variant="outline"
                     size="medium"
                     style={[styles.actionButton, styles.passButton]}
+                    disabled={swipeLimitReached}
                   />
                   
                   <Button
@@ -271,6 +333,7 @@ export default function DiscoverScreen() {
                     variant="primary"
                     size="medium"
                     style={styles.actionButton}
+                    disabled={swipeLimitReached}
                   />
                 </View>
               </View>
