@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { Match, UserProfile, MembershipTier } from '@/types/user';
-import { isSupabaseConfigured, supabase, convertToCamelCase, convertToSnakeCase } from '@/lib/supabase';
+import { isSupabaseConfigured, supabase, convertToCamelCase, convertToSnakeCase, processBatchSwipes, SwipeAction } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
 
 // Helper function to extract readable error message from Supabase error
@@ -81,8 +81,10 @@ interface MatchesState {
   potentialMatches: UserProfile[];
   cachedMatches: UserProfile[];
   matches: Match[];
+  swipeQueue: SwipeAction[];
   batchSize: number;
   prefetchThreshold: number;
+  batchProcessingInterval: number;
   isLoading: boolean;
   isPrefetching: boolean;
   error: string | null;
@@ -90,6 +92,8 @@ interface MatchesState {
   prefetchNextBatch: (maxDistance?: number) => Promise<void>;
   likeUser: (userId: string) => Promise<Match | null>;
   passUser: (userId: string) => Promise<void>;
+  queueSwipe: (userId: string, direction: 'left' | 'right') => Promise<void>;
+  processSwipeBatch: () => Promise<void>;
   getMatches: () => Promise<void>;
   refreshCandidates: () => Promise<void>;
   clearError: () => void;
@@ -101,8 +105,10 @@ export const useMatchesStore = create<MatchesState>()(
       potentialMatches: [],
       cachedMatches: [],
       matches: [],
+      swipeQueue: [],
       batchSize: 25,
       prefetchThreshold: 5,
+      batchProcessingInterval: 5000, // 5 seconds
       isLoading: false,
       isPrefetching: false,
       error: null,
@@ -430,280 +436,32 @@ export const useMatchesStore = create<MatchesState>()(
             throw new Error('User not authenticated');
           }
           
-          if (isSupabaseConfigured() && supabase) {
-            // Check user's daily like limit
-            const { data: tierSettingsData, error: tierError } = await supabase
-              .rpc('get_user_tier_settings', { user_id: currentUser.id });
-              
-            if (tierError) throw tierError;
-            
-            const tierData = tierSettingsData as Record<string, any> || {};
-            const dailySwipeLimit = tierData && typeof tierData === 'object' && 'daily_swipe_limit' in tierData 
-              ? Number(tierData.daily_swipe_limit) 
-              : 10;
-            
-            // Count today's likes
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const todayTimestamp = today.getTime();
-            
-            const { count: todayLikes, error: countError } = await supabase
-              .from('likes')
-              .select('*', { count: 'exact', head: true })
-              .eq('liker_id', currentUser.id)
-              .gte('timestamp', todayTimestamp);
-              
-            if (countError) throw countError;
-              
-            const likesCount = todayLikes ?? 0;
-            
-            if (likesCount >= dailySwipeLimit) {
-              throw new Error(`You've reached your daily swipe limit of ${dailySwipeLimit}. Upgrade your membership for more swipes!`);
-            }
-            
-            // Record the like
-            const { error: likeError } = await supabase
-              .from('likes')
-              .insert({
-                liker_id: currentUser.id,
-                liked_id: userId,
-                timestamp: Date.now()
-              });
-              
-            if (likeError) throw likeError;
-            
-            // Check if it's a match (other user already liked current user)
-            const { data: otherLike, error: matchCheckError } = await supabase
-              .from('likes')
-              .select('*')
-              .eq('liker_id', userId)
-              .eq('liked_id', currentUser.id)
-              .single();
-              
-            if (matchCheckError && matchCheckError.code !== 'PGRST116') {
-              throw matchCheckError;
-            }
-            
-            // If it's a match, create a match record
-            let match = null;
-            if (otherLike) {
-              // Count today's matches
-              const { count: todayMatches, error: matchCountError } = await supabase
-                .from('matches')
-                .select('*', { count: 'exact', head: true })
-                .eq('user_id', currentUser.id)
-                .gte('created_at', todayTimestamp);
-                
-              if (matchCountError) throw matchCountError;
-              
-              const matchesCount = todayMatches ?? 0;
-              const dailyMatchLimit = tierData && typeof tierData === 'object' && 'daily_match_limit' in tierData 
-                ? Number(tierData.daily_match_limit) 
-                : 5;
-              
-              if (matchesCount >= dailyMatchLimit) {
-                // Still like, but don't create match
-                try {
-                  await supabase.rpc('log_user_action', {
-                    user_id: currentUser.id,
-                    action: 'match_limit_reached',
-                    details: { matched_user_id: userId }
-                  });
-                } catch (logError) {
-                  console.warn('Failed to log match_limit_reached action:', getReadableError(logError));
-                }
-              } else {
-                // Create the match
-                const newMatch: Match = {
-                  id: `match-${Date.now()}`,
-                  userId: currentUser.id,
-                  matchedUserId: userId,
-                  createdAt: Date.now()
-                };
-                
-                // Convert Match to snake_case for Supabase
-                const matchRecord = convertToSnakeCase(newMatch);
-                
-                const { error: createMatchError } = await supabase
-                  .from('matches')
-                  .insert(matchRecord);
-                  
-                if (createMatchError) throw createMatchError;
-                
-                // Log the match
-                try {
-                  await supabase.rpc('log_user_action', {
-                    user_id: currentUser.id,
-                    action: 'new_match',
-                    details: { matched_user_id: userId }
-                  });
-                } catch (logError) {
-                  console.warn('Failed to log new_match action:', getReadableError(logError));
-                }
-                
-                const { matches } = get();
-                set({ matches: [...matches, newMatch] });
-                match = newMatch;
-              }
-            } else {
-              // Log the like
-              try {
-                await supabase.rpc('log_user_action', {
-                  user_id: currentUser.id,
-                  action: 'like_user',
-                  details: { liked_user_id: userId }
-                });
-              } catch (logError) {
-                console.warn('Failed to log like_user action:', getReadableError(logError));
-              }
-            }
-            
-            // Remove the liked user from potential matches
-            const { potentialMatches } = get();
-            const updatedPotentialMatches = potentialMatches.filter(
-              (u: UserProfile) => u.id !== userId
-            );
-            
-            // Check if we need to pull from cache
-            let newCachedMatches = [...get().cachedMatches];
-            if (updatedPotentialMatches.length < get().prefetchThreshold && newCachedMatches.length > 0) {
-              const additionalMatches = newCachedMatches.slice(0, get().batchSize - updatedPotentialMatches.length);
-              updatedPotentialMatches.push(...additionalMatches);
-              newCachedMatches = newCachedMatches.slice(additionalMatches.length);
-            }
-            
-            set({ 
-              potentialMatches: updatedPotentialMatches, 
-              cachedMatches: newCachedMatches, 
-              isLoading: false 
-            });
-            return match;
-          } else {
-            // Simulate API call
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            // Get tier settings from auth store
-            const dailySwipeLimit = tierSettings?.daily_swipe_limit || 10;
-            const dailyMatchLimit = tierSettings?.daily_match_limit || 5;
-            
-            // Check if user has reached daily swipe limit
-            const mockLikes = await AsyncStorage.getItem('mockLikes');
-            const likes = mockLikes ? JSON.parse(mockLikes) : [];
-            
-            // Count today's likes
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const todayTimestamp = today.getTime();
-            
-            const todayLikes = likes.filter((like: any) => 
-              like.likerId === currentUser.id && like.timestamp >= todayTimestamp
-            ).length;
-            
-            if (todayLikes >= dailySwipeLimit) {
-              throw new Error(`You've reached your daily swipe limit of ${dailySwipeLimit}. Upgrade your membership for more swipes!`);
-            }
-            
-            // Store the like
-            likes.push({
-              likerId: currentUser.id,
-              likedId: userId,
-              timestamp: Date.now()
-            });
-            
-            await AsyncStorage.setItem('mockLikes', JSON.stringify(likes));
-            
-            // Check if the other user has already liked the current user
-            const isMatch = likes.some((like: any) => 
-              like.likerId === userId && like.likedId === currentUser.id
-            );
-            
-            // If it's a match, create a match record
-            let match = null;
-            if (isMatch) {
-              // Check if user has reached daily match limit
-              const mockMatches = await AsyncStorage.getItem('mockMatches');
-              const storedMatches = mockMatches ? JSON.parse(mockMatches) : [];
-              
-              // Count today's matches
-              const todayMatches = storedMatches.filter((m: any) => 
-                m.userId === currentUser.id && m.createdAt >= todayTimestamp
-              ).length;
-              
-              if (todayMatches >= dailyMatchLimit) {
-                // Log the match limit reached
-                const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
-                const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
-                auditLogs.push({
-                  id: `log-${Date.now()}`,
-                  user_id: currentUser.id,
-                  action: 'match_limit_reached',
-                  details: { matched_user_id: userId },
-                  timestamp: new Date().toISOString()
-                });
-                await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
-              } else {
-                // Create the match
-                const newMatch: Match = {
-                  id: `match-${Date.now()}`,
-                  userId: currentUser.id,
-                  matchedUserId: userId,
-                  createdAt: Date.now()
-                };
-                
-                storedMatches.push(newMatch);
-                await AsyncStorage.setItem('mockMatches', JSON.stringify(storedMatches));
-                
-                // Log the match
-                const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
-                const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
-                auditLogs.push({
-                  id: `log-${Date.now()}`,
-                  user_id: currentUser.id,
-                  action: 'new_match',
-                  details: { matched_user_id: userId },
-                  timestamp: new Date().toISOString()
-                });
-                await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
-                
-                const { matches } = get();
-                set({ matches: [...matches, newMatch] });
-                match = newMatch;
-              }
-            } else {
-              // Log the like
-              const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
-              const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
-              auditLogs.push({
-                id: `log-${Date.now()}`,
-                user_id: currentUser.id,
-                action: 'like_user',
-                details: { liked_user_id: userId },
-                timestamp: new Date().toISOString()
-              });
-              await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
-            }
-            
-            // Remove the liked user from potential matches
-            const { potentialMatches } = get();
-            const updatedPotentialMatches = potentialMatches.filter(
-              (u: UserProfile) => u.id !== userId
-            );
-            
-            // Check if we need to pull from cache
-            let newCachedMatches = [...get().cachedMatches];
-            if (updatedPotentialMatches.length < get().prefetchThreshold && newCachedMatches.length > 0) {
-              const additionalMatches = newCachedMatches.slice(0, get().batchSize - updatedPotentialMatches.length);
-              updatedPotentialMatches.push(...additionalMatches);
-              newCachedMatches = newCachedMatches.slice(additionalMatches.length);
-            }
-            
-            set({ 
-              potentialMatches: updatedPotentialMatches, 
-              cachedMatches: newCachedMatches, 
-              isLoading: false 
-            });
-            return match;
+          // Add to swipe queue instead of processing immediately
+          await get().queueSwipe(userId, 'right');
+          
+          // Remove the liked user from potential matches
+          const { potentialMatches } = get();
+          const updatedPotentialMatches = potentialMatches.filter(
+            (u: UserProfile) => u.id !== userId
+          );
+          
+          // Check if we need to pull from cache
+          let newCachedMatches = [...get().cachedMatches];
+          if (updatedPotentialMatches.length < get().prefetchThreshold && newCachedMatches.length > 0) {
+            const additionalMatches = newCachedMatches.slice(0, get().batchSize - updatedPotentialMatches.length);
+            updatedPotentialMatches.push(...additionalMatches);
+            newCachedMatches = newCachedMatches.slice(additionalMatches.length);
           }
+          
+          set({ 
+            potentialMatches: updatedPotentialMatches, 
+            cachedMatches: newCachedMatches, 
+            isLoading: false 
+          });
+          
+          // Return null for now - match will be processed in batch
+          // In a real app, you might want to return a pending match or handle this differently
+          return null;
         } catch (error) {
           console.error('Error liking user:', getReadableError(error));
           set({ 
@@ -723,30 +481,8 @@ export const useMatchesStore = create<MatchesState>()(
             throw new Error('User not authenticated');
           }
           
-          if (isSupabaseConfigured() && supabase) {
-            // Log the pass action
-            try {
-              await supabase.rpc('log_user_action', {
-                user_id: currentUser.id,
-                action: 'pass_user',
-                details: { passed_user_id: userId }
-              });
-            } catch (logError) {
-              console.warn('Failed to log pass_user action:', getReadableError(logError));
-            }
-          } else {
-            // Log the pass action in mock audit log
-            const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
-            const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
-            auditLogs.push({
-              id: `log-${Date.now()}`,
-              user_id: currentUser.id,
-              action: 'pass_user',
-              details: { passed_user_id: userId },
-              timestamp: new Date().toISOString()
-            });
-            await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
-          }
+          // Add to swipe queue instead of processing immediately
+          await get().queueSwipe(userId, 'left');
           
           // Remove the passed user from potential matches
           const { potentialMatches } = get();
@@ -769,6 +505,178 @@ export const useMatchesStore = create<MatchesState>()(
           });
         } catch (error) {
           console.error('Error passing user:', getReadableError(error));
+          set({ 
+            error: getReadableError(error), 
+            isLoading: false 
+          });
+        }
+      },
+
+      queueSwipe: async (userId: string, direction: 'left' | 'right') => {
+        try {
+          const currentUser = useAuthStore.getState().user;
+          
+          if (!currentUser) {
+            throw new Error('User not authenticated');
+          }
+          
+          const swipeAction: SwipeAction = {
+            swiper_id: currentUser.id,
+            swipee_id: userId,
+            direction,
+            swipe_timestamp: Date.now()
+          };
+          
+          set(state => ({
+            swipeQueue: [...state.swipeQueue, swipeAction]
+          }));
+          
+          // If the queue is long enough, process it immediately
+          if (get().swipeQueue.length >= 5) {
+            await get().processSwipeBatch();
+          }
+        } catch (error) {
+          console.error('Error queuing swipe:', getReadableError(error));
+          throw error;
+        }
+      },
+
+      processSwipeBatch: async () => {
+        set({ isLoading: true, error: null });
+        try {
+          const { swipeQueue } = get();
+          
+          if (swipeQueue.length === 0) {
+            set({ isLoading: false });
+            return;
+          }
+          
+          if (isSupabaseConfigured() && supabase) {
+            // Process the batch of swipes using the Supabase RPC
+            const newMatches = await processBatchSwipes(swipeQueue);
+            
+            // Update matches if any new ones were created
+            if (newMatches && newMatches.length > 0) {
+              const typedMatches = newMatches.map((match: any) => ({
+                id: match.matchId,
+                userId: match.userId,
+                matchedUserId: match.matchedUserId,
+                createdAt: match.createdAt
+              })) as Match[];
+              
+              set(state => ({
+                matches: [...state.matches, ...typedMatches]
+              }));
+              
+              // Return the first match for immediate feedback if needed
+              // In the UI, you might want to show a match animation or notification
+              console.log(`Batch processing created ${typedMatches.length} new matches`);
+            }
+            
+            // Clear the swipe queue
+            set({ swipeQueue: [], isLoading: false });
+          } else {
+            // Simulate batch processing for mock data
+            const currentUser = useAuthStore.getState().user;
+            const tierSettings = useAuthStore.getState().tierSettings;
+            const dailySwipeLimit = tierSettings?.daily_swipe_limit || 10;
+            const dailyMatchLimit = tierSettings?.daily_match_limit || 5;
+            
+            // Get today's timestamp
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const todayTimestamp = today.getTime();
+            
+            // Get mock data
+            const mockLikes = await AsyncStorage.getItem('mockLikes');
+            let likes = mockLikes ? JSON.parse(mockLikes) : [];
+            
+            // Count today's likes
+            const todayLikes = likes.filter((like: any) => 
+              like.likerId === currentUser?.id && like.timestamp >= todayTimestamp
+            ).length;
+            
+            // Process each swipe in the queue
+            let newLikes = [];
+            let newMatches = [];
+            
+            for (const swipe of swipeQueue) {
+              if (todayLikes >= dailySwipeLimit) {
+                console.log("Swipe limit reached in mock batch processing");
+                break;
+              }
+              
+              if (swipe.direction === 'right') {
+                newLikes.push({
+                  likerId: swipe.swiper_id,
+                  likedId: swipe.swipee_id,
+                  timestamp: swipe.swipe_timestamp
+                });
+                
+                // Check for match (reciprocal like)
+                const isMatch = likes.some((like: any) => 
+                  like.likerId === swipe.swipee_id && like.likedId === swipe.swiper_id
+                );
+                
+                if (isMatch) {
+                  // Check match limit
+                  const mockMatches = await AsyncStorage.getItem('mockMatches');
+                  const storedMatches = mockMatches ? JSON.parse(mockMatches) : [];
+                  
+                  const todayMatches = storedMatches.filter((m: any) => 
+                    m.userId === currentUser?.id && m.createdAt >= todayTimestamp
+                  ).length;
+                  
+                  if (todayMatches < dailyMatchLimit) {
+                    const match = {
+                      id: `match-${Date.now()}`,
+                      userId: swipe.swiper_id,
+                      matchedUserId: swipe.swipee_id,
+                      createdAt: swipe.swipe_timestamp
+                    };
+                    newMatches.push(match);
+                  }
+                }
+                
+                todayLikes++;
+              }
+            }
+            
+            // Update storage
+            likes = [...likes, ...newLikes];
+            await AsyncStorage.setItem('mockLikes', JSON.stringify(likes));
+            
+            if (newMatches.length > 0) {
+              const mockMatches = await AsyncStorage.getItem('mockMatches');
+              let storedMatches = mockMatches ? JSON.parse(mockMatches) : [];
+              storedMatches = [...storedMatches, ...newMatches];
+              await AsyncStorage.setItem('mockMatches', JSON.stringify(storedMatches));
+              
+              set(state => ({
+                matches: [...state.matches, ...newMatches]
+              }));
+            }
+            
+            // Log the batch processing
+            const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
+            const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
+            auditLogs.push({
+              id: `log-${Date.now()}`,
+              user_id: currentUser?.id,
+              action: 'batch_swipe_processed',
+              details: { 
+                swipe_count: swipeQueue.length,
+                new_matches: newMatches.length
+              },
+              timestamp: new Date().toISOString()
+            });
+            await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
+            
+            // Clear the swipe queue
+            set({ swipeQueue: [], isLoading: false });
+          }
+        } catch (error) {
+          console.error('Error processing swipe batch:', getReadableError(error));
           set({ 
             error: getReadableError(error), 
             isLoading: false 
@@ -859,3 +767,29 @@ export const useMatchesStore = create<MatchesState>()(
     }
   )
 );
+
+// Set up interval for processing swipe batches periodically
+let batchProcessingInterval: NodeJS.Timeout | null = null;
+
+export const startBatchProcessing = () => {
+  if (batchProcessingInterval) return;
+  
+  const { batchProcessingInterval: intervalMs } = useMatchesStore.getState();
+  batchProcessingInterval = setInterval(async () => {
+    const { swipeQueue } = useMatchesStore.getState();
+    if (swipeQueue.length > 0) {
+      console.log(`Periodic batch processing: ${swipeQueue.length} swipes in queue`);
+      await useMatchesStore.getState().processSwipeBatch();
+    }
+  }, intervalMs);
+  
+  console.log('Batch swipe processing started');
+};
+
+export const stopBatchProcessing = () => {
+  if (batchProcessingInterval) {
+    clearInterval(batchProcessingInterval);
+    batchProcessingInterval = null;
+    console.log('Batch swipe processing stopped');
+  }
+};

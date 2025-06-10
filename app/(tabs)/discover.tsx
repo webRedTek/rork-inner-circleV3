@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Colors from '@/constants/colors';
 import { SwipeCards } from '@/components/SwipeCards';
-import { useMatchesStore } from '@/store/matches-store';
+import { useMatchesStore, startBatchProcessing, stopBatchProcessing } from '@/store/matches-store';
 import { UserProfile } from '@/types/user';
 import { Button } from '@/components/Button';
 import * as Haptics from 'expo-haptics';
@@ -40,6 +40,11 @@ export default function DiscoverScreen() {
   
   useEffect(() => {
     fetchPotentialMatches();
+    startBatchProcessing();
+    
+    return () => {
+      stopBatchProcessing();
+    };
   }, []);
   
   useEffect(() => {

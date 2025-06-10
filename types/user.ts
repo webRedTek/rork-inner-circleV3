@@ -177,3 +177,10 @@ export interface AuditLogEntry {
   details?: Record<string, any>;
   timestamp: string;
 }
+
+export interface SwipeAction {
+  swiper_id: string;
+  swipee_id: string;
+  direction: 'left' | 'right';
+  swipe_timestamp: number;
+}

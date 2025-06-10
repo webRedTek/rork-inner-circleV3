@@ -92,6 +92,14 @@ export type ConnectionTestResult = {
   error?: any;
 };
 
+// Define swipe action type for batch processing
+export type SwipeAction = {
+  swiper_id: string;
+  swipee_id: string;
+  direction: 'left' | 'right';
+  swipe_timestamp: number;
+};
+
 // Initialize supabase client with proper typing
 let supabase: ReturnType<typeof createClient<Database>> | null = null;
 
@@ -280,6 +288,45 @@ export const convertToSnakeCase = (obj: Record<string, any>): Record<string, any
       : value;
     return acc;
   }, {} as Record<string, any>);
+};
+
+/**
+ * Helper function to process batch swipes
+ * @param swipes Array of swipe actions to process
+ * @returns Array of new matches created from the batch
+ */
+export const processBatchSwipes = async (swipes: SwipeAction[]): Promise<any[]> => {
+  try {
+    if (!supabase) {
+      throw new Error('Supabase client not initialized');
+    }
+
+    if (!swipes || swipes.length === 0) {
+      console.log('No swipes to process');
+      return [];
+    }
+
+    console.log(`Processing batch of ${swipes.length} swipes`);
+
+    // Convert the swipes to snake_case for Supabase
+    const formattedSwipes = swipes.map(swipe => convertToSnakeCase(swipe));
+
+    // Call the RPC function to process batch swipes
+    const { data, error } = await supabase.rpc('process_batch_swipes', { swipes: formattedSwipes });
+
+    if (error) {
+      console.error('Error processing batch swipes:', error);
+      throw error;
+    }
+
+    // Convert the response back to camelCase
+    const matches = data ? data.map((match: any) => convertToCamelCase(match)) : [];
+    console.log(`Batch swipe processing complete. New matches: ${matches.length}`);
+    return matches;
+  } catch (error) {
+    console.error('Error in processBatchSwipes:', error);
+    throw error;
+  }
 };
 
 // Export the supabase client
