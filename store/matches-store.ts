@@ -80,6 +80,7 @@ const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
 interface MatchesState {
   potentialMatches: UserProfile[];
   cachedMatches: UserProfile[];
+  matches: Match[];
   batchSize: number;
   prefetchThreshold: number;
   isLoading: boolean;
@@ -99,6 +100,7 @@ export const useMatchesStore = create<MatchesState>()(
     (set, get) => ({
       potentialMatches: [],
       cachedMatches: [],
+      matches: [],
       batchSize: 25,
       prefetchThreshold: 5,
       isLoading: false,
@@ -207,7 +209,7 @@ export const useMatchesStore = create<MatchesState>()(
             // In a real app, this would be handled by the backend
             const { matches } = get();
             
-            const matchedUserIds = matches.map(m => 
+            const matchedUserIds = matches.map((m: Match) => 
               m.userId === currentUser.id ? m.matchedUserId : m.userId
             );
             
@@ -359,7 +361,7 @@ export const useMatchesStore = create<MatchesState>()(
             // Filter out users that have already been matched or passed
             const { matches } = get();
             
-            const matchedUserIds = matches.map(m => 
+            const matchedUserIds = matches.map((m: Match) => 
               m.userId === currentUser.id ? m.matchedUserId : m.userId
             );
             

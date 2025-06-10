@@ -201,7 +201,11 @@ export default function DiscoverScreen() {
             
             {selectedProfile && (
               <View style={styles.profileDetailContainer}>
-                <ProfileDetailCard profile={selectedProfile} />
+                <ProfileDetailCard 
+                  title="Profile Details"
+                  content={selectedProfile.bio || "No bio available"}
+                  profile={selectedProfile} 
+                />
                 
                 <View style={styles.actionButtons}>
                   <Button
@@ -315,7 +319,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.dark.overlay,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
   },
   matchModal: {
     backgroundColor: Colors.dark.card,
