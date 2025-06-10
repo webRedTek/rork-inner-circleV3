@@ -29,10 +29,14 @@ const getReadableError = (error: any): string => {
   
   if (error.message) return error.message;
   
+  if (error.details || error.hint || error.code) {
+    return `Supabase Error: ${error.code || 'N/A'} - ${error.details || error.message || 'Unknown'} ${error.hint ? `(Hint: ${error.hint})` : ''}`;
+  }
+  
   try {
-    return JSON.stringify(error);
+    return JSON.stringify(error, null, 2);
   } catch (e) {
-    return 'An error occurred';
+    return 'An error occurred, but it could not be parsed';
   }
 };
 
@@ -533,6 +537,7 @@ export const useAuthStore = create<AuthState>()(
               
             if (tierError) {
               console.error('Error fetching tier settings:', tierError);
+              console.error('Full error object:', JSON.stringify(tierError, null, 2));
               set({ tierSettings: defaultTierSettings, isLoading: false });
             } else {
               set({ tierSettings: tierSettings as TierSettings, isLoading: false });
@@ -542,7 +547,8 @@ export const useAuthStore = create<AuthState>()(
             set({ isLoading: false });
           }
         } catch (error) {
-          console.error('Fetch tier settings error:', getReadableError(error));
+          console.error('Fetch tier settings error:', error);
+          console.error('Full error object:', JSON.stringify(error, null, 2));
           set({ 
             tierSettings: defaultTierSettings,
             error: getReadableError(error), 
