@@ -79,13 +79,18 @@ const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
 
 interface MatchesState {
   potentialMatches: UserProfile[];
-  matches: Match[];
+  cachedMatches: UserProfile[];
+  batchSize: number;
+  prefetchThreshold: number;
   isLoading: boolean;
+  isPrefetching: boolean;
   error: string | null;
-  fetchPotentialMatches: (maxDistance?: number) => Promise<void>;
+  fetchPotentialMatches: (maxDistance?: number, forceRefresh?: boolean) => Promise<void>;
+  prefetchNextBatch: (maxDistance?: number) => Promise<void>;
   likeUser: (userId: string) => Promise<Match | null>;
   passUser: (userId: string) => Promise<void>;
   getMatches: () => Promise<void>;
+  refreshCandidates: () => Promise<void>;
   clearError: () => void;
 }
 
@@ -93,12 +98,188 @@ export const useMatchesStore = create<MatchesState>()(
   persist(
     (set, get) => ({
       potentialMatches: [],
-      matches: [],
+      cachedMatches: [],
+      batchSize: 25,
+      prefetchThreshold: 5,
       isLoading: false,
+      isPrefetching: false,
       error: null,
 
-      fetchPotentialMatches: async (maxDistance = 50) => {
+      fetchPotentialMatches: async (maxDistance = 50, forceRefresh = false) => {
+        if (get().isLoading && !forceRefresh) return;
+        
         set({ isLoading: true, error: null });
+        try {
+          const currentUser = useAuthStore.getState().user;
+          const tierSettings = useAuthStore.getState().tierSettings;
+          
+          if (!currentUser) {
+            throw new Error('User not authenticated');
+          }
+          
+          // If we have cached matches and not forcing refresh, use them
+          if (!forceRefresh && get().cachedMatches.length > 0) {
+            const { cachedMatches } = get();
+            const batchToShow = cachedMatches.slice(0, get().batchSize);
+            const remainingCache = cachedMatches.slice(get().batchSize);
+            set({ 
+              potentialMatches: batchToShow, 
+              cachedMatches: remainingCache, 
+              isLoading: false 
+            });
+            return;
+          }
+          
+          if (isSupabaseConfigured() && supabase) {
+            // Get user's tier settings to check if global discovery is enabled
+            const { data: tierSettingsData, error: tierError } = await supabase
+              .rpc('get_user_tier_settings', { user_id: currentUser.id });
+              
+            if (tierError) throw tierError;
+            
+            const tierData = tierSettingsData as Record<string, any> || {};
+            const globalDiscovery = tierData && typeof tierData === 'object' && 'global_discovery' in tierData 
+              ? Boolean(tierData.global_discovery) 
+              : false;
+            
+            // Get potential matches based on location and tier settings
+            const { data: potentialUsers, error: matchError } = await supabase
+              .rpc('find_users_within_distance', { 
+                user_id: currentUser.id,
+                max_distance: maxDistance,
+                global_search: globalDiscovery
+              });
+              
+            if (matchError) throw matchError;
+            
+            // Filter out users that have already been matched or passed
+            const { data: existingLikes, error: likesError } = await supabase
+              .from('likes')
+              .select('liked_id')
+              .eq('liker_id', currentUser.id);
+              
+            if (likesError) throw likesError;
+            
+            const likedIds = existingLikes ? existingLikes.map((like: any) => like.liked_id) : [];
+            
+            // Convert to UserProfile type
+            const potentialData = potentialUsers as Record<string, any>[] || [];
+            const filteredMatches = potentialData
+              .filter((user: any) => !likedIds.includes(user.id))
+              .map(supabaseToUserProfile);
+            
+            // Shuffle the array for randomization
+            const shuffledMatches = filteredMatches.sort(() => Math.random() - 0.5);
+            
+            // Split into potential and cached
+            const batchToShow = shuffledMatches.slice(0, get().batchSize);
+            const remainingCache = shuffledMatches.slice(get().batchSize);
+            
+            // Log the action
+            try {
+              await supabase.rpc('log_user_action', {
+                user_id: currentUser.id,
+                action: 'fetch_potential_matches',
+                details: { 
+                  count: shuffledMatches.length,
+                  max_distance: maxDistance,
+                  global_discovery: globalDiscovery
+                }
+              });
+            } catch (logError) {
+              console.warn('Failed to log fetch_potential_matches action:', getReadableError(logError));
+            }
+            
+            set({ 
+              potentialMatches: batchToShow, 
+              cachedMatches: remainingCache, 
+              isLoading: false 
+            });
+          } else {
+            // Simulate API call
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // For demo, we'll get users from AsyncStorage
+            const mockUsers = await AsyncStorage.getItem('mockUsers');
+            const users = mockUsers ? JSON.parse(mockUsers) : [];
+            
+            // Filter out users that have already been matched or passed
+            // In a real app, this would be handled by the backend
+            const { matches } = get();
+            
+            const matchedUserIds = matches.map(m => 
+              m.userId === currentUser.id ? m.matchedUserId : m.userId
+            );
+            
+            // Simulate global discovery based on membership tier
+            const isGlobalDiscovery = tierSettings?.global_discovery || false;
+            
+            // Filter users based on location if not global discovery
+            let filteredUsers = users.filter((u: UserProfile) => u.id !== currentUser.id);
+            
+            if (!isGlobalDiscovery && currentUser?.zipCode) {
+              // Simulate distance filtering based on ZIP code
+              // In a real app, this would use geolocation data
+              filteredUsers = filteredUsers.filter((u: UserProfile) => {
+                // If user has no ZIP code, exclude them
+                if (!u.zipCode) return false;
+                
+                // Simple mock distance calculation (first digit difference)
+                const zipDiff = Math.abs(
+                  parseInt(u.zipCode.substring(0, 1)) - 
+                  parseInt((currentUser?.zipCode || '0').substring(0, 1))
+                );
+                
+                // Convert to "miles" (mock)
+                const distance = zipDiff * 10;
+                return distance <= maxDistance;
+              });
+            }
+            
+            const potentialMatches = filteredUsers
+              .filter((u: UserProfile) => !matchedUserIds.includes(u.id))
+              .map(({ password, ...user }: any) => user);
+            
+            // Shuffle for randomization
+            const shuffledMatches = potentialMatches.sort(() => Math.random() - 0.5);
+            const batchToShow = shuffledMatches.slice(0, get().batchSize);
+            const remainingCache = shuffledMatches.slice(get().batchSize);
+            
+            // Log the action in mock audit log
+            const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
+            const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
+            auditLogs.push({
+              id: `log-${Date.now()}`,
+              user_id: currentUser.id,
+              action: 'fetch_potential_matches',
+              details: { 
+                count: shuffledMatches.length,
+                max_distance: maxDistance,
+                global_discovery: isGlobalDiscovery
+              },
+              timestamp: new Date().toISOString()
+            });
+            await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
+            
+            set({ 
+              potentialMatches: batchToShow, 
+              cachedMatches: remainingCache, 
+              isLoading: false 
+            });
+          }
+        } catch (error) {
+          console.error('Error fetching potential matches:', getReadableError(error));
+          set({ 
+            error: getReadableError(error), 
+            isLoading: false 
+          });
+        }
+      },
+
+      prefetchNextBatch: async (maxDistance = 50) => {
+        if (get().isPrefetching || get().isLoading) return;
+        
+        set({ isPrefetching: true, error: null });
         try {
           const currentUser = useAuthStore.getState().user;
           const tierSettings = useAuthStore.getState().tierSettings;
@@ -145,22 +326,28 @@ export const useMatchesStore = create<MatchesState>()(
               .filter((user: any) => !likedIds.includes(user.id))
               .map(supabaseToUserProfile);
             
+            // Shuffle the array for randomization
+            const shuffledMatches = filteredMatches.sort(() => Math.random() - 0.5);
+            
             // Log the action
             try {
               await supabase.rpc('log_user_action', {
                 user_id: currentUser.id,
-                action: 'fetch_potential_matches',
+                action: 'prefetch_potential_matches',
                 details: { 
-                  count: filteredMatches.length,
+                  count: shuffledMatches.length,
                   max_distance: maxDistance,
                   global_discovery: globalDiscovery
                 }
               });
             } catch (logError) {
-              console.warn('Failed to log fetch_potential_matches action:', getReadableError(logError));
+              console.warn('Failed to log prefetch_potential_matches action:', getReadableError(logError));
             }
             
-            set({ potentialMatches: filteredMatches, isLoading: false });
+            set({ 
+              cachedMatches: [...get().cachedMatches, ...shuffledMatches].slice(0, 50), 
+              isPrefetching: false 
+            });
           } else {
             // Simulate API call
             await new Promise(resolve => setTimeout(resolve, 1000));
@@ -170,7 +357,6 @@ export const useMatchesStore = create<MatchesState>()(
             const users = mockUsers ? JSON.parse(mockUsers) : [];
             
             // Filter out users that have already been matched or passed
-            // In a real app, this would be handled by the backend
             const { matches } = get();
             
             const matchedUserIds = matches.map(m => 
@@ -184,19 +370,12 @@ export const useMatchesStore = create<MatchesState>()(
             let filteredUsers = users.filter((u: UserProfile) => u.id !== currentUser.id);
             
             if (!isGlobalDiscovery && currentUser?.zipCode) {
-              // Simulate distance filtering based on ZIP code
-              // In a real app, this would use geolocation data
               filteredUsers = filteredUsers.filter((u: UserProfile) => {
-                // If user has no ZIP code, exclude them
                 if (!u.zipCode) return false;
-                
-                // Simple mock distance calculation (first digit difference)
                 const zipDiff = Math.abs(
                   parseInt(u.zipCode.substring(0, 1)) - 
                   parseInt((currentUser?.zipCode || '0').substring(0, 1))
                 );
-                
-                // Convert to "miles" (mock)
                 const distance = zipDiff * 10;
                 return distance <= maxDistance;
               });
@@ -206,15 +385,18 @@ export const useMatchesStore = create<MatchesState>()(
               .filter((u: UserProfile) => !matchedUserIds.includes(u.id))
               .map(({ password, ...user }: any) => user);
             
+            // Shuffle for randomization
+            const shuffledMatches = potentialMatches.sort(() => Math.random() - 0.5);
+            
             // Log the action in mock audit log
             const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
             const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
             auditLogs.push({
               id: `log-${Date.now()}`,
               user_id: currentUser.id,
-              action: 'fetch_potential_matches',
+              action: 'prefetch_potential_matches',
               details: { 
-                count: potentialMatches.length,
+                count: shuffledMatches.length,
                 max_distance: maxDistance,
                 global_discovery: isGlobalDiscovery
               },
@@ -222,13 +404,16 @@ export const useMatchesStore = create<MatchesState>()(
             });
             await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
             
-            set({ potentialMatches, isLoading: false });
+            set({ 
+              cachedMatches: [...get().cachedMatches, ...shuffledMatches].slice(0, 50), 
+              isPrefetching: false 
+            });
           }
         } catch (error) {
-          console.error('Error fetching potential matches:', getReadableError(error));
+          console.error('Error prefetching potential matches:', getReadableError(error));
           set({ 
             error: getReadableError(error), 
-            isLoading: false 
+            isPrefetching: false 
           });
         }
       },
@@ -377,7 +562,19 @@ export const useMatchesStore = create<MatchesState>()(
               (u: UserProfile) => u.id !== userId
             );
             
-            set({ potentialMatches: updatedPotentialMatches, isLoading: false });
+            // Check if we need to pull from cache
+            let newCachedMatches = [...get().cachedMatches];
+            if (updatedPotentialMatches.length < get().prefetchThreshold && newCachedMatches.length > 0) {
+              const additionalMatches = newCachedMatches.slice(0, get().batchSize - updatedPotentialMatches.length);
+              updatedPotentialMatches.push(...additionalMatches);
+              newCachedMatches = newCachedMatches.slice(additionalMatches.length);
+            }
+            
+            set({ 
+              potentialMatches: updatedPotentialMatches, 
+              cachedMatches: newCachedMatches, 
+              isLoading: false 
+            });
             return match;
           } else {
             // Simulate API call
@@ -490,7 +687,19 @@ export const useMatchesStore = create<MatchesState>()(
               (u: UserProfile) => u.id !== userId
             );
             
-            set({ potentialMatches: updatedPotentialMatches, isLoading: false });
+            // Check if we need to pull from cache
+            let newCachedMatches = [...get().cachedMatches];
+            if (updatedPotentialMatches.length < get().prefetchThreshold && newCachedMatches.length > 0) {
+              const additionalMatches = newCachedMatches.slice(0, get().batchSize - updatedPotentialMatches.length);
+              updatedPotentialMatches.push(...additionalMatches);
+              newCachedMatches = newCachedMatches.slice(additionalMatches.length);
+            }
+            
+            set({ 
+              potentialMatches: updatedPotentialMatches, 
+              cachedMatches: newCachedMatches, 
+              isLoading: false 
+            });
             return match;
           }
         } catch (error) {
@@ -543,7 +752,19 @@ export const useMatchesStore = create<MatchesState>()(
             (u: UserProfile) => u.id !== userId
           );
           
-          set({ potentialMatches: updatedPotentialMatches, isLoading: false });
+          // Check if we need to pull from cache
+          let newCachedMatches = [...get().cachedMatches];
+          if (updatedPotentialMatches.length < get().prefetchThreshold && newCachedMatches.length > 0) {
+            const additionalMatches = newCachedMatches.slice(0, get().batchSize - updatedPotentialMatches.length);
+            updatedPotentialMatches.push(...additionalMatches);
+            newCachedMatches = newCachedMatches.slice(additionalMatches.length);
+          }
+          
+          set({ 
+            potentialMatches: updatedPotentialMatches, 
+            cachedMatches: newCachedMatches, 
+            isLoading: false 
+          });
         } catch (error) {
           console.error('Error passing user:', getReadableError(error));
           set({ 
@@ -621,6 +842,11 @@ export const useMatchesStore = create<MatchesState>()(
             isLoading: false 
           });
         }
+      },
+
+      refreshCandidates: async () => {
+        set({ potentialMatches: [], cachedMatches: [] });
+        await get().fetchPotentialMatches(50, true);
       },
 
       clearError: () => set({ error: null })

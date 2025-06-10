@@ -17,16 +17,19 @@ import { Button } from '@/components/Button';
 import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
 import { ProfileDetailCard } from '@/components/ProfileDetailCard';
-import { X, ArrowLeft } from 'lucide-react-native';
+import { X, ArrowLeft, RefreshCw } from 'lucide-react-native';
 
 export default function DiscoverScreen() {
   const router = useRouter();
   const { 
     potentialMatches, 
     fetchPotentialMatches, 
+    prefetchNextBatch,
     likeUser, 
     passUser,
+    refreshCandidates,
     isLoading,
+    isPrefetching,
     error
   } = useMatchesStore();
   
@@ -38,6 +41,13 @@ export default function DiscoverScreen() {
   useEffect(() => {
     fetchPotentialMatches();
   }, []);
+  
+  useEffect(() => {
+    // Prefetch more profiles if we're running low
+    if (potentialMatches.length <= useMatchesStore.getState().prefetchThreshold && !isPrefetching && !isLoading) {
+      prefetchNextBatch();
+    }
+  }, [potentialMatches.length, isPrefetching]);
   
   const handleSwipeRight = async (profile: UserProfile) => {
     if (Platform.OS !== 'web') {
@@ -81,6 +91,10 @@ export default function DiscoverScreen() {
   const handleProfilePress = (profile: UserProfile) => {
     setSelectedProfile(profile);
     setShowProfileDetail(true);
+  };
+  
+  const handleRefresh = () => {
+    refreshCandidates();
   };
   
   if (isLoading && potentialMatches.length === 0) {
@@ -136,6 +150,12 @@ export default function DiscoverScreen() {
         </View>
       ) : (
         <View style={styles.cardsContainer}>
+          {isPrefetching && (
+            <View style={styles.prefetchingIndicator}>
+              <ActivityIndicator size="small" color={Colors.dark.accent} />
+              <Text style={styles.prefetchingText}>Loading more entrepreneurs...</Text>
+            </View>
+          )}
           <SwipeCards
             profiles={potentialMatches}
             onSwipeLeft={handleSwipeLeft}
@@ -143,6 +163,14 @@ export default function DiscoverScreen() {
             onEmpty={() => fetchPotentialMatches()}
             onProfilePress={handleProfilePress}
           />
+          <TouchableOpacity 
+            style={styles.refreshButton}
+            onPress={handleRefresh}
+            disabled={isLoading || isPrefetching}
+          >
+            <RefreshCw size={24} color={Colors.dark.accent} />
+            <Text style={styles.refreshButtonText}>Refresh</Text>
+          </TouchableOpacity>
         </View>
       )}
       
@@ -249,6 +277,39 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  prefetchingIndicator: {
+    position: 'absolute',
+    top: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.dark.card,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    zIndex: 10,
+  },
+  prefetchingText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: Colors.dark.textSecondary,
+  },
+  refreshButton: {
+    position: 'absolute',
+    bottom: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.dark.card,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 25,
+    zIndex: 10,
+  },
+  refreshButtonText: {
+    marginLeft: 8,
+    fontSize: 16,
+    color: Colors.dark.accent,
+    fontWeight: '500',
   },
   matchModalContainer: {
     flex: 1,

@@ -243,20 +243,7 @@ returns table (
 ) as $$
 begin
   if global_search then
-    -- Return all users except the input user
-    return query
-    select 
-      u.id, u.email, u.name, u.bio, u.location, u.zip_code, 
-      u.business_field, u.entrepreneur_status, u.photo_url, 
-      u.membership_tier, u.business_verified, u.joined_groups, 
-      u.created_at, u.skills_offered, u.skills_seeking, 
-      u.industry_focus, u.business_stage, u.key_challenge, 
-      u.availability_level, u.timezone, u.success_highlight, 
-      u.looking_for
-    from public.users u
-    where u.id != user_id;
-  else
-    -- Return users within max_distance (mocked based on zip code)
+    -- Return all users except the input user, excluding liked/matched users
     return query
     select 
       u.id, u.email, u.name, u.bio, u.location, u.zip_code, 
@@ -268,7 +255,42 @@ begin
       u.looking_for
     from public.users u
     where u.id != user_id
-    and u.zip_code is not null;
+    and u.id not in (
+      select liked_id from public.likes where liker_id = user_id
+    )
+    and u.id not in (
+      select matched_user_id from public.matches where user_id = user_id
+    )
+    and u.id not in (
+      select user_id from public.matches where matched_user_id = user_id
+    )
+    order by random()
+    limit 50;
+  else
+    -- Return users within max_distance (mocked based on zip code), excluding liked/matched users
+    return query
+    select 
+      u.id, u.email, u.name, u.bio, u.location, u.zip_code, 
+      u.business_field, u.entrepreneur_status, u.photo_url, 
+      u.membership_tier, u.business_verified, u.joined_groups, 
+      u.created_at, u.skills_offered, u.skills_seeking, 
+      u.industry_focus, u.business_stage, u.key_challenge, 
+      u.availability_level, u.timezone, u.success_highlight, 
+      u.looking_for
+    from public.users u
+    where u.id != user_id
+    and u.zip_code is not null
+    and u.id not in (
+      select liked_id from public.likes where liker_id = user_id
+    )
+    and u.id not in (
+      select matched_user_id from public.matches where user_id = user_id
+    )
+    and u.id not in (
+      select user_id from public.matches where matched_user_id = user_id
+    )
+    order by random()
+    limit 50;
     -- In a real implementation, this would use geospatial data
     -- For now, we're just returning users with zip codes as a mock
   end if;

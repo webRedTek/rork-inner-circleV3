@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { 
   View, 
   StyleSheet, 
@@ -11,6 +11,7 @@ import { UserProfile } from '@/types/user';
 import { EntrepreneurCard } from './EntrepreneurCard';
 import Colors from '@/constants/colors';
 import { X, Heart } from 'lucide-react-native';
+import { useMatchesStore } from '@/store/matches-store';
 
 interface SwipeCardsProps {
   profiles: UserProfile[];
@@ -33,6 +34,8 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const position = useRef(new Animated.ValueXY()).current;
+  const { prefetchNextBatch, prefetchThreshold } = useMatchesStore();
+  
   const rotate = position.x.interpolate({
     inputRange: [-SCREEN_WIDTH * 1.5, 0, SCREEN_WIDTH * 1.5],
     outputRange: ['-30deg', '0deg', '30deg'],
@@ -62,6 +65,20 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     outputRange: [1, 0.9, 1],
     extrapolate: 'clamp'
   });
+  
+  useEffect(() => {
+    // Reset current index when profiles array changes significantly
+    if (profiles.length > 0 && currentIndex >= profiles.length) {
+      setCurrentIndex(0);
+    }
+  }, [profiles.length]);
+  
+  useEffect(() => {
+    // Trigger prefetch if we're running low on profiles
+    if (profiles.length - currentIndex <= prefetchThreshold) {
+      prefetchNextBatch();
+    }
+  }, [currentIndex, profiles.length]);
   
   const panResponder = useRef(
     PanResponder.create({
