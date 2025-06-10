@@ -88,6 +88,7 @@ interface MatchesState {
   isLoading: boolean;
   isPrefetching: boolean;
   error: string | null;
+  newMatch: Match | null;
   fetchPotentialMatches: (maxDistance?: number, forceRefresh?: boolean) => Promise<void>;
   prefetchNextBatch: (maxDistance?: number) => Promise<void>;
   likeUser: (userId: string) => Promise<Match | null>;
@@ -97,6 +98,7 @@ interface MatchesState {
   getMatches: () => Promise<void>;
   refreshCandidates: () => Promise<void>;
   clearError: () => void;
+  clearNewMatch: () => void;
 }
 
 export const useMatchesStore = create<MatchesState>()(
@@ -112,6 +114,7 @@ export const useMatchesStore = create<MatchesState>()(
       isLoading: false,
       isPrefetching: false,
       error: null,
+      newMatch: null,
 
       fetchPotentialMatches: async (maxDistance = 50, forceRefresh = false) => {
         if (get().isLoading && !forceRefresh) return;
@@ -565,7 +568,8 @@ export const useMatchesStore = create<MatchesState>()(
               })) as Match[];
               
               set(state => ({
-                matches: [...state.matches, ...typedMatches]
+                matches: [...state.matches, ...typedMatches],
+                newMatch: typedMatches[0] // Set the first new match for UI notification
               }));
               
               // Return the first match for immediate feedback if needed
@@ -653,7 +657,8 @@ export const useMatchesStore = create<MatchesState>()(
               await AsyncStorage.setItem('mockMatches', JSON.stringify(storedMatches));
               
               set(state => ({
-                matches: [...state.matches, ...newMatches]
+                matches: [...state.matches, ...newMatches],
+                newMatch: newMatches[0] // Set the first new match for UI notification
               }));
             }
             
@@ -759,7 +764,9 @@ export const useMatchesStore = create<MatchesState>()(
         await get().fetchPotentialMatches(50, true);
       },
 
-      clearError: () => set({ error: null })
+      clearError: () => set({ error: null }),
+      
+      clearNewMatch: () => set({ newMatch: null })
     }),
     {
       name: 'matches-storage',

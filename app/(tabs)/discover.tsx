@@ -18,6 +18,7 @@ import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
 import { ProfileDetailCard } from '@/components/ProfileDetailCard';
 import { X, ArrowLeft, RefreshCw } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function DiscoverScreen() {
   const router = useRouter();
@@ -30,7 +31,9 @@ export default function DiscoverScreen() {
     refreshCandidates,
     isLoading,
     isPrefetching,
-    error
+    error,
+    newMatch,
+    clearNewMatch
   } = useMatchesStore();
   
   const [showMatchModal, setShowMatchModal] = useState(false);
@@ -53,6 +56,38 @@ export default function DiscoverScreen() {
       prefetchNextBatch();
     }
   }, [potentialMatches.length, isPrefetching]);
+  
+  useEffect(() => {
+    // Check for new matches and display modal
+    const checkNewMatch = async () => {
+      if (newMatch) {
+        try {
+          // Get the matched user's profile
+          const mockUsers = await AsyncStorage.getItem('mockUsers');
+          const users = mockUsers ? JSON.parse(mockUsers) : [];
+          const currentUser = useMatchesStore.getState().user;
+          const matchedUserId = newMatch.userId === currentUser?.id ? newMatch.matchedUserId : newMatch.userId;
+          const matchedProfile = users.find((u: UserProfile) => u.id === matchedUserId);
+          
+          if (matchedProfile) {
+            const { password, ...userWithoutPassword } = matchedProfile;
+            setMatchedUser(userWithoutPassword);
+            setShowMatchModal(true);
+            
+            if (Platform.OS !== 'web') {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+          }
+        } catch (err) {
+          console.error('Error fetching matched user profile:', err);
+        } finally {
+          clearNewMatch(); // Clear the new match after processing
+        }
+      }
+    };
+    
+    checkNewMatch();
+  }, [newMatch, clearNewMatch]);
   
   const handleSwipeRight = async (profile: UserProfile) => {
     if (Platform.OS !== 'web') {
