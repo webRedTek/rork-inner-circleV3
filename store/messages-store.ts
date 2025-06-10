@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { Message } from '@/types/user';
 import { isSupabaseConfigured, supabase, convertToCamelCase, convertToSnakeCase } from '@/lib/supabase';
+import { useAuthStore } from './auth-store';
 
 // Helper function to extract readable error message from Supabase error
 const getReadableError = (error: any): string => {
@@ -69,9 +70,50 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const currentUser = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}')?.state?.user;
+      const tierSettings = useAuthStore.getState().tierSettings;
       
       if (!currentUser) {
         throw new Error('User not authenticated');
+      }
+      
+      // Check message sending limit based on tier settings
+      if (tierSettings) {
+        const dailyMessageLimit = tierSettings.message_sending_limit || 20;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayTimestamp = today.getTime();
+        
+        if (isSupabaseConfigured() && supabase) {
+          const { data: messagesData, error } = await supabase
+            .from('messages')
+            .select('id, created_at')
+            .eq('sender_id', currentUser.id)
+            .gte('created_at', todayTimestamp);
+            
+          if (error) {
+            console.error('Error checking message limit:', error);
+          } else {
+            const todayMessages = messagesData ? messagesData.length : 0;
+            if (todayMessages >= dailyMessageLimit) {
+              throw new Error('Daily message limit reached. Upgrade your plan for more messages.');
+            }
+          }
+        } else {
+          const mockMessages = await AsyncStorage.getItem('mockMessages');
+          const allMessages = mockMessages ? JSON.parse(mockMessages) : {};
+          let todayMessages = 0;
+          
+          Object.values(allMessages).forEach((convMessages: any) => {
+            const userMessages = convMessages.filter((msg: any) => 
+              msg.senderId === currentUser.id && msg.createdAt >= todayTimestamp
+            );
+            todayMessages += userMessages.length;
+          });
+          
+          if (todayMessages >= dailyMessageLimit) {
+            throw new Error('Daily message limit reached. Upgrade your plan for more messages.');
+          }
+        }
       }
       
       if (isSupabaseConfigured() && supabase) {
@@ -187,9 +229,50 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const currentUser = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}')?.state?.user;
+      const tierSettings = useAuthStore.getState().tierSettings;
       
       if (!currentUser) {
         throw new Error('User not authenticated');
+      }
+      
+      // Check message sending limit based on tier settings
+      if (tierSettings) {
+        const dailyMessageLimit = tierSettings.message_sending_limit || 20;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayTimestamp = today.getTime();
+        
+        if (isSupabaseConfigured() && supabase) {
+          const { data: messagesData, error } = await supabase
+            .from('messages')
+            .select('id, created_at')
+            .eq('sender_id', currentUser.id)
+            .gte('created_at', todayTimestamp);
+            
+          if (error) {
+            console.error('Error checking message limit:', error);
+          } else {
+            const todayMessages = messagesData ? messagesData.length : 0;
+            if (todayMessages >= dailyMessageLimit) {
+              throw new Error('Daily message limit reached. Upgrade your plan for more messages.');
+            }
+          }
+        } else {
+          const mockMessages = await AsyncStorage.getItem('mockMessages');
+          const allMessages = mockMessages ? JSON.parse(mockMessages) : {};
+          let todayMessages = 0;
+          
+          Object.values(allMessages).forEach((convMessages: any) => {
+            const userMessages = convMessages.filter((msg: any) => 
+              msg.senderId === currentUser.id && msg.createdAt >= todayTimestamp
+            );
+            todayMessages += userMessages.length;
+          });
+          
+          if (todayMessages >= dailyMessageLimit) {
+            throw new Error('Daily message limit reached. Upgrade your plan for more messages.');
+          }
+        }
       }
       
       if (isSupabaseConfigured() && supabase) {

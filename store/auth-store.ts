@@ -66,6 +66,21 @@ const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
   };
 };
 
+// Default tier settings for fallback
+const defaultTierSettings: TierSettings = {
+  daily_swipe_limit: 10,
+  daily_match_limit: 5,
+  message_sending_limit: 20,
+  can_see_who_liked_you: false,
+  can_rewind_last_swipe: false,
+  boost_duration: 0,
+  boost_frequency: 0,
+  profile_visibility_control: false,
+  priority_listing: false,
+  premium_filters_access: false,
+  global_discovery: false
+};
+
 // Auth store with Supabase integration (falls back to mock if not configured)
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -516,9 +531,12 @@ export const useAuthStore = create<AuthState>()(
             const { data: tierSettings, error: tierError } = await supabase
               .rpc('get_user_tier_settings', { user_id: userId });
               
-            if (tierError) throw tierError;
-            
-            set({ tierSettings: tierSettings as TierSettings, isLoading: false });
+            if (tierError) {
+              console.error('Error fetching tier settings:', tierError);
+              set({ tierSettings: defaultTierSettings, isLoading: false });
+            } else {
+              set({ tierSettings: tierSettings as TierSettings, isLoading: false });
+            }
           } else {
             // Mock tier settings are set in login/signup/updateMembership
             set({ isLoading: false });
@@ -526,6 +544,7 @@ export const useAuthStore = create<AuthState>()(
         } catch (error) {
           console.error('Fetch tier settings error:', getReadableError(error));
           set({ 
+            tierSettings: defaultTierSettings,
             error: getReadableError(error), 
             isLoading: false 
           });
