@@ -108,7 +108,7 @@ export const useMatchesStore = create<MatchesState>()(
       swipeQueue: [],
       batchSize: 25,
       prefetchThreshold: 5,
-      batchProcessingInterval: 5000, // 5 seconds
+      batchProcessingInterval: 3000, // 3 seconds
       isLoading: false,
       isPrefetching: false,
       error: null,
@@ -592,7 +592,7 @@ export const useMatchesStore = create<MatchesState>()(
             let likes = mockLikes ? JSON.parse(mockLikes) : [];
             
             // Count today's likes
-            let todayLikes = likes.filter((like: any) => 
+            let todayLikesCount = likes.filter((like: any) => 
               like.likerId === currentUser?.id && like.timestamp >= todayTimestamp
             ).length;
             
@@ -601,7 +601,7 @@ export const useMatchesStore = create<MatchesState>()(
             let newMatches = [];
             
             for (const swipe of swipeQueue) {
-              if (todayLikes >= dailySwipeLimit) {
+              if (todayLikesCount >= dailySwipeLimit) {
                 console.log("Swipe limit reached in mock batch processing");
                 break;
               }
@@ -638,7 +638,7 @@ export const useMatchesStore = create<MatchesState>()(
                   }
                 }
                 
-                todayLikes++;
+                todayLikesCount++;
               }
             }
             
@@ -769,7 +769,7 @@ export const useMatchesStore = create<MatchesState>()(
 );
 
 // Set up interval for processing swipe batches periodically
-let batchProcessingInterval: ReturnType<typeof setInterval> | null = null;
+let batchProcessingInterval: NodeJS.Timeout | null = null;
 
 export const startBatchProcessing = () => {
   if (batchProcessingInterval) return;
