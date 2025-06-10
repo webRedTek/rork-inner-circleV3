@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { Match, UserProfile, MembershipTier } from '@/types/user';
-import { isSupabaseConfigured, supabase, convertToCamelCase, convertToSnakeCase, processBatchSwipes, SwipeAction } from '@/lib/supabase';
+import { isSupabaseConfigured, supabase, convertToCamelCase, convertToSnakeCase, SwipeAction } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
 
 // Helper function to extract readable error message from Supabase error
@@ -953,5 +953,40 @@ export const stopBatchProcessing = () => {
     clearInterval(batchProcessingInterval);
     batchProcessingInterval = null;
     console.log('Batch swipe processing stopped');
+  }
+};
+
+// Helper function to process batch swipes
+const processBatchSwipes = async (swipes: SwipeAction[]): Promise<any[]> => {
+  try {
+    if (!supabase) {
+      throw new Error('Supabase client not initialized');
+    }
+
+    if (!swipes || swipes.length === 0) {
+      console.log('No swipes to process');
+      return [];
+    }
+
+    console.log(`Processing batch of ${swipes.length} swipes`);
+
+    // Convert the swipes to snake_case for Supabase
+    const formattedSwipes = swipes.map(swipe => convertToSnakeCase(swipe));
+
+    // Call the RPC function to process batch swipes
+    const { data, error } = await supabase.rpc('process_batch_swipes', { swipes: formattedSwipes });
+
+    if (error) {
+      console.error('Error processing batch swipes:', error);
+      throw error;
+    }
+
+    // Convert the response back to camelCase
+    const matches = data ? data.map((match: any) => convertToCamelCase(match)) : [];
+    console.log(`Batch swipe processing complete. New matches: ${matches.length}`);
+    return matches;
+  } catch (error) {
+    console.error('Error in processBatchSwipes:', error);
+    throw error;
   }
 };
