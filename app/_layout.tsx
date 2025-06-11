@@ -71,28 +71,6 @@ export default function RootLayout() {
           await clearCaches();
         }
         
-        // Initialize mock data regardless of Supabase status
-        console.log('Initializing mock data...');
-        const existingUsers = await AsyncStorage.getItem('mockUsers');
-        if (!existingUsers) {
-          console.log('Creating mock users...');
-          const usersWithPasswords = mockUsers.map(user => ({
-            ...user,
-            password: 'password123'
-          }));
-          await AsyncStorage.setItem('mockUsers', JSON.stringify(usersWithPasswords));
-          console.log('Mock users created');
-        } else {
-          console.log('Mock users already exist');
-        }
-
-        // Create empty audit log if it doesn't exist
-        const existingAuditLog = await AsyncStorage.getItem('mockAuditLog');
-        if (!existingAuditLog) {
-          await AsyncStorage.setItem('mockAuditLog', JSON.stringify([]));
-          console.log('Mock audit log created');
-        }
-        
         // Initialize Supabase with retry
         console.log('Initializing Supabase...');
         const maxRetries = 2;
