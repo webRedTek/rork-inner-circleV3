@@ -134,10 +134,12 @@ export default function RootLayout() {
         setIsInitialized(true);
         console.log('App initialization complete', { supabaseInitialized });
         
-        // Fetch tier settings if user is already authenticated
-        if (isAuthenticated && user) {
+        // Fetch tier settings only if user is already authenticated and user ID exists
+        if (isAuthenticated && user && user.id) {
           console.log('User already authenticated, fetching tier settings...');
           await fetchTierSettings(user.id);
+        } else {
+          console.log('Skipping tier settings fetch: User not authenticated or no user ID', { isAuthenticated, userId: user?.id });
         }
       } catch (err) {
         console.error("Failed to initialize data:", err);
