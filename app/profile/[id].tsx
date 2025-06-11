@@ -14,10 +14,10 @@ import { ProfileHeader } from '@/components/ProfileHeader';
 import { ProfileDetailCard } from '@/components/ProfileDetailCard';
 import { Button } from '@/components/Button';
 import { UserProfile } from '@/types/user';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '@/store/auth-store';
 import { useMatchesStore } from '@/store/matches-store';
 import { ArrowLeft, MessageCircle } from 'lucide-react-native';
+import { isSupabaseConfigured, supabase, convertToCamelCase } from '@/lib/supabase';
 
 export default function ProfileDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -35,32 +35,44 @@ export default function ProfileDetailScreen() {
       try {
         setLoading(true);
         
-        // Get user profile
-        const mockUsers = await AsyncStorage.getItem('mockUsers');
-        const users = mockUsers ? JSON.parse(mockUsers) : [];
-        
-        const foundUser = users.find((u: any) => u.id === id);
-        
-        if (!foundUser) {
-          setError('User not found');
-          return;
+        if (isSupabaseConfigured() && supabase && user) {
+          // Get user profile from Supabase
+          const { data: foundUser, error: userError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', id)
+            .single();
+          
+          if (userError || !foundUser) {
+            setError('User not found');
+            return;
+          }
+          
+          const userProfile = supabaseToUserProfile(foundUser);
+          setProfile(userProfile);
+          
+          // Check if there's a match
+          const { data: matchesData, error: matchesError } = await supabase
+            .from('matches')
+            .select('*')
+            .or(`user_id.eq.${user.id},matched_user_id.eq.${user.id}`)
+            .or(`user_id.eq.${id},matched_user_id.eq.${id}`);
+          
+          if (matchesError) {
+            console.error('Error checking matches:', matchesError);
+            setIsMatch(false);
+            return;
+          }
+          
+          const match = matchesData.find(
+            m => (m.user_id === user.id && m.matched_user_id === id) || 
+                 (m.user_id === id && m.matched_user_id === user.id)
+          );
+          
+          setIsMatch(!!match);
+        } else {
+          setError('Supabase not configured');
         }
-        
-        // Remove password from user object
-        const { password, ...userWithoutPassword } = foundUser;
-        setProfile(userWithoutPassword);
-        
-        // Check if there's a match
-        const mockMatches = await AsyncStorage.getItem('mockMatches');
-        const matches = mockMatches ? JSON.parse(mockMatches) : [];
-        
-        const match = matches.find(
-          (m: any) => 
-            (m.userId === user?.id && m.matchedUserId === id) || 
-            (m.userId === id && m.matchedUserId === user?.id)
-        );
-        
-        setIsMatch(!!match);
       } catch (err) {
         setError('Failed to load profile');
         console.error(err);
@@ -260,6 +272,36 @@ export default function ProfileDetailScreen() {
     </ScrollView>
   );
 }
+
+// Helper function to convert Supabase response to UserProfile type
+const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
+  const camelCaseData = convertToCamelCase(data);
+  
+  return {
+    id: String(camelCaseData.id || ''),
+    email: String(camelCaseData.email || ''),
+    name: String(camelCaseData.name || ''),
+    bio: String(camelCaseData.bio || ''),
+    location: String(camelCaseData.location || ''),
+    zipCode: String(camelCaseData.zipCode || ''),
+    businessField: (String(camelCaseData.businessField || 'Technology')) as UserProfile["businessField"],
+    entrepreneurStatus: (String(camelCaseData.entrepreneurStatus || 'upcoming')) as UserProfile["entrepreneurStatus"],
+    photoUrl: String(camelCaseData.photoUrl || ''),
+    membershipTier: (String(camelCaseData.membershipTier || 'basic')) as UserProfile["membershipTier"],
+    businessVerified: Boolean(camelCaseData.businessVerified || false),
+    joinedGroups: Array.isArray(camelCaseData.joinedGroups) ? camelCaseData.joinedGroups : [],
+    createdAt: Number(camelCaseData.createdAt || Date.now()),
+    lookingFor: Array.isArray(camelCaseData.lookingFor) ? camelCaseData.lookingFor as UserProfile["lookingFor"] : [],
+    businessStage: camelCaseData.businessStage as UserProfile["businessStage"] || 'Idea Phase',
+    skillsOffered: Array.isArray(camelCaseData.skillsOffered) ? camelCaseData.skillsOffered as UserProfile["skillsOffered"] : [],
+    skillsSeeking: Array.isArray(camelCaseData.skillsSeeking) ? camelCaseData.skillsSeeking as UserProfile["skillsSeeking"] : [],
+    keyChallenge: String(camelCaseData.keyChallenge || ''),
+    industryFocus: String(camelCaseData.industryFocus || ''),
+    availabilityLevel: Array.isArray(camelCaseData.availabilityLevel) ? camelCaseData.availabilityLevel as UserProfile["availabilityLevel"] : [],
+    timezone: String(camelCaseData.timezone || ''),
+    successHighlight: String(camelCaseData.successHighlight || ''),
+  };
+};
 
 const styles = StyleSheet.create({
   container: {

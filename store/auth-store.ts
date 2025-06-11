@@ -382,12 +382,13 @@ export const useAuthStore = create<AuthState>()(
       },
 
       fetchTierSettings: async (userId: string) => {
-        // Enhanced guard clause
-        if (!userId || userId.trim() === '' || !isSupabaseConfigured() || !supabase) {
-          console.log('Skipping tier settings fetch: Invalid user ID or Supabase not configured', { 
+        // Enhanced guard clause to prevent fetching if user ID is invalid or not authenticated
+        if (!userId || userId.trim() === '' || !isSupabaseConfigured() || !supabase || !get().isAuthenticated) {
+          console.log('Skipping tier settings fetch: Invalid user ID, not authenticated, or Supabase not configured', { 
             userId, 
             supabaseConfigured: isSupabaseConfigured(),
-            hasSupabase: !!supabase 
+            hasSupabase: !!supabase,
+            isAuthenticated: get().isAuthenticated
           });
           set({ tierSettings: defaultTierSettings, isLoading: false });
           return;

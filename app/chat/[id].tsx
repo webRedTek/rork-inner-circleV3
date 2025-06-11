@@ -16,10 +16,10 @@ import Colors from '@/constants/colors';
 import { useAuthStore } from '@/store/auth-store';
 import { useMessagesStore } from '@/store/messages-store';
 import { Message, UserProfile } from '@/types/user';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MessageBubble } from '@/components/MessageBubble';
 import { Send, Mic, X } from 'lucide-react-native';
 import { ProfileHeader } from '@/components/ProfileHeader';
+import { isSupabaseConfigured, supabase, convertToCamelCase } from '@/lib/supabase';
 
 export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -42,46 +42,65 @@ export default function ChatScreen() {
       try {
         setLoading(true);
         
-        // Get other user profile
-        const mockUsers = await AsyncStorage.getItem('mockUsers');
-        const users = mockUsers ? JSON.parse(mockUsers) : [];
-        
-        const foundUser = users.find((u: any) => u.id === id);
-        
-        if (!foundUser || !user) {
-          setError('User not found');
-          return;
-        }
-        
-        // Remove password from user object
-        const { password, ...userWithoutPassword } = foundUser;
-        setOtherUser(userWithoutPassword);
-        
-        // Find match between current user and other user
-        const mockMatches = await AsyncStorage.getItem('mockMatches');
-        const matches = mockMatches ? JSON.parse(mockMatches) : [];
-        
-        const match = matches.find(
-          (m: any) => 
-            (m.userId === user.id && m.matchedUserId === id) || 
-            (m.userId === id && m.matchedUserId === user.id)
-        );
-        
-        if (!match) {
-          // Create a new match if it doesn't exist
-          const newMatch = {
-            id: `match-${Date.now()}`,
-            userId: user.id,
-            matchedUserId: id,
-            createdAt: Date.now()
-          };
+        if (isSupabaseConfigured() && supabase && user) {
+          // Get other user profile from Supabase
+          const { data: foundUser, error: userError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', id)
+            .single();
           
-          matches.push(newMatch);
-          await AsyncStorage.setItem('mockMatches', JSON.stringify(matches));
+          if (userError || !foundUser) {
+            setError('User not found');
+            return;
+          }
           
-          setMatchId(newMatch.id);
+          const userProfile = supabaseToUserProfile(foundUser);
+          setOtherUser(userProfile);
+          
+          // Find match between current user and other user
+          const { data: matchesData, error: matchesError } = await supabase
+            .from('matches')
+            .select('*')
+            .or(`user_id.eq.${user.id},matched_user_id.eq.${user.id}`)
+            .or(`user_id.eq.${id},matched_user_id.eq.${id}`);
+          
+          if (matchesError) {
+            console.error('Error fetching matches:', matchesError);
+            setError('Failed to load chat');
+            return;
+          }
+          
+          const match = matchesData.find(
+            m => (m.user_id === user.id && m.matched_user_id === id) || 
+                 (m.user_id === id && m.matched_user_id === user.id)
+          );
+          
+          if (!match) {
+            // Create a new match if it doesn't exist
+            const newMatch = {
+              id: `match-${Date.now()}`,
+              user_id: user.id,
+              matched_user_id: id,
+              created_at: Date.now()
+            };
+            
+            const { error: insertError } = await supabase
+              .from('matches')
+              .insert(newMatch);
+            
+            if (insertError) {
+              console.error('Error creating match:', insertError);
+              setError('Failed to create chat');
+              return;
+            }
+            
+            setMatchId(newMatch.id);
+          } else {
+            setMatchId(match.id);
+          }
         } else {
-          setMatchId(match.id);
+          setError('Supabase not configured');
         }
       } catch (err) {
         setError('Failed to load chat');
@@ -246,6 +265,36 @@ export default function ChatScreen() {
     </SafeAreaView>
   );
 }
+
+// Helper function to convert Supabase response to UserProfile type
+const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
+  const camelCaseData = convertToCamelCase(data);
+  
+  return {
+    id: String(camelCaseData.id || ''),
+    email: String(camelCaseData.email || ''),
+    name: String(camelCaseData.name || ''),
+    bio: String(camelCaseData.bio || ''),
+    location: String(camelCaseData.location || ''),
+    zipCode: String(camelCaseData.zipCode || ''),
+    businessField: (String(camelCaseData.businessField || 'Technology')) as UserProfile["businessField"],
+    entrepreneurStatus: (String(camelCaseData.entrepreneurStatus || 'upcoming')) as UserProfile["entrepreneurStatus"],
+    photoUrl: String(camelCaseData.photoUrl || ''),
+    membershipTier: (String(camelCaseData.membershipTier || 'basic')) as UserProfile["membershipTier"],
+    businessVerified: Boolean(camelCaseData.businessVerified || false),
+    joinedGroups: Array.isArray(camelCaseData.joinedGroups) ? camelCaseData.joinedGroups : [],
+    createdAt: Number(camelCaseData.createdAt || Date.now()),
+    lookingFor: Array.isArray(camelCaseData.lookingFor) ? camelCaseData.lookingFor as UserProfile["lookingFor"] : [],
+    businessStage: camelCaseData.businessStage as UserProfile["businessStage"] || 'Idea Phase',
+    skillsOffered: Array.isArray(camelCaseData.skillsOffered) ? camelCaseData.skillsOffered as UserProfile["skillsOffered"] : [],
+    skillsSeeking: Array.isArray(camelCaseData.skillsSeeking) ? camelCaseData.skillsSeeking as UserProfile["skillsSeeking"] : [],
+    keyChallenge: String(camelCaseData.keyChallenge || ''),
+    industryFocus: String(camelCaseData.industryFocus || ''),
+    availabilityLevel: Array.isArray(camelCaseData.availabilityLevel) ? camelCaseData.availabilityLevel as UserProfile["availabilityLevel"] : [],
+    timezone: String(camelCaseData.timezone || ''),
+    successHighlight: String(camelCaseData.successHighlight || ''),
+  };
+};
 
 const styles = StyleSheet.create({
   container: {

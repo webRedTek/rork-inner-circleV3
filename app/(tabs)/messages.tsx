@@ -13,9 +13,9 @@ import { useRouter } from 'expo-router';
 import Colors from '@/constants/colors';
 import { useAuthStore } from '@/store/auth-store';
 import { Match, Message, UserProfile } from '@/types/user';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useMatchesStore } from '@/store/matches-store';
 import { useMessagesStore } from '@/store/messages-store';
+import { isSupabaseConfigured, supabase, convertToCamelCase } from '@/lib/supabase';
 
 interface ChatPreview {
   id: string;
@@ -56,53 +56,66 @@ export default function MessagesScreen() {
     
     const loadChatPreviews = async () => {
       try {
-        // Get all users
-        const mockUsers = await AsyncStorage.getItem('mockUsers');
-        const users = mockUsers ? JSON.parse(mockUsers) : [];
-        
-        // Create chat previews
-        const previews = await Promise.all(matches.map(async (match) => {
-          // Determine the other user in the match
-          const otherUserId = match.userId === user.id ? match.matchedUserId : match.userId;
+        if (isSupabaseConfigured() && supabase) {
+          // Get all matched user IDs
+          const matchedUserIds = matches.map(match => 
+            match.userId === user.id ? match.matchedUserId : match.userId
+          );
           
-          // Find the other user's profile
-          const otherUser = users.find((u: any) => u.id === otherUserId);
-          if (!otherUser) return null;
+          // Fetch user profiles from Supabase
+          const { data: usersData, error } = await supabase
+            .from('users')
+            .select('*')
+            .in('id', matchedUserIds);
           
-          // Remove password from user object
-          const { password, ...userWithoutPassword } = otherUser;
+          if (error) {
+            console.error('Error fetching user profiles:', error);
+            return;
+          }
           
-          // Get messages for this match
-          const matchMessages = messages[match.id] || [];
+          const users = usersData.map(user => supabaseToUserProfile(user));
           
-          // Get last message
-          const lastMessage = matchMessages.length > 0 
-            ? matchMessages[matchMessages.length - 1] 
-            : undefined;
-          
-          // Count unread messages
-          const unreadCount = matchMessages.filter(
-            msg => msg.receiverId === user.id && !msg.read
-          ).length;
-          
-          return {
-            id: match.id,
-            user: userWithoutPassword,
-            lastMessage,
-            unreadCount
-          } as ChatPreview;
-        }));
-        
-        // Filter out null values and sort by last message time (newest first)
-        const validPreviews = previews
-          .filter((preview): preview is ChatPreview => preview !== null)
-          .sort((a, b) => {
-            const timeA = a?.lastMessage?.createdAt || 0;
-            const timeB = b?.lastMessage?.createdAt || 0;
-            return timeB - timeA;
+          // Create chat previews
+          const previews = matches.map(match => {
+            // Determine the other user in the match
+            const otherUserId = match.userId === user.id ? match.matchedUserId : match.userId;
+            
+            // Find the other user's profile
+            const otherUser = users.find(u => u.id === otherUserId);
+            if (!otherUser) return null;
+            
+            // Get messages for this match
+            const matchMessages = messages[match.id] || [];
+            
+            // Get last message
+            const lastMessage = matchMessages.length > 0 
+              ? matchMessages[matchMessages.length - 1] 
+              : undefined;
+            
+            // Count unread messages
+            const unreadCount = matchMessages.filter(
+              msg => msg.receiverId === user.id && !msg.read
+            ).length;
+            
+            return {
+              id: match.id,
+              user: otherUser,
+              lastMessage,
+              unreadCount
+            } as ChatPreview;
           });
-        
-        setChatPreviews(validPreviews);
+          
+          // Filter out null values and sort by last message time (newest first)
+          const validPreviews = previews
+            .filter((preview): preview is ChatPreview => preview !== null)
+            .sort((a, b) => {
+              const timeA = a?.lastMessage?.createdAt || 0;
+              const timeB = b?.lastMessage?.createdAt || 0;
+              return timeB - timeA;
+            });
+          
+          setChatPreviews(validPreviews);
+        }
       } catch (error) {
         console.error('Failed to load chat previews', error);
       }
@@ -218,6 +231,36 @@ export default function MessagesScreen() {
     </SafeAreaView>
   );
 }
+
+// Helper function to convert Supabase response to UserProfile type
+const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
+  const camelCaseData = convertToCamelCase(data);
+  
+  return {
+    id: String(camelCaseData.id || ''),
+    email: String(camelCaseData.email || ''),
+    name: String(camelCaseData.name || ''),
+    bio: String(camelCaseData.bio || ''),
+    location: String(camelCaseData.location || ''),
+    zipCode: String(camelCaseData.zipCode || ''),
+    businessField: (String(camelCaseData.businessField || 'Technology')) as UserProfile["businessField"],
+    entrepreneurStatus: (String(camelCaseData.entrepreneurStatus || 'upcoming')) as UserProfile["entrepreneurStatus"],
+    photoUrl: String(camelCaseData.photoUrl || ''),
+    membershipTier: (String(camelCaseData.membershipTier || 'basic')) as UserProfile["membershipTier"],
+    businessVerified: Boolean(camelCaseData.businessVerified || false),
+    joinedGroups: Array.isArray(camelCaseData.joinedGroups) ? camelCaseData.joinedGroups : [],
+    createdAt: Number(camelCaseData.createdAt || Date.now()),
+    lookingFor: Array.isArray(camelCaseData.lookingFor) ? camelCaseData.lookingFor as UserProfile["lookingFor"] : [],
+    businessStage: camelCaseData.businessStage as UserProfile["businessStage"] || 'Idea Phase',
+    skillsOffered: Array.isArray(camelCaseData.skillsOffered) ? camelCaseData.skillsOffered as UserProfile["skillsOffered"] : [],
+    skillsSeeking: Array.isArray(camelCaseData.skillsSeeking) ? camelCaseData.skillsSeeking as UserProfile["skillsSeeking"] : [],
+    keyChallenge: String(camelCaseData.keyChallenge || ''),
+    industryFocus: String(camelCaseData.industryFocus || ''),
+    availabilityLevel: Array.isArray(camelCaseData.availabilityLevel) ? camelCaseData.availabilityLevel as UserProfile["availabilityLevel"] : [],
+    timezone: String(camelCaseData.timezone || ''),
+    successHighlight: String(camelCaseData.successHighlight || ''),
+  };
+};
 
 const styles = StyleSheet.create({
   container: {

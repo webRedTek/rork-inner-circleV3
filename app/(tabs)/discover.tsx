@@ -19,7 +19,6 @@ import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
 import { ProfileDetailCard } from '@/components/ProfileDetailCard';
 import { X, ArrowLeft, RefreshCw } from 'lucide-react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function DiscoverScreen() {
   const router = useRouter();
@@ -68,22 +67,30 @@ export default function DiscoverScreen() {
   useEffect(() => {
     // Check for new matches and display modal
     const checkNewMatch = async () => {
-      if (newMatch) {
+      if (newMatch && user) {
         try {
-          // Get the matched user's profile
-          const mockUsers = await AsyncStorage.getItem('mockUsers');
-          const users = mockUsers ? JSON.parse(mockUsers) : [];
-          const currentUser = user;
-          const matchedUserId = newMatch.userId === currentUser?.id ? newMatch.matchedUserId : newMatch.userId;
-          const matchedProfile = users.find((u: UserProfile) => u.id === matchedUserId);
-          
-          if (matchedProfile) {
-            const { password, ...userWithoutPassword } = matchedProfile;
-            setMatchedUser(userWithoutPassword);
-            setShowMatchModal(true);
+          // Get the matched user's profile via Supabase
+          if (isSupabaseConfigured() && supabase) {
+            const matchedUserId = newMatch.userId === user.id ? newMatch.matchedUserId : newMatch.userId;
+            const { data: matchedProfile, error } = await supabase
+              .from('users')
+              .select('*')
+              .eq('id', matchedUserId)
+              .single();
             
-            if (Platform.OS !== 'web') {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            if (error) {
+              console.error('Error fetching matched user profile:', error);
+              return;
+            }
+            
+            if (matchedProfile) {
+              const userProfile = supabaseToUserProfile(matchedProfile);
+              setMatchedUser(userProfile);
+              setShowMatchModal(true);
+              
+              if (Platform.OS !== 'web') {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }
             }
           }
         } catch (err) {
@@ -344,6 +351,39 @@ export default function DiscoverScreen() {
     </SafeAreaView>
   );
 }
+
+// Helper function to convert Supabase response to UserProfile type
+const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
+  const camelCaseData = convertToCamelCase(data);
+  
+  return {
+    id: String(camelCaseData.id || ''),
+    email: String(camelCaseData.email || ''),
+    name: String(camelCaseData.name || ''),
+    bio: String(camelCaseData.bio || ''),
+    location: String(camelCaseData.location || ''),
+    zipCode: String(camelCaseData.zipCode || ''),
+    businessField: (String(camelCaseData.businessField || 'Technology')) as UserProfile["businessField"],
+    entrepreneurStatus: (String(camelCaseData.entrepreneurStatus || 'upcoming')) as UserProfile["entrepreneurStatus"],
+    photoUrl: String(camelCaseData.photoUrl || ''),
+    membershipTier: (String(camelCaseData.membershipTier || 'basic')) as UserProfile["membershipTier"],
+    businessVerified: Boolean(camelCaseData.businessVerified || false),
+    joinedGroups: Array.isArray(camelCaseData.joinedGroups) ? camelCaseData.joinedGroups : [],
+    createdAt: Number(camelCaseData.createdAt || Date.now()),
+    lookingFor: Array.isArray(camelCaseData.lookingFor) ? camelCaseData.lookingFor as UserProfile["lookingFor"] : [],
+    businessStage: camelCaseData.businessStage as UserProfile["businessStage"] || 'Idea Phase',
+    skillsOffered: Array.isArray(camelCaseData.skillsOffered) ? camelCaseData.skillsOffered as UserProfile["skillsOffered"] : [],
+    skillsSeeking: Array.isArray(camelCaseData.skillsSeeking) ? camelCaseData.skillsSeeking as UserProfile["skillsSeeking"] : [],
+    keyChallenge: String(camelCaseData.keyChallenge || ''),
+    industryFocus: String(camelCaseData.industryFocus || ''),
+    availabilityLevel: Array.isArray(camelCaseData.availabilityLevel) ? camelCaseData.availabilityLevel as UserProfile["availabilityLevel"] : [],
+    timezone: String(camelCaseData.timezone || ''),
+    successHighlight: String(camelCaseData.successHighlight || ''),
+  };
+};
+
+// Import needed for Supabase operations
+import { isSupabaseConfigured, supabase, convertToCamelCase } from '@/lib/supabase';
 
 const styles = StyleSheet.create({
   container: {

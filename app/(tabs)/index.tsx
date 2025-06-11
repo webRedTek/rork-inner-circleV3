@@ -7,11 +7,13 @@ import { useAuthStore } from '@/store/auth-store';
 import { ProfileHeader } from '@/components/ProfileHeader';
 import { Button } from '@/components/Button';
 import { UserProfile } from '@/types/user';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useMatchesStore } from '@/store/matches-store';
+import { isSupabaseConfigured, supabase, convertToCamelCase } from '@/lib/supabase';
 
 export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
+  const { matches, getMatches } = useMatchesStore();
   const [recentMatches, setRecentMatches] = useState<UserProfile[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   
@@ -22,31 +24,32 @@ export default function HomeScreen() {
   const fetchRecentMatches = async () => {
     try {
       setRefreshing(true);
+      await getMatches();
       
-      // Get matches from storage
-      const mockMatches = await AsyncStorage.getItem('mockMatches');
-      const matches = mockMatches ? JSON.parse(mockMatches) : [];
-      
-      // Filter matches for the current user
-      const userMatches = matches.filter((match: any) => 
-        match.userId === user?.id || match.matchedUserId === user?.id
-      );
-      
-      // Get matched user IDs
-      const matchedUserIds = userMatches.map((match: any) => 
-        match.userId === user?.id ? match.matchedUserId : match.userId
-      );
-      
-      // Get user profiles
-      const mockUsers = await AsyncStorage.getItem('mockUsers');
-      const users = mockUsers ? JSON.parse(mockUsers) : [];
-      
-      // Filter users by matched IDs and remove passwords
-      const matchedUsers = users
-        .filter((u: any) => matchedUserIds.includes(u.id))
-        .map(({ password, ...user }: any) => user);
-      
-      setRecentMatches(matchedUsers);
+      if (isSupabaseConfigured() && supabase && user) {
+        // Get matched user IDs
+        const matchedUserIds = matches.map(match => 
+          match.userId === user.id ? match.matchedUserId : match.userId
+        );
+        
+        if (matchedUserIds.length > 0) {
+          // Fetch profiles for matched users
+          const { data: matchedUsers, error } = await supabase
+            .from('users')
+            .select('*')
+            .in('id', matchedUserIds);
+          
+          if (error) {
+            console.error('Error fetching matched users:', error);
+            setRecentMatches([]);
+          } else {
+            const userProfiles = matchedUsers.map(user => supabaseToUserProfile(user));
+            setRecentMatches(userProfiles);
+          }
+        } else {
+          setRecentMatches([]);
+        }
+      }
     } catch (error) {
       console.error('Failed to fetch recent matches', error);
     } finally {
@@ -163,6 +166,36 @@ export default function HomeScreen() {
     </SafeAreaView>
   );
 }
+
+// Helper function to convert Supabase response to UserProfile type
+const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
+  const camelCaseData = convertToCamelCase(data);
+  
+  return {
+    id: String(camelCaseData.id || ''),
+    email: String(camelCaseData.email || ''),
+    name: String(camelCaseData.name || ''),
+    bio: String(camelCaseData.bio || ''),
+    location: String(camelCaseData.location || ''),
+    zipCode: String(camelCaseData.zipCode || ''),
+    businessField: (String(camelCaseData.businessField || 'Technology')) as UserProfile["businessField"],
+    entrepreneurStatus: (String(camelCaseData.entrepreneurStatus || 'upcoming')) as UserProfile["entrepreneurStatus"],
+    photoUrl: String(camelCaseData.photoUrl || ''),
+    membershipTier: (String(camelCaseData.membershipTier || 'basic')) as UserProfile["membershipTier"],
+    businessVerified: Boolean(camelCaseData.businessVerified || false),
+    joinedGroups: Array.isArray(camelCaseData.joinedGroups) ? camelCaseData.joinedGroups : [],
+    createdAt: Number(camelCaseData.createdAt || Date.now()),
+    lookingFor: Array.isArray(camelCaseData.lookingFor) ? camelCaseData.lookingFor as UserProfile["lookingFor"] : [],
+    businessStage: camelCaseData.businessStage as UserProfile["businessStage"] || 'Idea Phase',
+    skillsOffered: Array.isArray(camelCaseData.skillsOffered) ? camelCaseData.skillsOffered as UserProfile["skillsOffered"] : [],
+    skillsSeeking: Array.isArray(camelCaseData.skillsSeeking) ? camelCaseData.skillsSeeking as UserProfile["skillsSeeking"] : [],
+    keyChallenge: String(camelCaseData.keyChallenge || ''),
+    industryFocus: String(camelCaseData.industryFocus || ''),
+    availabilityLevel: Array.isArray(camelCaseData.availabilityLevel) ? camelCaseData.availabilityLevel as UserProfile["availabilityLevel"] : [],
+    timezone: String(camelCaseData.timezone || ''),
+    successHighlight: String(camelCaseData.successHighlight || ''),
+  };
+};
 
 const styles = StyleSheet.create({
   container: {
