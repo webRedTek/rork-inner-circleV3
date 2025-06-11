@@ -529,37 +529,45 @@ export const useAuthStore = create<AuthState>()(
       },
 
       fetchTierSettings: async (userId: string) => {
-        // Guard clause to prevent fetching if userId is invalid or Supabase isn't configured
-        if (!userId || userId.trim() === '' || !isSupabaseConfigured() || !supabase) {
-          console.log('Skipping tier settings fetch: Invalid user ID or Supabase not configured', { userId, supabaseConfigured: isSupabaseConfigured() });
-          set({ tierSettings: defaultTierSettings, isLoading: false });
-          return;
-        }
-        
-        set({ isLoading: true, error: null });
-        try {
-          console.log('Fetching tier settings for user:', userId);
-          const { data: tierSettings, error: tierError } = await supabase
-            .rpc('get_user_tier_settings', { user_id: userId });
-            
-          if (tierError) {
-            console.error('Error fetching tier settings:', tierError);
-            console.error('Full error object:', JSON.stringify(tierError, null, 2));
-            set({ tierSettings: defaultTierSettings, isLoading: false });
-          } else {
-            console.log('Tier settings fetched successfully:', tierSettings);
-            set({ tierSettings: tierSettings as TierSettings, isLoading: false });
-          }
-        } catch (error) {
-          console.error('Fetch tier settings error:', error);
-          console.error('Full error object:', JSON.stringify(error, null, 2));
-          set({ 
-            tierSettings: defaultTierSettings,
-            error: getReadableError(error), 
-            isLoading: false 
-          });
-        }
-      },
+  // Enhanced guard clause
+  if (!userId || userId.trim() === '' || !isSupabaseConfigured() || !supabase) {
+    console.log('Skipping tier settings fetch: Invalid user ID or Supabase not configured', { 
+      userId, 
+      supabaseConfigured: isSupabaseConfigured(),
+      hasSupabase: !!supabase 
+    });
+    set({ tierSettings: defaultTierSettings, isLoading: false });
+    return;
+  }
+
+  // Don't fetch if we're already loading
+  if (get().isLoading) {
+    console.log('Skipping tier settings fetch: Already loading');
+    return;
+  }
+
+  set({ isLoading: true, error: null });
+  try {
+    console.log('Fetching tier settings for user:', userId);
+    const { data: tierSettings, error: tierError } = await supabase
+      .rpc('get_user_tier_settings', { user_id: userId });
+      
+    if (tierError) {
+      console.error('Error fetching tier settings:', JSON.stringify(tierError, null, 2));
+      set({ tierSettings: defaultTierSettings, isLoading: false });
+    } else {
+      console.log('Tier settings fetched successfully:', tierSettings);
+      set({ tierSettings: tierSettings as TierSettings, isLoading: false });
+    }
+  } catch (error) {
+    console.error('Fetch tier settings error:', JSON.stringify(error, null, 2));
+    set({ 
+      tierSettings: defaultTierSettings,
+      error: getReadableError(error), 
+      isLoading: false 
+    });
+  }
+},
 
       clearError: () => set({ error: null }),
       
