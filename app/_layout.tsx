@@ -135,14 +135,16 @@ export default function RootLayout() {
         console.log('App initialization complete', { supabaseInitialized });
         
         // Fetch tier settings only if user is already authenticated and user ID exists
-        if (isAuthenticated && user?.id) {  // Only fetch if we don't already have settings
-         console.log('User authenticated and no tier settings, fetching...');
-         try {
-          await fetchTierSettings(user.id);
+        if (isAuthenticated && user?.id) {
+          console.log('User authenticated, fetching tier settings...');
+          try {
+            await fetchTierSettings(user.id);
           } catch (error) {
             console.error('Failed to fetch tier settings:', error);
             // Don't throw, just log the error
           }
+        } else {
+          console.log('Skipping tier settings fetch: User not authenticated or no user ID', { isAuthenticated, userId: user?.id });
         }
       } catch (err) {
         console.error("Failed to initialize data:", err);
