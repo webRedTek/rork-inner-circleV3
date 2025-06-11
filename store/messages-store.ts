@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { Message } from '@/types/user';
 import { isSupabaseConfigured, supabase, convertToCamelCase, convertToSnakeCase } from '@/lib/supabase';
@@ -8,22 +7,16 @@ import { useAuthStore } from './auth-store';
 const getReadableError = (error: any): string => {
   if (!error) return 'Unknown error occurred';
   
-  // If it's a string, return it directly
   if (typeof error === 'string') return error;
   
-  // If it has a message property, return that
   if (error.message) return error.message;
   
-  // If it has an error property with a message (nested error)
   if (error.error && error.error.message) return error.error.message;
   
-  // If it has a details property
   if (error.details) return String(error.details);
   
-  // If it has a code property
   if (error.code) return `Error code: ${error.code}`;
   
-  // Last resort: stringify the object
   try {
     return JSON.stringify(error);
   } catch (e) {
@@ -33,7 +26,6 @@ const getReadableError = (error: any): string => {
 
 // Helper function to convert Supabase response to Message type
 const supabaseToMessage = (data: Record<string, any>): Message => {
-  // First convert snake_case to camelCase
   const camelCaseData = convertToCamelCase(data);
   
   return {
@@ -99,20 +91,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             }
           }
         } else {
-          const mockMessages = await AsyncStorage.getItem('mockMessages');
-          const allMessages = mockMessages ? JSON.parse(mockMessages) : {};
-          let todayMessages = 0;
-          
-          Object.values(allMessages).forEach((convMessages: any) => {
-            const userMessages = convMessages.filter((msg: any) => 
-              msg.senderId === currentUser.id && msg.createdAt >= todayTimestamp
-            );
-            todayMessages += userMessages.length;
-          });
-          
-          if (todayMessages >= dailyMessageLimit) {
-            throw new Error('Daily message limit reached. Upgrade your plan for more messages.');
-          }
+          throw new Error('Supabase is not configured');
         }
       }
       
@@ -181,40 +160,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           isLoading: false 
         });
       } else {
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        const newMessage: Message = {
-          id: `msg-${Date.now()}`,
-          senderId: currentUser.id,
-          receiverId,
-          content,
-          type: 'text',
-          createdAt: Date.now(),
-          read: false
-        };
-        
-        // Get existing messages for this conversation
-        const { messages } = get();
-        const conversationMessages = messages[conversationId] || [];
-        
-        // Add new message
-        const updatedMessages = [...conversationMessages, newMessage];
-        
-        // Store in AsyncStorage
-        const mockMessages = await AsyncStorage.getItem('mockMessages');
-        const allMessages = mockMessages ? JSON.parse(mockMessages) : {};
-        allMessages[conversationId] = updatedMessages;
-        await AsyncStorage.setItem('mockMessages', JSON.stringify(allMessages));
-        
-        // Update state
-        set({ 
-          messages: { 
-            ...messages, 
-            [conversationId]: updatedMessages 
-          }, 
-          isLoading: false 
-        });
+        throw new Error('Supabase is not configured');
       }
     } catch (error) {
       console.error('Error sending message:', getReadableError(error));
@@ -258,20 +204,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             }
           }
         } else {
-          const mockMessages = await AsyncStorage.getItem('mockMessages');
-          const allMessages = mockMessages ? JSON.parse(mockMessages) : {};
-          let todayMessages = 0;
-          
-          Object.values(allMessages).forEach((convMessages: any) => {
-            const userMessages = convMessages.filter((msg: any) => 
-              msg.senderId === currentUser.id && msg.createdAt >= todayTimestamp
-            );
-            todayMessages += userMessages.length;
-          });
-          
-          if (todayMessages >= dailyMessageLimit) {
-            throw new Error('Daily message limit reached. Upgrade your plan for more messages.');
-          }
+          throw new Error('Supabase is not configured');
         }
       }
       
@@ -343,42 +276,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           isLoading: false 
         });
       } else {
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        const newMessage: Message = {
-          id: `msg-${Date.now()}`,
-          senderId: currentUser.id,
-          receiverId,
-          content: 'Voice message',
-          type: 'voice',
-          voiceUrl,
-          voiceDuration: duration,
-          createdAt: Date.now(),
-          read: false
-        };
-        
-        // Get existing messages for this conversation
-        const { messages } = get();
-        const conversationMessages = messages[conversationId] || [];
-        
-        // Add new message
-        const updatedMessages = [...conversationMessages, newMessage];
-        
-        // Store in AsyncStorage
-        const mockMessages = await AsyncStorage.getItem('mockMessages');
-        const allMessages = mockMessages ? JSON.parse(mockMessages) : {};
-        allMessages[conversationId] = updatedMessages;
-        await AsyncStorage.setItem('mockMessages', JSON.stringify(allMessages));
-        
-        // Update state
-        set({ 
-          messages: { 
-            ...messages, 
-            [conversationId]: updatedMessages 
-          }, 
-          isLoading: false 
-        });
+        throw new Error('Supabase is not configured');
       }
     } catch (error) {
       console.error('Error sending voice message:', getReadableError(error));
@@ -434,23 +332,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           isLoading: false 
         });
       } else {
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // Get messages from storage
-        const mockMessages = await AsyncStorage.getItem('mockMessages');
-        const allMessages = mockMessages ? JSON.parse(mockMessages) : {};
-        
-        const conversationMessages = allMessages[conversationId] || [];
-        
-        // Update state
-        set({ 
-          messages: { 
-            ...get().messages, 
-            [conversationId]: conversationMessages 
-          }, 
-          isLoading: false 
-        });
+        throw new Error('Supabase is not configured');
       }
     } catch (error) {
       console.error('Error getting messages:', getReadableError(error));
@@ -506,27 +388,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           }
         });
       } else {
-        // Mark messages as read
-        const updatedMessages = conversationMessages.map(msg => {
-          if (msg.receiverId === currentUser.id && !msg.read) {
-            return { ...msg, read: true };
-          }
-          return msg;
-        });
-        
-        // Store in AsyncStorage
-        const mockMessages = await AsyncStorage.getItem('mockMessages');
-        const allMessages = mockMessages ? JSON.parse(mockMessages) : {};
-        allMessages[conversationId] = updatedMessages;
-        await AsyncStorage.setItem('mockMessages', JSON.stringify(allMessages));
-        
-        // Update state
-        set({ 
-          messages: { 
-            ...messages, 
-            [conversationId]: updatedMessages 
-          }
-        });
+        throw new Error('Supabase is not configured');
       }
     } catch (error) {
       console.error('Failed to mark messages as read:', getReadableError(error));

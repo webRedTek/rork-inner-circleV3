@@ -1,30 +1,23 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
-import { Group, UserProfile } from '@/types/user';
-import { mockGroups } from '@/mocks/users';
+import { Group } from '@/types/user';
 import { isSupabaseConfigured, supabase, convertToCamelCase, convertToSnakeCase } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Helper function to extract readable error message from Supabase error
 const getReadableError = (error: any): string => {
   if (!error) return 'Unknown error occurred';
   
-  // If it's a string, return it directly
   if (typeof error === 'string') return error;
   
-  // If it has a message property, return that
   if (error.message) return error.message;
   
-  // If it has an error property with a message (nested error)
   if (error.error && error.error.message) return error.error.message;
   
-  // If it has a details property
   if (error.details) return String(error.details);
   
-  // If it has a code property
   if (error.code) return `Error code: ${error.code}`;
   
-  // Last resort: stringify the object
   try {
     return JSON.stringify(error);
   } catch (e) {
@@ -34,7 +27,6 @@ const getReadableError = (error: any): string => {
 
 // Helper function to convert Supabase response to Group type
 const supabaseToGroup = (data: Record<string, any>): Group => {
-  // First convert snake_case to camelCase
   const camelCaseData = convertToCamelCase(data);
   
   return {
@@ -122,34 +114,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           isLoading: false 
         });
       } else {
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Initialize mock groups if they don't exist
-        const storedGroups = await AsyncStorage.getItem('mockGroups');
-        if (!storedGroups) {
-          await AsyncStorage.setItem('mockGroups', JSON.stringify(mockGroups));
-        }
-        
-        // Get groups from storage
-        const groups = storedGroups ? JSON.parse(storedGroups) : mockGroups;
-        
-        // Filter groups for the current user
-        const userGroups = groups.filter((group: Group) => 
-          group.memberIds.includes(currentUser.id)
-        );
-        
-        // Filter available groups (not joined by the user)
-        const availableGroups = groups.filter((group: Group) => 
-          !group.memberIds.includes(currentUser.id)
-        );
-        
-        set({ 
-          groups, 
-          userGroups, 
-          availableGroups, 
-          isLoading: false 
-        });
+        throw new Error('Supabase is not configured');
       }
     } catch (error) {
       console.error('Error fetching groups:', getReadableError(error));
@@ -241,55 +206,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         // Refresh groups
         await get().fetchGroups();
       } else {
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Get groups from storage
-        const storedGroups = await AsyncStorage.getItem('mockGroups');
-        const groups = storedGroups ? JSON.parse(storedGroups) : [];
-        
-        // Update the group with the new member
-        const updatedGroups = groups.map((group: Group) => {
-          if (group.id === groupId) {
-            return {
-              ...group,
-              memberIds: [...group.memberIds, currentUser.id]
-            };
-          }
-          return group;
-        });
-        
-        // Update user's joinedGroups
-        const updatedUser = {
-          ...currentUser,
-          joinedGroups: [...currentUser.joinedGroups, groupId]
-        };
-        
-        // Update in storage
-        await AsyncStorage.setItem('mockGroups', JSON.stringify(updatedGroups));
-        
-        // Update user in storage
-        const mockUsers = await AsyncStorage.getItem('mockUsers');
-        const users = mockUsers ? JSON.parse(mockUsers) : [];
-        
-        const updatedUsers = users.map((u: any) => {
-          if (u.id === currentUser.id) {
-            return { ...u, joinedGroups: [...u.joinedGroups, groupId] };
-          }
-          return u;
-        });
-        
-        await AsyncStorage.setItem('mockUsers', JSON.stringify(updatedUsers));
-        
-        // Update auth store
-        const authStorage = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}');
-        if (authStorage.state) {
-          authStorage.state.user = updatedUser;
-          await AsyncStorage.setItem('auth-storage', JSON.stringify(authStorage));
-        }
-        
-        // Refresh groups
-        await get().fetchGroups();
+        throw new Error('Supabase is not configured');
       }
       
       set({ isLoading: false });
@@ -369,58 +286,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         // Refresh groups
         await get().fetchGroups();
       } else {
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Get groups from storage
-        const storedGroups = await AsyncStorage.getItem('mockGroups');
-        const groups = storedGroups ? JSON.parse(storedGroups) : [];
-        
-        // Update the group by removing the member
-        const updatedGroups = groups.map((group: Group) => {
-          if (group.id === groupId) {
-            return {
-              ...group,
-              memberIds: group.memberIds.filter((id: string) => id !== currentUser.id)
-            };
-          }
-          return group;
-        });
-        
-        // Update user's joinedGroups
-        const updatedUser = {
-          ...currentUser,
-          joinedGroups: currentUser.joinedGroups.filter((id: string) => id !== groupId)
-        };
-        
-        // Update in storage
-        await AsyncStorage.setItem('mockGroups', JSON.stringify(updatedGroups));
-        
-        // Update user in storage
-        const mockUsers = await AsyncStorage.getItem('mockUsers');
-        const users = mockUsers ? JSON.parse(mockUsers) : [];
-        
-        const updatedUsers = users.map((u: any) => {
-          if (u.id === currentUser.id) {
-            return { 
-              ...u, 
-              joinedGroups: u.joinedGroups.filter((id: string) => id !== groupId) 
-            };
-          }
-          return u;
-        });
-        
-        await AsyncStorage.setItem('mockUsers', JSON.stringify(updatedUsers));
-        
-        // Update auth store
-        const authStorage = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}');
-        if (authStorage.state) {
-          authStorage.state.user = updatedUser;
-          await AsyncStorage.setItem('auth-storage', JSON.stringify(authStorage));
-        }
-        
-        // Refresh groups
-        await get().fetchGroups();
+        throw new Error('Supabase is not configured');
       }
       
       set({ isLoading: false });
@@ -507,60 +373,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         // Refresh groups
         await get().fetchGroups();
       } else {
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Create new group
-        const newGroup: Group = {
-          id: `group-${Date.now()}`,
-          name: groupData.name || 'New Group',
-          description: groupData.description || '',
-          imageUrl: groupData.imageUrl,
-          memberIds: [currentUser.id], // Creator is the first member
-          createdBy: currentUser.id,
-          createdAt: Date.now(),
-          category: groupData.category || 'Interest',
-          industry: groupData.industry
-        };
-        
-        // Get groups from storage
-        const storedGroups = await AsyncStorage.getItem('mockGroups');
-        const groups = storedGroups ? JSON.parse(storedGroups) : [];
-        
-        // Add new group
-        const updatedGroups = [...groups, newGroup];
-        
-        // Update user's joinedGroups
-        const updatedUser = {
-          ...currentUser,
-          joinedGroups: [...currentUser.joinedGroups, newGroup.id]
-        };
-        
-        // Update in storage
-        await AsyncStorage.setItem('mockGroups', JSON.stringify(updatedGroups));
-        
-        // Update user in storage
-        const mockUsers = await AsyncStorage.getItem('mockUsers');
-        const users = mockUsers ? JSON.parse(mockUsers) : [];
-        
-        const updatedUsers = users.map((u: any) => {
-          if (u.id === currentUser.id) {
-            return { ...u, joinedGroups: [...u.joinedGroups, newGroup.id] };
-          }
-          return u;
-        });
-        
-        await AsyncStorage.setItem('mockUsers', JSON.stringify(updatedUsers));
-        
-        // Update auth store
-        const authStorage = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}');
-        if (authStorage.state) {
-          authStorage.state.user = updatedUser;
-          await AsyncStorage.setItem('auth-storage', JSON.stringify(authStorage));
-        }
-        
-        // Refresh groups
-        await get().fetchGroups();
+        throw new Error('Supabase is not configured');
       }
       
       set({ isLoading: false });

@@ -181,7 +181,9 @@ export const useAuthStore = create<AuthState>()(
               // Fetch tier settings after login
               await get().fetchTierSettings(data.user.id);
             }
-          } 
+          } else {
+            throw new Error('Supabase is not configured');
+          }
         } catch (error) {
           console.error('Login error:', getReadableError(error));
           set({ 
@@ -275,68 +277,7 @@ export const useAuthStore = create<AuthState>()(
               throw new Error('Signup failed with Supabase');
             }
           } else {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            const mockUsers = await AsyncStorage.getItem('mockUsers');
-            const users = mockUsers ? JSON.parse(mockUsers) : [];
-            
-            if (users.some((u: any) => u.email === userData.email)) {
-              throw new Error('Email already in use');
-            }
-            
-            const newUser = {
-              id: `user-${Date.now()}`,
-              email: userData.email!,
-              name: userData.name || userData.email!.split('@')[0],
-              bio: userData.bio || '',
-              location: userData.location || '',
-              zipCode: userData.zipCode || '',
-              businessField: userData.businessField || 'Technology',
-              entrepreneurStatus: userData.entrepreneurStatus || 'upcoming',
-              photoUrl: userData.photoUrl || '',
-              membershipTier: 'basic' as MembershipTier,
-              businessVerified: false,
-              joinedGroups: [],
-              createdAt: Date.now(),
-              lookingFor: userData.lookingFor || [],
-              businessStage: userData.businessStage || 'Idea Phase',
-              skillsOffered: userData.skillsOffered || [],
-              skillsSeeking: userData.skillsSeeking || [],
-              keyChallenge: userData.keyChallenge || '',
-              industryFocus: userData.industryFocus || '',
-              availabilityLevel: userData.availabilityLevel || [],
-              timezone: userData.timezone || '',
-              successHighlight: userData.successHighlight || '',
-              ...userData,
-              password
-            };
-            
-            users.push(newUser);
-            await AsyncStorage.setItem('mockUsers', JSON.stringify(users));
-            
-            const { password: _, ...userWithoutPassword } = newUser;
-            
-            set({ 
-              user: userWithoutPassword as UserProfile, 
-              isAuthenticated: true, 
-              isLoading: false 
-            });
-            // Set mock tier settings
-            const tier = userWithoutPassword.membershipTier || 'basic';
-            const mockTierSettings = {
-              daily_swipe_limit: tier === 'gold' ? 100 : tier === 'silver' ? 30 : 10,
-              daily_match_limit: tier === 'gold' ? 50 : tier === 'silver' ? 15 : 5,
-              message_sending_limit: tier === 'gold' ? 200 : tier === 'silver' ? 50 : 20,
-              can_see_who_liked_you: tier === 'gold' || tier === 'silver',
-              can_rewind_last_swipe: tier === 'gold' || tier === 'silver',
-              boost_duration: tier === 'gold' ? 60 : tier === 'silver' ? 30 : 0,
-              boost_frequency: tier === 'gold' ? 3 : tier === 'silver' ? 1 : 0,
-              profile_visibility_control: tier === 'gold' || tier === 'silver',
-              priority_listing: tier === 'gold',
-              premium_filters_access: tier === 'gold' || tier === 'silver',
-              global_discovery: tier === 'gold'
-            };
-            set({ tierSettings: mockTierSettings });
+            throw new Error('Supabase is not configured');
           }
         } catch (error) {
           console.error('Signup error:', getReadableError(error));
@@ -395,24 +336,7 @@ export const useAuthStore = create<AuthState>()(
               isLoading: false,
             });
           } else {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            const mockUsers = await AsyncStorage.getItem('mockUsers');
-            const users = mockUsers ? JSON.parse(mockUsers) : [];
-            
-            const updatedUsers = users.map((u: any) => {
-              if (u.id === user.id) {
-                return { ...u, ...data };
-              }
-              return u;
-            });
-            
-            await AsyncStorage.setItem('mockUsers', JSON.stringify(updatedUsers));
-            
-            set({ 
-              user: { ...user, ...data }, 
-              isLoading: false 
-            });
+            throw new Error('Supabase is not configured');
           }
         } catch (error) {
           console.error('Update profile error:', getReadableError(error));
@@ -446,39 +370,7 @@ export const useAuthStore = create<AuthState>()(
             // Refresh tier settings after membership update
             await get().fetchTierSettings(user.id);
           } else {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            const mockUsers = await AsyncStorage.getItem('mockUsers');
-            const users = mockUsers ? JSON.parse(mockUsers) : [];
-            
-            const updatedUsers = users.map((u: any) => {
-              if (u.id === user.id) {
-                return { ...u, membershipTier: tier };
-              }
-              return u;
-            });
-            
-            await AsyncStorage.setItem('mockUsers', JSON.stringify(updatedUsers));
-            
-            set({ 
-              user: { ...user, membershipTier: tier }, 
-              isLoading: false 
-            });
-            // Set mock tier settings
-            const mockTierSettings = {
-              daily_swipe_limit: tier === 'gold' ? 100 : tier === 'silver' ? 30 : 10,
-              daily_match_limit: tier === 'gold' ? 50 : tier === 'silver' ? 15 : 5,
-              message_sending_limit: tier === 'gold' ? 200 : tier === 'silver' ? 50 : 20,
-              can_see_who_liked_you: tier === 'gold' || tier === 'silver',
-              can_rewind_last_swipe: tier === 'gold' || tier === 'silver',
-              boost_duration: tier === 'gold' ? 60 : tier === 'silver' ? 30 : 0,
-              boost_frequency: tier === 'gold' ? 3 : tier === 'silver' ? 1 : 0,
-              profile_visibility_control: tier === 'gold' || tier === 'silver',
-              priority_listing: tier === 'gold',
-              premium_filters_access: tier === 'gold' || tier === 'silver',
-              global_discovery: tier === 'gold'
-            };
-            set({ tierSettings: mockTierSettings });
+            throw new Error('Supabase is not configured');
           }
         } catch (error) {
           console.error('Update membership error:', getReadableError(error));
@@ -490,45 +382,45 @@ export const useAuthStore = create<AuthState>()(
       },
 
       fetchTierSettings: async (userId: string) => {
-  // Enhanced guard clause
-  if (!userId || userId.trim() === '' || !isSupabaseConfigured() || !supabase) {
-    console.log('Skipping tier settings fetch: Invalid user ID or Supabase not configured', { 
-      userId, 
-      supabaseConfigured: isSupabaseConfigured(),
-      hasSupabase: !!supabase 
-    });
-    set({ tierSettings: defaultTierSettings, isLoading: false });
-    return;
-  }
+        // Enhanced guard clause
+        if (!userId || userId.trim() === '' || !isSupabaseConfigured() || !supabase) {
+          console.log('Skipping tier settings fetch: Invalid user ID or Supabase not configured', { 
+            userId, 
+            supabaseConfigured: isSupabaseConfigured(),
+            hasSupabase: !!supabase 
+          });
+          set({ tierSettings: defaultTierSettings, isLoading: false });
+          return;
+        }
 
-  // Don't fetch if we're already loading
-  if (get().isLoading) {
-    console.log('Skipping tier settings fetch: Already loading');
-    return;
-  }
+        // Don't fetch if we're already loading
+        if (get().isLoading) {
+          console.log('Skipping tier settings fetch: Already loading');
+          return;
+        }
 
-  set({ isLoading: true, error: null });
-  try {
-    console.log('Fetching tier settings for user:', userId);
-    const { data: tierSettings, error: tierError } = await supabase
-     .rpc('get_user_tier_settings', { p_user_id: userId });
-      
-    if (tierError) {
-      console.error('Error fetching tier settings:', JSON.stringify(tierError, null, 2));
-      set({ tierSettings: defaultTierSettings, isLoading: false });
-    } else {
-      console.log('Tier settings fetched successfully:', tierSettings);
-      set({ tierSettings: tierSettings as TierSettings, isLoading: false });
-    }
-  } catch (error) {
-    console.error('Fetch tier settings error:', JSON.stringify(error, null, 2));
-    set({ 
-      tierSettings: defaultTierSettings,
-      error: getReadableError(error), 
-      isLoading: false 
-    });
-  }
-},
+        set({ isLoading: true, error: null });
+        try {
+          console.log('Fetching tier settings for user:', userId);
+          const { data: tierSettings, error: tierError } = await supabase
+            .rpc('get_user_tier_settings', { p_user_id: userId });
+            
+          if (tierError) {
+            console.error('Error fetching tier settings:', JSON.stringify(tierError, null, 2));
+            set({ tierSettings: defaultTierSettings, isLoading: false });
+          } else {
+            console.log('Tier settings fetched successfully:', tierSettings);
+            set({ tierSettings: tierSettings as TierSettings, isLoading: false });
+          }
+        } catch (error) {
+          console.error('Fetch tier settings error:', JSON.stringify(error, null, 2));
+          set({ 
+            tierSettings: defaultTierSettings,
+            error: getReadableError(error), 
+            isLoading: false 
+          });
+        }
+      },
 
       clearError: () => set({ error: null }),
       
@@ -536,13 +428,6 @@ export const useAuthStore = create<AuthState>()(
         try {
           console.log('Clearing auth cache...');
           await AsyncStorage.removeItem('auth-storage');
-          await AsyncStorage.removeItem('matches-storage');
-          await AsyncStorage.removeItem('mockUsers');
-          await AsyncStorage.removeItem('mockMatches');
-          await AsyncStorage.removeItem('mockLikes');
-          await AsyncStorage.removeItem('mockGroups');
-          await AsyncStorage.removeItem('mockAuditLog');
-          
           set({ 
             user: null, 
             tierSettings: null,

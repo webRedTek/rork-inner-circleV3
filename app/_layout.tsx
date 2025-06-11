@@ -6,8 +6,6 @@ import { useEffect, useState } from "react";
 import { Platform, StatusBar, View, Text, Alert } from "react-native";
 import { ErrorBoundary } from "./error-boundary";
 import Colors from "@/constants/colors";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { mockUsers } from "@/mocks/users";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { trpc, trpcClient } from "@/lib/trpc";
 import { isSupabaseConfigured, initSupabase, testSupabaseConnection } from "@/lib/supabase";
@@ -48,7 +46,7 @@ export default function RootLayout() {
   }, [error]);
 
   useEffect(() => {
-    // Initialize Supabase and mock data
+    // Initialize Supabase
     const initApp = async () => {
       try {
         console.log('Initializing app...');
@@ -68,7 +66,7 @@ export default function RootLayout() {
         if (hasPreviousError === 'true') {
           console.log('Previous error detected, clearing caches...');
           await AsyncStorage.removeItem('app_had_error');
-          await clearCaches();
+          await clearCache();
         }
         
         // Initialize Supabase with retry
@@ -129,16 +127,6 @@ export default function RootLayout() {
         await AsyncStorage.setItem('app_had_error', 'true');
         setSupabaseStatus(false);
         setIsInitialized(true);
-      }
-    };
-
-    const clearCaches = async () => {
-      try {
-        console.log('Clearing caches...');
-        await clearCache();
-        console.log('Caches cleared successfully');
-      } catch (error) {
-        console.error('Error clearing caches:', error);
       }
     };
 

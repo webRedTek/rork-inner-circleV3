@@ -9,22 +9,16 @@ import { useAuthStore } from './auth-store';
 const getReadableError = (error: any): string => {
   if (!error) return 'Unknown error occurred';
   
-  // If it's a string, return it directly
   if (typeof error === 'string') return error;
   
-  // If it has a message property, return that
   if (error.message) return error.message;
   
-  // If it has an error property with a message (nested error)
   if (error.error && error.error.message) return error.error.message;
   
-  // If it has a details property
   if (error.details) return String(error.details);
   
-  // If it has a code property
   if (error.code) return `Error code: ${error.code}`;
   
-  // Last resort: stringify the object
   try {
     return JSON.stringify(error);
   } catch (e) {
@@ -34,7 +28,6 @@ const getReadableError = (error: any): string => {
 
 // Helper function to convert Supabase response to Match type
 const supabaseToMatch = (data: Record<string, any>): Match => {
-  // First convert snake_case to camelCase
   const camelCaseData = convertToCamelCase(data);
   
   return {
@@ -48,7 +41,6 @@ const supabaseToMatch = (data: Record<string, any>): Match => {
 
 // Helper function to convert Supabase response to UserProfile type
 const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
-  // First convert snake_case to camelCase
   const camelCaseData = convertToCamelCase(data);
   
   return {
@@ -205,76 +197,7 @@ export const useMatchesStore = create<MatchesState>()(
               isLoading: false 
             });
           } else {
-            // Simulate API call
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            // For demo, we'll get users from AsyncStorage
-            const mockUsers = await AsyncStorage.getItem('mockUsers');
-            const users = mockUsers ? JSON.parse(mockUsers) : [];
-            
-            // Filter out users that have already been matched or passed
-            // In a real app, this would be handled by the backend
-            const { matches } = get();
-            
-            const matchedUserIds = matches.map((m: Match) => 
-              m.userId === currentUser.id ? m.matchedUserId : m.userId
-            );
-            
-            // Simulate global discovery based on membership tier
-            const isGlobalDiscovery = tierSettings?.global_discovery || false;
-            
-            // Filter users based on location if not global discovery
-            let filteredUsers = users.filter((u: UserProfile) => u.id !== currentUser.id);
-            
-            if (!isGlobalDiscovery && currentUser?.zipCode) {
-              // Simulate distance filtering based on ZIP code
-              // In a real app, this would use geolocation data
-              filteredUsers = filteredUsers.filter((u: UserProfile) => {
-                // If user has no ZIP code, exclude them
-                if (!u.zipCode) return false;
-                
-                // Simple mock distance calculation (first digit difference)
-                const zipDiff = Math.abs(
-                  parseInt(u.zipCode.substring(0, 1)) - 
-                  parseInt((currentUser?.zipCode || '0').substring(0, 1))
-                );
-                
-                // Convert to "miles" (mock)
-                const distance = zipDiff * 10;
-                return distance <= maxDistance;
-              });
-            }
-            
-            const potentialMatches = filteredUsers
-              .filter((u: UserProfile) => !matchedUserIds.includes(u.id))
-              .map(({ password, ...user }: any) => user);
-            
-            // Shuffle for randomization
-            const shuffledMatches = potentialMatches.sort(() => Math.random() - 0.5);
-            const batchToShow = shuffledMatches.slice(0, get().batchSize);
-            const remainingCache = shuffledMatches.slice(get().batchSize);
-            
-            // Log the action in mock audit log
-            const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
-            const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
-            auditLogs.push({
-              id: `log-${Date.now()}`,
-              user_id: currentUser.id,
-              action: 'fetch_potential_matches',
-              details: { 
-                count: shuffledMatches.length,
-                max_distance: maxDistance,
-                global_discovery: isGlobalDiscovery
-              },
-              timestamp: new Date().toISOString()
-            });
-            await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
-            
-            set({ 
-              potentialMatches: batchToShow, 
-              cachedMatches: remainingCache, 
-              isLoading: false 
-            });
+            throw new Error('Supabase is not configured');
           }
         } catch (error) {
           console.error('Error fetching potential matches:', getReadableError(error));
@@ -350,65 +273,7 @@ export const useMatchesStore = create<MatchesState>()(
               isPrefetching: false 
             });
           } else {
-            // Simulate API call
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            // For demo, we'll get users from AsyncStorage
-            const mockUsers = await AsyncStorage.getItem('mockUsers');
-            const users = mockUsers ? JSON.parse(mockUsers) : [];
-            
-            // Filter out users that have already been matched or passed
-            const { matches } = get();
-            
-            const matchedUserIds = matches.map((m: Match) => 
-              m.userId === currentUser.id ? m.matchedUserId : m.userId
-            );
-            
-            // Simulate global discovery based on membership tier
-            const isGlobalDiscovery = tierSettings?.global_discovery || false;
-            
-            // Filter users based on location if not global discovery
-            let filteredUsers = users.filter((u: UserProfile) => u.id !== currentUser.id);
-            
-            if (!isGlobalDiscovery && currentUser?.zipCode) {
-              filteredUsers = filteredUsers.filter((u: UserProfile) => {
-                if (!u.zipCode) return false;
-                const zipDiff = Math.abs(
-                  parseInt(u.zipCode.substring(0, 1)) - 
-                  parseInt((currentUser?.zipCode || '0').substring(0, 1))
-                );
-                const distance = zipDiff * 10;
-                return distance <= maxDistance;
-              });
-            }
-            
-            const potentialMatches = filteredUsers
-              .filter((u: UserProfile) => !matchedUserIds.includes(u.id))
-              .map(({ password, ...user }: any) => user);
-            
-            // Shuffle for randomization
-            const shuffledMatches = potentialMatches.sort(() => Math.random() - 0.5);
-            
-            // Log the action in mock audit log
-            const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
-            const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
-            auditLogs.push({
-              id: `log-${Date.now()}`,
-              user_id: currentUser.id,
-              action: 'prefetch_potential_matches',
-              details: { 
-                count: shuffledMatches.length,
-                max_distance: maxDistance,
-                global_discovery: isGlobalDiscovery
-              },
-              timestamp: new Date().toISOString()
-            });
-            await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
-            
-            set({ 
-              cachedMatches: [...get().cachedMatches, ...shuffledMatches].slice(0, 50), 
-              isPrefetching: false 
-            });
+            throw new Error('Supabase is not configured');
           }
         } catch (error) {
           console.error('Error prefetching potential matches:', getReadableError(error));
@@ -466,7 +331,6 @@ export const useMatchesStore = create<MatchesState>()(
           });
           
           // Return null for now - match will be processed in batch
-          // In a real app, you might want to return a pending match or handle this differently
           return null;
         } catch (error) {
           console.error('Error liking user:', getReadableError(error));
@@ -593,115 +457,13 @@ export const useMatchesStore = create<MatchesState>()(
               }
               
               // Return the first match for immediate feedback if needed
-              // In the UI, you might want to show a match animation or notification
               console.log(`Batch processing created ${typedMatches.length} new matches`);
             }
             
             // Clear the swipe queue
             set({ swipeQueue: [], isLoading: false });
           } else {
-            // Simulate batch processing for mock data
-            const currentUser = useAuthStore.getState().user;
-            const tierSettings = useAuthStore.getState().tierSettings;
-            const dailySwipeLimit = tierSettings?.daily_swipe_limit || 10;
-            const dailyMatchLimit = tierSettings?.daily_match_limit || 5;
-            
-            // Get today's timestamp
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const todayTimestamp = today.getTime();
-            
-            // Get mock data
-            const mockLikes = await AsyncStorage.getItem('mockLikes');
-            let likes = mockLikes ? JSON.parse(mockLikes) : [];
-            
-            // Count today's likes
-            let todayLikesCount = likes.filter((like: any) => 
-              like.likerId === currentUser?.id && like.timestamp >= todayTimestamp
-            ).length;
-            
-            // Process each swipe in the queue
-            let newLikes = [];
-            let newMatches = [];
-            
-            for (const swipe of swipeQueue) {
-              if (todayLikesCount >= dailySwipeLimit) {
-                console.log("Swipe limit reached in mock batch processing");
-                set({ swipeLimitReached: true });
-                break;
-              }
-              
-              if (swipe.direction === 'right') {
-                newLikes.push({
-                  likerId: swipe.swiper_id,
-                  likedId: swipe.swipee_id,
-                  timestamp: swipe.swipe_timestamp
-                });
-                
-                // Check for match (reciprocal like)
-                const isMatch = likes.some((like: any) => 
-                  like.likerId === swipe.swipee_id && like.likedId === swipe.swiper_id
-                );
-                
-                if (isMatch) {
-                  // Check match limit
-                  const mockMatches = await AsyncStorage.getItem('mockMatches');
-                  const storedMatches = mockMatches ? JSON.parse(mockMatches) : [];
-                  
-                  const todayMatches = storedMatches.filter((m: any) => 
-                    m.userId === currentUser?.id && m.createdAt >= todayTimestamp
-                  ).length;
-                  
-                  if (todayMatches < dailyMatchLimit) {
-                    const match = {
-                      id: `match-${Date.now()}`,
-                      userId: swipe.swiper_id,
-                      matchedUserId: swipe.swipee_id,
-                      createdAt: swipe.swipe_timestamp
-                    };
-                    newMatches.push(match);
-                  } else {
-                    set({ matchLimitReached: true });
-                  }
-                }
-                
-                todayLikesCount++;
-              }
-            }
-            
-            // Update storage
-            likes = [...likes, ...newLikes];
-            await AsyncStorage.setItem('mockLikes', JSON.stringify(likes));
-            
-            if (newMatches.length > 0) {
-              const mockMatches = await AsyncStorage.getItem('mockMatches');
-              let storedMatches = mockMatches ? JSON.parse(mockMatches) : [];
-              storedMatches = [...storedMatches, ...newMatches];
-              await AsyncStorage.setItem('mockMatches', JSON.stringify(storedMatches));
-              
-              set(state => ({
-                matches: [...state.matches, ...newMatches],
-                newMatch: newMatches[0] // Set the first new match for UI notification
-              }));
-            }
-            
-            // Log the batch processing
-            const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
-            const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
-            auditLogs.push({
-              id: `log-${Date.now()}`,
-              user_id: currentUser?.id,
-              action: 'batch_swipe_processed',
-              details: { 
-                swipe_count: swipeQueue.length,
-                new_matches: newMatches.length
-              },
-              timestamp: new Date().toISOString()
-            });
-            await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
-            
-            // Clear the swipe queue
-            set({ swipeQueue: [], isLoading: false });
+            throw new Error('Supabase is not configured');
           }
         } catch (error) {
           console.error('Error processing swipe batch:', getReadableError(error));
@@ -747,31 +509,7 @@ export const useMatchesStore = create<MatchesState>()(
             
             set({ matches: typedMatches, isLoading: false });
           } else {
-            // Simulate API call
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            // Get matches from storage
-            const mockMatches = await AsyncStorage.getItem('mockMatches');
-            const allMatches = mockMatches ? JSON.parse(mockMatches) : [];
-            
-            // Filter matches for the current user
-            const userMatches = allMatches.filter((match: Match) => 
-              match.userId === currentUser.id || match.matchedUserId === currentUser.id
-            );
-            
-            // Log the action in mock audit log
-            const mockAuditLog = await AsyncStorage.getItem('mockAuditLog');
-            const auditLogs = mockAuditLog ? JSON.parse(mockAuditLog) : [];
-            auditLogs.push({
-              id: `log-${Date.now()}`,
-              user_id: currentUser.id,
-              action: 'view_matches',
-              details: { count: userMatches.length },
-              timestamp: new Date().toISOString()
-            });
-            await AsyncStorage.setItem('mockAuditLog', JSON.stringify(auditLogs));
-            
-            set({ matches: userMatches, isLoading: false });
+            throw new Error('Supabase is not configured');
           }
         } catch (error) {
           console.error('Error getting matches:', getReadableError(error));
@@ -822,15 +560,7 @@ export const useMatchesStore = create<MatchesState>()(
             set({ swipeLimitReached: !canSwipe });
             return canSwipe;
           } else {
-            const mockLikes = await AsyncStorage.getItem('mockLikes');
-            const likes = mockLikes ? JSON.parse(mockLikes) : [];
-            const todaySwipes = likes.filter((like: any) => 
-              like.likerId === currentUser.id && like.timestamp >= todayTimestamp
-            ).length;
-            
-            const canSwipe = todaySwipes < dailySwipeLimit;
-            set({ swipeLimitReached: !canSwipe });
-            return canSwipe;
+            throw new Error('Supabase is not configured');
           }
         } catch (error) {
           console.error('Error checking swipe limits:', error);
@@ -882,23 +612,7 @@ export const useMatchesStore = create<MatchesState>()(
               set({ matchLimitReached });
             }
           } else {
-            // Sync swipe count for mock data
-            const mockLikes = await AsyncStorage.getItem('mockLikes');
-            const likes = mockLikes ? JSON.parse(mockLikes) : [];
-            const todaySwipes = likes.filter((like: any) => 
-              like.likerId === currentUser.id && like.timestamp >= todayTimestamp
-            ).length;
-            const swipeLimitReached = todaySwipes >= tierSettings.daily_swipe_limit;
-            set({ swipeLimitReached });
-            
-            // Sync match count for mock data
-            const mockMatches = await AsyncStorage.getItem('mockMatches');
-            const matches = mockMatches ? JSON.parse(mockMatches) : [];
-            const todayMatches = matches.filter((match: any) => 
-              match.userId === currentUser.id && match.createdAt >= todayTimestamp
-            ).length;
-            const matchLimitReached = todayMatches >= tierSettings.daily_match_limit;
-            set({ matchLimitReached });
+            throw new Error('Supabase is not configured');
           }
         } catch (error) {
           console.error('Error syncing usage counters:', error);
