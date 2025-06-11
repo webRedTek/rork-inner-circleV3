@@ -56,6 +56,8 @@ export type AvailabilityLevel =
 
 export type MembershipTier = 'basic' | 'bronze' | 'silver' | 'gold';
 
+export type LocationPrivacy = 'public' | 'matches_only' | 'hidden';
+
 export interface UserProfile {
   id: string;
   name: string;
@@ -66,6 +68,10 @@ export interface UserProfile {
   bio: string;
   location?: string;
   zipCode?: string;
+  latitude?: number;
+  longitude?: number;
+  preferredDistance?: number;
+  locationPrivacy?: LocationPrivacy;
   
   // Enhanced profile fields
   lookingFor?: LookingFor[];

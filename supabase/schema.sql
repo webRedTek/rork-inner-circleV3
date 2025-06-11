@@ -12,6 +12,10 @@ create table public.users (
   bio text,
   location text,
   zip_code text,
+  latitude double precision,
+  longitude double precision,
+  preferred_distance integer default 50,
+  location_privacy text not null default 'public', -- 'public', 'matches_only', 'hidden'
   business_field text not null,
   entrepreneur_status text not null,
   photo_url text,
@@ -239,7 +243,8 @@ returns table (
   availability_level text[],
   timezone text,
   success_highlight text,
-  looking_for text[]
+  looking_for text[],
+  distance double precision
 ) as $$
 begin
   if global_search then
@@ -252,7 +257,8 @@ begin
       u.created_at, u.skills_offered, u.skills_seeking, 
       u.industry_focus, u.business_stage, u.key_challenge, 
       u.availability_level, u.timezone, u.success_highlight, 
-      u.looking_for
+      u.looking_for,
+      0.0 as distance
     from public.users u
     where u.id != user_id
     and u.id not in (
@@ -267,7 +273,7 @@ begin
     order by random()
     limit 50;
   else
-    -- Return users within max_distance (mocked based on zip code), excluding liked/matched users
+    -- Return users within max_distance using geospatial data, excluding liked/matched users
     return query
     select 
       u.id, u.email, u.name, u.bio, u.location, u.zip_code, 
@@ -276,10 +282,16 @@ begin
       u.created_at, u.skills_offered, u.skills_seeking, 
       u.industry_focus, u.business_stage, u.key_challenge, 
       u.availability_level, u.timezone, u.success_highlight, 
-      u.looking_for
+      u.looking_for,
+      ST_Distance(
+        ST_SetSRID(ST_MakePoint(u.longitude, u.latitude), 4326),
+        ST_SetSRID(ST_MakePoint((select longitude from public.users where id = user_id), (select latitude from public.users where id = user_id)), 4326)
+      ) / 1000 as distance -- Distance in kilometers
     from public.users u
     where u.id != user_id
-    and u.zip_code is not null
+    and u.latitude is not null
+    and u.longitude is not null
+    and (u.location_privacy = 'public' or u.location_privacy = 'matches_only')
     and u.id not in (
       select liked_id from public.likes where liker_id = user_id
     )
@@ -289,10 +301,13 @@ begin
     and u.id not in (
       select user_id from public.matches where matched_user_id = user_id
     )
-    order by random()
+    and ST_DWithin(
+      ST_SetSRID(ST_MakePoint(u.longitude, u.latitude), 4326),
+      ST_SetSRID(ST_MakePoint((select longitude from public.users where id = user_id), (select latitude from public.users where id = user_id)), 4326),
+      max_distance * 1000 -- Convert km to meters
+    )
+    order by distance
     limit 50;
-    -- In a real implementation, this would use geospatial data
-    -- For now, we're just returning users with zip codes as a mock
   end if;
 end;
 $$ language plpgsql security definer;

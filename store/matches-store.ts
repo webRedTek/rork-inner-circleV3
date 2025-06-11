@@ -50,6 +50,10 @@ const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
     bio: String(camelCaseData.bio || ''),
     location: String(camelCaseData.location || ''),
     zipCode: String(camelCaseData.zipCode || ''),
+    latitude: Number(camelCaseData.latitude || 0),
+    longitude: Number(camelCaseData.longitude || 0),
+    preferredDistance: Number(camelCaseData.preferredDistance || 50),
+    locationPrivacy: String(camelCaseData.locationPrivacy || 'public') as UserProfile["locationPrivacy"],
     businessField: String(camelCaseData.businessField || 'Technology') as UserProfile["businessField"],
     entrepreneurStatus: String(camelCaseData.entrepreneurStatus || 'upcoming') as UserProfile["entrepreneurStatus"],
     photoUrl: camelCaseData.photoUrl,
@@ -140,12 +144,14 @@ export const useMatchesStore = create<MatchesState>()(
           if (isSupabaseConfigured() && supabase) {
             // Use cached tier settings for global discovery
             const globalDiscovery = tierSettings?.global_discovery || false;
+            // Use user's preferred distance if available
+            const userMaxDistance = user.preferredDistance || maxDistance;
             
             // Get potential matches based on location and tier settings
             const { data: potentialUsers, error: matchError } = await supabase
               .rpc('find_users_within_distance', { 
                 user_id: user.id,
-                max_distance: maxDistance,
+                max_distance: userMaxDistance,
                 global_search: globalDiscovery
               });
               
@@ -167,12 +173,18 @@ export const useMatchesStore = create<MatchesState>()(
               .filter((user: any) => !likedIds.includes(user.id))
               .map(supabaseToUserProfile);
             
-            // Shuffle the array for randomization
-            const shuffledMatches = filteredMatches.sort(() => Math.random() - 0.5);
+            // Shuffle the array for randomization if global search, otherwise sort by distance
+            const sortedMatches = globalDiscovery 
+              ? filteredMatches.sort(() => Math.random() - 0.5)
+              : filteredMatches.sort((a, b) => {
+                  const aDist = (a as any).distance || 0;
+                  const bDist = (b as any).distance || 0;
+                  return aDist - bDist;
+                });
             
             // Split into potential and cached
-            const batchToShow = shuffledMatches.slice(0, get().batchSize);
-            const remainingCache = shuffledMatches.slice(get().batchSize);
+            const batchToShow = sortedMatches.slice(0, get().batchSize);
+            const remainingCache = sortedMatches.slice(get().batchSize);
             
             // Log the action
             try {
@@ -180,8 +192,8 @@ export const useMatchesStore = create<MatchesState>()(
                 user_id: user.id,
                 action: 'fetch_potential_matches',
                 details: { 
-                  count: shuffledMatches.length,
-                  max_distance: maxDistance,
+                  count: sortedMatches.length,
+                  max_distance: userMaxDistance,
                   global_discovery: globalDiscovery
                 }
               });
@@ -219,12 +231,14 @@ export const useMatchesStore = create<MatchesState>()(
           if (isSupabaseConfigured() && supabase) {
             // Use cached tier settings for global discovery
             const globalDiscovery = tierSettings?.global_discovery || false;
+            // Use user's preferred distance if available
+            const userMaxDistance = user.preferredDistance || maxDistance;
             
             // Get potential matches based on location and tier settings
             const { data: potentialUsers, error: matchError } = await supabase
               .rpc('find_users_within_distance', { 
                 user_id: user.id,
-                max_distance: maxDistance,
+                max_distance: userMaxDistance,
                 global_search: globalDiscovery
               });
               
@@ -246,8 +260,14 @@ export const useMatchesStore = create<MatchesState>()(
               .filter((user: any) => !likedIds.includes(user.id))
               .map(supabaseToUserProfile);
             
-            // Shuffle the array for randomization
-            const shuffledMatches = filteredMatches.sort(() => Math.random() - 0.5);
+            // Shuffle the array for randomization if global search, otherwise sort by distance
+            const sortedMatches = globalDiscovery 
+              ? filteredMatches.sort(() => Math.random() - 0.5)
+              : filteredMatches.sort((a, b) => {
+                  const aDist = (a as any).distance || 0;
+                  const bDist = (b as any).distance || 0;
+                  return aDist - bDist;
+                });
             
             // Log the action
             try {
@@ -255,8 +275,8 @@ export const useMatchesStore = create<MatchesState>()(
                 user_id: user.id,
                 action: 'prefetch_potential_matches',
                 details: { 
-                  count: shuffledMatches.length,
-                  max_distance: maxDistance,
+                  count: sortedMatches.length,
+                  max_distance: userMaxDistance,
                   global_discovery: globalDiscovery
                 }
               });
@@ -265,7 +285,7 @@ export const useMatchesStore = create<MatchesState>()(
             }
             
             set({ 
-              cachedMatches: [...get().cachedMatches, ...shuffledMatches].slice(0, 50), 
+              cachedMatches: [...get().cachedMatches, ...sortedMatches].slice(0, 50), 
               isPrefetching: false 
             });
           } else {

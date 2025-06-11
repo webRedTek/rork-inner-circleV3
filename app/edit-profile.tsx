@@ -17,7 +17,7 @@ import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
 import { MultiSelect } from '@/components/MultiSelect';
 import { SingleSelect } from '@/components/SingleSelect';
-import { BusinessField, EntrepreneurStatus, BusinessStage, LookingFor, Skill, AvailabilityLevel } from '@/types/user';
+import { BusinessField, EntrepreneurStatus, BusinessStage, LookingFor, Skill, AvailabilityLevel, LocationPrivacy } from '@/types/user';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'react-native';
 import { ArrowLeft, Camera } from 'lucide-react-native';
@@ -72,6 +72,8 @@ export default function EditProfileScreen() {
   const [availabilityLevel, setAvailabilityLevel] = useState<AvailabilityLevel[]>([]);
   const [location, setLocation] = useState('');
   const [zipCode, setZipCode] = useState('');
+  const [preferredDistance, setPreferredDistance] = useState('50');
+  const [locationPrivacy, setLocationPrivacy] = useState<LocationPrivacy>('public');
   const [timezone, setTimezone] = useState('');
   const [successHighlight, setSuccessHighlight] = useState('');
   
@@ -79,6 +81,7 @@ export default function EditProfileScreen() {
   const [nameError, setNameError] = useState('');
   const [bioError, setBioError] = useState('');
   const [zipCodeError, setZipCodeError] = useState('');
+  const [distanceError, setDistanceError] = useState('');
   
   // Options for select fields
   const businessFieldOptions: BusinessField[] = [
@@ -103,6 +106,11 @@ export default function EditProfileScreen() {
     'Quick chats', 'Regular virtual coffee', 
     'Local meetups', 'Long-term mentorship/partnership'
   ];
+  const locationPrivacyOptions = [
+    { label: 'Public', value: 'public' },
+    { label: 'Matches Only', value: 'matches_only' },
+    { label: 'Hidden', value: 'hidden' }
+  ];
   
   useEffect(() => {
     if (user) {
@@ -123,6 +131,8 @@ export default function EditProfileScreen() {
       if (user.availabilityLevel) setAvailabilityLevel(user.availabilityLevel);
       if (user.location) setLocation(user.location);
       if (user.zipCode) setZipCode(user.zipCode);
+      if (user.preferredDistance) setPreferredDistance(user.preferredDistance.toString());
+      if (user.locationPrivacy) setLocationPrivacy(user.locationPrivacy);
       if (user.timezone) setTimezone(user.timezone);
       if (user.successHighlight) setSuccessHighlight(user.successHighlight);
     }
@@ -162,6 +172,15 @@ export default function EditProfileScreen() {
       setZipCodeError('');
     }
     
+    // Preferred distance validation
+    const distanceNum = parseInt(preferredDistance);
+    if (isNaN(distanceNum) || distanceNum < 1 || distanceNum > 500) {
+      setDistanceError('Distance must be between 1 and 500 km');
+      isValid = false;
+    } else {
+      setDistanceError('');
+    }
+    
     return isValid;
   };
   
@@ -172,6 +191,15 @@ export default function EditProfileScreen() {
       }
       
       try {
+        // Mock conversion of zip code to lat/long (in real app, use geocoding API)
+        let latitude = 0;
+        let longitude = 0;
+        if (zipCode) {
+          // Placeholder: In a real app, convert zipCode to lat/long using an API
+          latitude = 40.7128; // Example: New York latitude
+          longitude = -74.0060; // Example: New York longitude
+        }
+        
         await updateProfile({
           name,
           businessField,
@@ -187,6 +215,10 @@ export default function EditProfileScreen() {
           availabilityLevel,
           location,
           zipCode,
+          preferredDistance: parseInt(preferredDistance),
+          locationPrivacy,
+          latitude,
+          longitude,
           timezone,
           successHighlight
         });
@@ -387,6 +419,8 @@ export default function EditProfileScreen() {
             placeholder="Select your availability"
           />
           
+          <Text style={styles.sectionTitle}>Location Settings</Text>
+          
           <Input
             label="Location"
             value={location}
@@ -403,6 +437,31 @@ export default function EditProfileScreen() {
             keyboardType="numeric"
             error={zipCodeError}
           />
+          
+          <Input
+            label="Preferred Distance (km)"
+            value={preferredDistance}
+            onChangeText={setPreferredDistance}
+            placeholder="e.g. 50"
+            keyboardType="numeric"
+            error={distanceError}
+          />
+          
+          <View style={styles.privacyContainer}>
+            <Text style={styles.privacyLabel}>Location Privacy</Text>
+            <View style={styles.privacyOptions}>
+              {locationPrivacyOptions.map(option => (
+                <Button
+                  key={option.value}
+                  title={option.label}
+                  onPress={() => setLocationPrivacy(option.value as LocationPrivacy)}
+                  variant={locationPrivacy === option.value ? 'primary' : 'outline'}
+                  size="small"
+                  style={styles.privacyButton}
+                />
+              ))}
+            </View>
+          </View>
           
           <Input
             label="Timezone"
@@ -515,6 +574,22 @@ const styles = StyleSheet.create({
   },
   disabledInput: {
     opacity: 0.7,
+  },
+  privacyContainer: {
+    marginBottom: 16,
+  },
+  privacyLabel: {
+    fontSize: 16,
+    marginBottom: 8,
+    color: Colors.dark.text,
+    fontWeight: '500',
+  },
+  privacyOptions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  privacyButton: {
+    flex: 1,
   },
   buttonContainer: {
     marginTop: 24,

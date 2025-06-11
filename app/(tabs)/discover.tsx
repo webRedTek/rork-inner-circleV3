@@ -5,7 +5,8 @@ import {
   ActivityIndicator, 
   Text,
   TouchableOpacity,
-  Modal
+  Modal,
+  Switch
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -18,8 +19,9 @@ import { Button } from '@/components/Button';
 import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
 import { ProfileDetailCard } from '@/components/ProfileDetailCard';
-import { X, ArrowLeft, RefreshCw } from 'lucide-react-native';
+import { X, ArrowLeft, RefreshCw, MapPin } from 'lucide-react-native';
 import { isSupabaseConfigured, supabase, convertToCamelCase } from '@/lib/supabase';
+import { Input } from '@/components/Input';
 
 export default function DiscoverScreen() {
   const router = useRouter();
@@ -40,21 +42,31 @@ export default function DiscoverScreen() {
     syncUsageCounters
   } = useMatchesStore();
   
-  const { user, isReady } = useAuthStore();
+  const { user, isReady, tierSettings } = useAuthStore();
   
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [matchedUser, setMatchedUser] = useState<UserProfile | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<UserProfile | null>(null);
   const [showProfileDetail, setShowProfileDetail] = useState(false);
   const [showLimitModal, setShowLimitModal] = useState(false);
+  const [showFilterModal, setShowFilterModal] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
+  const [preferredDistance, setPreferredDistance] = useState('50');
+  const [globalSearch, setGlobalSearch] = useState(false);
+  const [distanceError, setDistanceError] = useState('');
   
+  const isGlobalSearchAllowed = tierSettings?.global_discovery || false;
+
   useEffect(() => {
     if (isReady && user) {
       fetchPotentialMatches();
       startBatchProcessing();
       syncUsageCounters();
       setInitialLoad(false);
+      // Set user's preferred distance from profile
+      if (user.preferredDistance) {
+        setPreferredDistance(user.preferredDistance.toString());
+      }
     }
     
     return () => {
@@ -183,6 +195,29 @@ export default function DiscoverScreen() {
     setShowLimitModal(false);
   };
   
+  const handleApplyFilters = () => {
+    const distanceNum = parseInt(preferredDistance);
+    if (isNaN(distanceNum) || distanceNum < 1 || distanceNum > 500) {
+      setDistanceError('Distance must be between 1 and 500 km');
+      return;
+    }
+    setDistanceError('');
+    // Update the fetch with the new distance
+    fetchPotentialMatches(distanceNum, true);
+    setShowFilterModal(false);
+  };
+  
+  const handleToggleGlobalSearch = () => {
+    if (isGlobalSearchAllowed) {
+      setGlobalSearch(!globalSearch);
+    } else {
+      Alert.alert('Premium Feature', 'Global search is available for premium members only.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Upgrade Plan', onPress: () => router.push('/membership') }
+      ]);
+    }
+  };
+  
   if ((isLoading && potentialMatches.length === 0) || initialLoad || !isReady) {
     return (
       <SafeAreaView style={styles.loadingContainer} edges={['bottom']}>
@@ -264,6 +299,56 @@ export default function DiscoverScreen() {
             />
           </View>
         </View>
+      ) : showFilterModal ? (
+        <View style={styles.matchModalContainer}>
+          <View style={styles.matchModal}>
+            <Text style={styles.matchTitle}>Distance Filters</Text>
+            
+            <Input
+              label="Max Distance (km)"
+              value={preferredDistance}
+              onChangeText={setPreferredDistance}
+              placeholder="Enter max distance"
+              keyboardType="numeric"
+              error={distanceError}
+              style={styles.distanceInput}
+            />
+            
+            {isGlobalSearchAllowed && (
+              <View style={styles.globalSearchContainer}>
+                <Text style={styles.globalSearchLabel}>Global Search</Text>
+                <Switch
+                  value={globalSearch}
+                  onValueChange={handleToggleGlobalSearch}
+                  trackColor={{ false: Colors.dark.border, true: Colors.dark.accent }}
+                  thumbColor={globalSearch ? Colors.dark.primary : Colors.dark.textSecondary}
+                />
+              </View>
+            )}
+            
+            {!isGlobalSearchAllowed && (
+              <Text style={styles.globalSearchNote}>
+                Global search available for premium members
+              </Text>
+            )}
+            
+            <Button
+              title="Apply Filters"
+              onPress={handleApplyFilters}
+              variant="primary"
+              size="large"
+              style={styles.messageButton}
+            />
+            
+            <Button
+              title="Cancel"
+              onPress={() => setShowFilterModal(false)}
+              variant="outline"
+              size="large"
+              style={styles.keepBrowsingButton}
+            />
+          </View>
+        </View>
       ) : (
         <View style={styles.cardsContainer}>
           {isPrefetching && (
@@ -286,6 +371,13 @@ export default function DiscoverScreen() {
           >
             <RefreshCw size={24} color={Colors.dark.accent} />
             <Text style={styles.refreshButtonText}>Refresh</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.filterButton}
+            onPress={() => setShowFilterModal(true)}
+          >
+            <MapPin size={24} color={Colors.dark.accent} />
+            <Text style={styles.filterButtonText}>{preferredDistance} km</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -368,6 +460,10 @@ const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
     bio: String(camelCaseData.bio || ''),
     location: String(camelCaseData.location || ''),
     zipCode: String(camelCaseData.zipCode || ''),
+    latitude: Number(camelCaseData.latitude || 0),
+    longitude: Number(camelCaseData.longitude || 0),
+    preferredDistance: Number(camelCaseData.preferredDistance || 50),
+    locationPrivacy: String(camelCaseData.locationPrivacy || 'public') as UserProfile["locationPrivacy"],
     businessField: (String(camelCaseData.businessField || 'Technology')) as UserProfile["businessField"],
     entrepreneurStatus: (String(camelCaseData.entrepreneurStatus || 'upcoming')) as UserProfile["entrepreneurStatus"],
     photoUrl: String(camelCaseData.photoUrl || ''),
@@ -449,6 +545,7 @@ const styles = StyleSheet.create({
   refreshButton: {
     position: 'absolute',
     bottom: 20,
+    left: 20,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.dark.card,
@@ -458,6 +555,24 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   refreshButtonText: {
+    marginLeft: 8,
+    fontSize: 16,
+    color: Colors.dark.accent,
+    fontWeight: '500',
+  },
+  filterButton: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.dark.card,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 25,
+    zIndex: 10,
+  },
+  filterButtonText: {
     marginLeft: 8,
     fontSize: 16,
     color: Colors.dark.accent,
@@ -494,6 +609,28 @@ const styles = StyleSheet.create({
   },
   keepBrowsingButton: {
     width: '100%',
+  },
+  distanceInput: {
+    marginBottom: 16,
+    width: '100%',
+  },
+  globalSearchContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 16,
+  },
+  globalSearchLabel: {
+    fontSize: 16,
+    color: Colors.dark.text,
+    fontWeight: '500',
+  },
+  globalSearchNote: {
+    fontSize: 14,
+    color: Colors.dark.textSecondary,
+    textAlign: 'center',
+    marginBottom: 16,
   },
   profileModalContainer: {
     flex: 1,

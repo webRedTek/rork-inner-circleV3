@@ -8,7 +8,7 @@ import { Button } from '@/components/Button';
 import { ProfileDetailCard } from '@/components/ProfileDetailCard';
 import { SupabaseStatus } from '@/components/SupabaseStatus';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { Settings, Edit, LogOut, Database, RefreshCw } from 'lucide-react-native';
+import { Settings, Edit, LogOut, Database, RefreshCw, MapPin } from 'lucide-react-native';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -199,6 +199,27 @@ export default function ProfileScreen() {
           />
         )}
         
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Location Preferences</Text>
+          <View style={styles.locationContainer}>
+            <View style={styles.locationItem}>
+              <MapPin size={18} color={Colors.dark.accent} />
+              <Text style={styles.locationValue}>{user.location || 'Not set'}</Text>
+            </View>
+            <View style={styles.locationItem}>
+              <Text style={styles.locationLabel}>Max Distance:</Text>
+              <Text style={styles.locationValue}>{user.preferredDistance || 50} km</Text>
+            </View>
+            <View style={styles.locationItem}>
+              <Text style={styles.locationLabel}>Privacy:</Text>
+              <Text style={styles.locationValue}>
+                {user.locationPrivacy === 'public' ? 'Public' : 
+                 user.locationPrivacy === 'matches_only' ? 'Matches Only' : 'Hidden'}
+              </Text>
+            </View>
+          </View>
+        </View>
+        
         {tierSettings && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Membership Benefits</Text>
@@ -377,6 +398,25 @@ const styles = StyleSheet.create({
   tagText: {
     color: Colors.dark.accent,
     fontSize: 14,
+  },
+  locationContainer: {
+    marginTop: 8,
+  },
+  locationItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  locationLabel: {
+    fontSize: 14,
+    color: Colors.dark.textSecondary,
+    marginRight: 8,
+    width: 100,
+  },
+  locationValue: {
+    fontSize: 14,
+    color: Colors.dark.text,
+    flex: 1,
   },
   benefitsContainer: {
     flexDirection: 'row',
