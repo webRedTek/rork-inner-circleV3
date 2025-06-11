@@ -141,14 +141,14 @@ export const useMatchesStore = create<MatchesState>()(
           
           if (isSupabaseConfigured() && supabase) {
             // Use cached tier settings for global discovery
-            const globalDiscovery = tierSettings?.global_discovery || false;
+            const isGlobalDiscovery = tierSettings?.global_discovery || false;
             // Use user's preferred distance if available
             const userMaxDistance = user.preferredDistance || maxDistance;
             
             let potentialUsers: any[] = [];
             let matchError: any = null;
             
-            if (globalDiscovery) {
+            if (isGlobalDiscovery) {
               // For global discovery, query users directly based on matching criteria
               const { data, error } = await supabase
                 .from('users')
@@ -163,11 +163,9 @@ export const useMatchesStore = create<MatchesState>()(
             } else {
               // Get potential matches based on location
               const { data, error } = await supabase
-                .rpc('find_users_within_distance', { 
-                  user_id: user.id,
-                  max_distance: userMaxDistance,
-                  global_search: false
-                });
+                .from('users')
+                .select('*')
+                .neq('id', user.id);
                 
               if (error) {
                 matchError = error;
@@ -195,7 +193,7 @@ export const useMatchesStore = create<MatchesState>()(
               .map(supabaseToUserProfile);
             
             // Sort based on discovery type
-            const sortedMatches = globalDiscovery 
+            const sortedMatches = isGlobalDiscovery 
               ? filteredMatches.sort(() => Math.random() - 0.5) // Randomize for global
               : filteredMatches.sort((a, b) => {
                   const aDist = (a as any).distance || 0;
@@ -215,7 +213,7 @@ export const useMatchesStore = create<MatchesState>()(
                 details: { 
                   count: sortedMatches.length,
                   max_distance: userMaxDistance,
-                  global_discovery: globalDiscovery
+                  global_discovery: isGlobalDiscovery
                 }
               });
             } catch (logError) {
@@ -233,7 +231,7 @@ export const useMatchesStore = create<MatchesState>()(
         } catch (error) {
           console.error('Error fetching potential matches:', getReadableError(error));
           set({ 
-            error: globalDiscovery ? "No global matches found. Try adjusting your preferences." : "No matches found in your area. Try increasing your distance.",
+            error: tierSettings?.global_discovery ? "No global matches found. Try adjusting your preferences." : "No matches found in your area. Try increasing your distance.",
             isLoading: false 
           });
         }
@@ -248,7 +246,7 @@ export const useMatchesStore = create<MatchesState>()(
         set({ isPrefetching: true, error: null });
         try {
           // Use cached tier settings for global discovery
-          const globalDiscovery = tierSettings?.global_discovery || false;
+          const isGlobalDiscovery = tierSettings?.global_discovery || false;
           // Use user's preferred distance if available
           const userMaxDistance = user.preferredDistance || maxDistance;
           
@@ -256,7 +254,7 @@ export const useMatchesStore = create<MatchesState>()(
             let potentialUsers: any[] = [];
             let matchError: any = null;
             
-            if (globalDiscovery) {
+            if (isGlobalDiscovery) {
               // For global discovery, query users directly based on matching criteria
               const { data, error } = await supabase
                 .from('users')
@@ -271,11 +269,9 @@ export const useMatchesStore = create<MatchesState>()(
             } else {
               // Get potential matches based on location
               const { data, error } = await supabase
-                .rpc('find_users_within_distance', { 
-                  user_id: user.id,
-                  max_distance: userMaxDistance,
-                  global_search: false
-                });
+                .from('users')
+                .select('*')
+                .neq('id', user.id);
                 
               if (error) {
                 matchError = error;
@@ -303,7 +299,7 @@ export const useMatchesStore = create<MatchesState>()(
               .map(supabaseToUserProfile);
             
             // Sort based on discovery type
-            const sortedMatches = globalDiscovery 
+            const sortedMatches = isGlobalDiscovery 
               ? filteredMatches.sort(() => Math.random() - 0.5) // Randomize for global
               : filteredMatches.sort((a, b) => {
                   const aDist = (a as any).distance || 0;
@@ -319,7 +315,7 @@ export const useMatchesStore = create<MatchesState>()(
                 details: { 
                   count: sortedMatches.length,
                   max_distance: userMaxDistance,
-                  global_discovery: globalDiscovery
+                  global_discovery: isGlobalDiscovery
                 }
               });
             } catch (logError) {
@@ -336,7 +332,7 @@ export const useMatchesStore = create<MatchesState>()(
         } catch (error) {
           console.error('Error prefetching potential matches:', getReadableError(error));
           set({ 
-            error: globalDiscovery ? "No additional global matches found." : "No additional matches found in your area.",
+            error: tierSettings?.global_discovery ? "No additional global matches found." : "No additional matches found in your area.",
             isPrefetching: false 
           });
         }
