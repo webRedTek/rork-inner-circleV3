@@ -63,15 +63,11 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
   error: null,
 
   fetchGroups: async () => {
+    const { user, isReady } = useAuthStore.getState();
+    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    
     set({ isLoading: true, error: null });
     try {
-      // Get current user
-      const currentUser = useAuthStore.getState().user;
-      
-      if (!currentUser) {
-        throw new Error('User not authenticated');
-      }
-      
       if (isSupabaseConfigured() && supabase) {
         // Fetch groups from Supabase
         const { data: groupsData, error: groupsError } = await supabase
@@ -85,18 +81,18 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         
         // Filter groups for the current user
         const userGroups = typedGroups.filter((group: Group) => 
-          group.memberIds.includes(currentUser.id)
+          group.memberIds.includes(user.id)
         );
         
         // Filter available groups (not joined by the user)
         const availableGroups = typedGroups.filter((group: Group) => 
-          !group.memberIds.includes(currentUser.id)
+          !group.memberIds.includes(user.id)
         );
         
         // Log the action
         try {
           await supabase.rpc('log_user_action', {
-            user_id: currentUser.id,
+            user_id: user.id,
             action: 'view_groups',
             details: { 
               user_groups_count: userGroups.length,
@@ -126,16 +122,11 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
   },
 
   joinGroup: async (groupId: string) => {
+    const { user, isReady, tierSettings } = useAuthStore.getState();
+    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    
     set({ isLoading: true, error: null });
     try {
-      // Get current user and tier settings
-      const currentUser = useAuthStore.getState().user;
-      const tierSettings = useAuthStore.getState().tierSettings;
-      
-      if (!currentUser) {
-        throw new Error('User not authenticated');
-      }
-      
       // Check membership tier restrictions using tier settings
       if (!tierSettings || tierSettings.daily_swipe_limit <= 10) { // Basic or Bronze tier (based on swipe limit)
         throw new Error('Basic/Bronze members cannot join groups. Please upgrade to Silver or Gold.');
@@ -163,7 +154,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         const group = supabaseToGroup(groupData || {});
         
         // Update the group with the new member
-        const updatedMemberIds = [...group.memberIds, currentUser.id];
+        const updatedMemberIds = [...group.memberIds, user.id];
         
         const { error: updateError } = await supabase
           .from('groups')
@@ -173,19 +164,19 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         if (updateError) throw updateError;
         
         // Update user's joinedGroups
-        const updatedJoinedGroups = [...currentUser.joinedGroups, groupId];
+        const updatedJoinedGroups = [...user.joinedGroups, groupId];
         
         const { error: userUpdateError } = await supabase
           .from('users')
           .update({ joined_groups: updatedJoinedGroups })
-          .eq('id', currentUser.id);
+          .eq('id', user.id);
           
         if (userUpdateError) throw userUpdateError;
         
         // Log the action
         try {
           await supabase.rpc('log_user_action', {
-            user_id: currentUser.id,
+            user_id: user.id,
             action: 'join_group',
             details: { group_id: groupId, group_name: group.name }
           });
@@ -220,15 +211,11 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
   },
 
   leaveGroup: async (groupId: string) => {
+    const { user, isReady } = useAuthStore.getState();
+    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    
     set({ isLoading: true, error: null });
     try {
-      // Get current user
-      const currentUser = useAuthStore.getState().user;
-      
-      if (!currentUser) {
-        throw new Error('User not authenticated');
-      }
-      
       if (isSupabaseConfigured() && supabase) {
         // Get the group to update
         const { data: groupData, error: groupError } = await supabase
@@ -243,7 +230,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         const group = supabaseToGroup(groupData || {});
         
         // Update the group by removing the member
-        const updatedMemberIds = group.memberIds.filter((id: string) => id !== currentUser.id);
+        const updatedMemberIds = group.memberIds.filter((id: string) => id !== user.id);
         
         const { error: updateError } = await supabase
           .from('groups')
@@ -253,19 +240,19 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         if (updateError) throw updateError;
         
         // Update user's joinedGroups
-        const updatedJoinedGroups = currentUser.joinedGroups.filter((id: string) => id !== groupId);
+        const updatedJoinedGroups = user.joinedGroups.filter((id: string) => id !== groupId);
         
         const { error: userUpdateError } = await supabase
           .from('users')
           .update({ joined_groups: updatedJoinedGroups })
-          .eq('id', currentUser.id);
+          .eq('id', user.id);
           
         if (userUpdateError) throw userUpdateError;
         
         // Log the action
         try {
           await supabase.rpc('log_user_action', {
-            user_id: currentUser.id,
+            user_id: user.id,
             action: 'leave_group',
             details: { group_id: groupId, group_name: group.name }
           });
@@ -300,16 +287,11 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
   },
 
   createGroup: async (groupData: Partial<Group>) => {
+    const { user, isReady, tierSettings } = useAuthStore.getState();
+    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    
     set({ isLoading: true, error: null });
     try {
-      // Get current user and tier settings
-      const currentUser = useAuthStore.getState().user;
-      const tierSettings = useAuthStore.getState().tierSettings;
-      
-      if (!currentUser) {
-        throw new Error('User not authenticated');
-      }
-      
       // Check membership tier restrictions using tier settings
       if (!tierSettings || tierSettings.daily_swipe_limit <= 10) { // Basic or Bronze tier (based on swipe limit)
         throw new Error('Basic/Bronze members cannot create groups. Please upgrade to Silver or Gold.');
@@ -322,8 +304,8 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           name: groupData.name || 'New Group',
           description: groupData.description || '',
           imageUrl: groupData.imageUrl,
-          memberIds: [currentUser.id], // Creator is the first member
-          createdBy: currentUser.id,
+          memberIds: [user.id], // Creator is the first member
+          createdBy: user.id,
           createdAt: Date.now(),
           category: groupData.category || 'Interest',
           industry: groupData.industry
@@ -340,19 +322,19 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         if (insertError) throw insertError;
         
         // Update user's joinedGroups
-        const updatedJoinedGroups = [...currentUser.joinedGroups, newGroup.id];
+        const updatedJoinedGroups = [...user.joinedGroups, newGroup.id];
         
         const { error: userUpdateError } = await supabase
           .from('users')
           .update({ joined_groups: updatedJoinedGroups })
-          .eq('id', currentUser.id);
+          .eq('id', user.id);
           
         if (userUpdateError) throw userUpdateError;
         
         // Log the action
         try {
           await supabase.rpc('log_user_action', {
-            user_id: currentUser.id,
+            user_id: user.id,
             action: 'create_group',
             details: { group_id: newGroup.id, group_name: newGroup.name }
           });

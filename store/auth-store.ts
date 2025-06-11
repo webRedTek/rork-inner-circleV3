@@ -10,6 +10,7 @@ interface AuthState {
   tierSettings: TierSettings | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isReady: boolean; // Indicates if initial session check is complete
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
   signup: (userData: Partial<UserProfile>, password: string) => Promise<void>;
@@ -19,6 +20,7 @@ interface AuthState {
   fetchTierSettings: (userId: string) => Promise<void>;
   clearError: () => void;
   clearCache: () => Promise<void>;
+  checkSession: () => Promise<void>; // Method to check/restore session on app start
 }
 
 // Helper function to extract readable error message from Supabase error
@@ -92,6 +94,7 @@ export const useAuthStore = create<AuthState>()(
       tierSettings: null,
       isAuthenticated: false,
       isLoading: false,
+      isReady: false, // Initially false until session check is complete
       error: null,
 
       login: async (email: string, password: string) => {
@@ -382,13 +385,12 @@ export const useAuthStore = create<AuthState>()(
       },
 
       fetchTierSettings: async (userId: string) => {
-        // Enhanced guard clause to prevent fetching if user ID is invalid or not authenticated
-        if (!userId || userId.trim() === '' || !isSupabaseConfigured() || !supabase || !get().isAuthenticated) {
-          console.log('Skipping tier settings fetch: Invalid user ID, not authenticated, or Supabase not configured', { 
+        // Guard clause to prevent fetching if user ID is invalid
+        if (!userId || userId.trim() === '' || !isSupabaseConfigured() || !supabase) {
+          console.log('Skipping tier settings fetch: Invalid user ID or Supabase not configured', { 
             userId, 
             supabaseConfigured: isSupabaseConfigured(),
-            hasSupabase: !!supabase,
-            isAuthenticated: get().isAuthenticated
+            hasSupabase: !!supabase
           });
           set({ tierSettings: defaultTierSettings, isLoading: false });
           return;
@@ -443,6 +445,58 @@ export const useAuthStore = create<AuthState>()(
           set({ 
             error: getReadableError(error), 
             isLoading: false 
+          });
+        }
+      },
+
+      checkSession: async () => {
+        set({ isLoading: true, error: null });
+        try {
+          await initSupabase();
+          
+          if (isSupabaseConfigured() && supabase) {
+            const { data, error } = await supabase.auth.getSession();
+            if (error) {
+              console.error('Error checking session:', error);
+              set({ isReady: true, isLoading: false, isAuthenticated: false });
+              return;
+            }
+
+            if (data.session && data.session.user) {
+              const { data: profileData, error: profileError } = await supabase
+                .from('users')
+                .select('*')
+                .eq('id', data.session.user.id)
+                .single();
+
+              if (profileError) {
+                console.error('Error fetching user profile on session check:', profileError);
+                set({ isReady: true, isLoading: false, isAuthenticated: false });
+                return;
+              }
+
+              const userProfile = supabaseToUserProfile(profileData);
+              set({
+                user: userProfile,
+                isAuthenticated: true,
+                isReady: true,
+                isLoading: false,
+              });
+              // Fetch tier settings only after confirming session and user ID
+              await get().fetchTierSettings(data.session.user.id);
+            } else {
+              set({ isReady: true, isLoading: false, isAuthenticated: false });
+            }
+          } else {
+            set({ isReady: true, isLoading: false, isAuthenticated: false });
+          }
+        } catch (error) {
+          console.error('Session check error:', getReadableError(error));
+          set({ 
+            error: getReadableError(error), 
+            isReady: true,
+            isLoading: false,
+            isAuthenticated: false
           });
         }
       }

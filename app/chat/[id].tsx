@@ -20,11 +20,12 @@ import { MessageBubble } from '@/components/MessageBubble';
 import { Send, Mic, X } from 'lucide-react-native';
 import { ProfileHeader } from '@/components/ProfileHeader';
 import { isSupabaseConfigured, supabase, convertToCamelCase } from '@/lib/supabase';
+import { Button } from '@/components/Button';
 
 export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { user, isReady } = useAuthStore();
   const { messages, sendMessage, getMessages, markAsRead } = useMessagesStore();
   
   const [otherUser, setOtherUser] = useState<UserProfile | null>(null);
@@ -34,86 +35,90 @@ export default function ChatScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [currentlyPlayingId, setCurrentlyPlayingId] = useState<string | null>(null);
+  const [initialLoad, setInitialLoad] = useState(true);
   
   const flatListRef = useRef<FlatList>(null);
   
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        
-        if (isSupabaseConfigured() && supabase && user) {
-          // Get other user profile from Supabase
-          const { data: foundUser, error: userError } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', id)
-            .single();
-          
-          if (userError || !foundUser) {
-            setError('User not found');
-            return;
-          }
-          
-          const userProfile = supabaseToUserProfile(foundUser);
-          setOtherUser(userProfile);
-          
-          // Find match between current user and other user
-          const { data: matchesData, error: matchesError } = await supabase
-            .from('matches')
-            .select('*')
-            .or(`user_id.eq.${user.id},matched_user_id.eq.${user.id}`)
-            .or(`user_id.eq.${id},matched_user_id.eq.${id}`);
-          
-          if (matchesError) {
-            console.error('Error fetching matches:', matchesError);
-            setError('Failed to load chat');
-            return;
-          }
-          
-          const match = matchesData.find(
-            m => (m.user_id === user.id && m.matched_user_id === id) || 
-                 (m.user_id === id && m.matched_user_id === user.id)
-          );
-          
-          if (!match) {
-            // Create a new match if it doesn't exist
-            const newMatch = {
-              id: `match-${Date.now()}`,
-              user_id: user.id,
-              matched_user_id: id,
-              created_at: Date.now()
-            };
-            
-            const { error: insertError } = await supabase
-              .from('matches')
-              .insert(newMatch);
-            
-            if (insertError) {
-              console.error('Error creating match:', insertError);
-              setError('Failed to create chat');
-              return;
-            }
-            
-            setMatchId(newMatch.id);
-          } else {
-            setMatchId(match.id);
-          }
-        } else {
-          setError('Supabase not configured');
-        }
-      } catch (err) {
-        setError('Failed to load chat');
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    if (id && user) {
+    if (isReady && user && id) {
       fetchData();
+      setInitialLoad(false);
     }
-  }, [id, user]);
+  }, [isReady, user, id]);
+  
+  const fetchData = async () => {
+    if (!user || !id) return; // Silent fail if no user or id
+    
+    try {
+      setLoading(true);
+      
+      if (isSupabaseConfigured() && supabase) {
+        // Get other user profile from Supabase
+        const { data: foundUser, error: userError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', id)
+          .single();
+        
+        if (userError || !foundUser) {
+          setError('User not found');
+          return;
+        }
+        
+        const userProfile = supabaseToUserProfile(foundUser);
+        setOtherUser(userProfile);
+        
+        // Find match between current user and other user
+        const { data: matchesData, error: matchesError } = await supabase
+          .from('matches')
+          .select('*')
+          .or(`user_id.eq.${user.id},matched_user_id.eq.${user.id}`)
+          .or(`user_id.eq.${id},matched_user_id.eq.${id}`);
+        
+        if (matchesError) {
+          console.error('Error fetching matches:', matchesError);
+          setError('Failed to load chat');
+          return;
+        }
+        
+        const match = matchesData.find(
+          m => (m.user_id === user.id && m.matched_user_id === id) || 
+               (m.user_id === id && m.matched_user_id === user.id)
+        );
+        
+        if (!match) {
+          // Create a new match if it doesn't exist
+          const newMatch = {
+            id: `match-${Date.now()}`,
+            user_id: user.id,
+            matched_user_id: id,
+            created_at: Date.now()
+          };
+          
+          const { error: insertError } = await supabase
+            .from('matches')
+            .insert(newMatch);
+          
+          if (insertError) {
+            console.error('Error creating match:', insertError);
+            setError('Failed to create chat');
+            return;
+          }
+          
+          setMatchId(newMatch.id);
+        } else {
+          setMatchId(match.id);
+        }
+      } else {
+        setError('Supabase not configured');
+      }
+    } catch (err) {
+      setError('Failed to load chat');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
   
   useEffect(() => {
     if (matchId) {
@@ -154,7 +159,7 @@ export default function ChatScreen() {
     }
   };
   
-  if (loading) {
+  if (loading || initialLoad || !isReady) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={Colors.dark.accent} />
@@ -163,7 +168,7 @@ export default function ChatScreen() {
     );
   }
   
-  if (error || !otherUser) {
+  if (error || !otherUser || !user) {
     return (
       <SafeAreaView style={styles.errorContainer}>
         <Text style={styles.errorText}>{error || 'Something went wrong'}</Text>

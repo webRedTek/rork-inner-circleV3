@@ -26,18 +26,24 @@ interface ChatPreview {
 
 export default function MessagesScreen() {
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { user, isReady } = useAuthStore();
   const { matches, getMatches } = useMatchesStore();
   const { messages, getMessages } = useMessagesStore();
   
   const [chatPreviews, setChatPreviews] = useState<ChatPreview[]>([]);
   const [loading, setLoading] = useState(true);
+  const [initialLoad, setInitialLoad] = useState(true);
   
   useEffect(() => {
-    loadData();
-  }, []);
+    if (isReady && user) {
+      loadData();
+      setInitialLoad(false);
+    }
+  }, [isReady, user]);
   
   const loadData = async () => {
+    if (!user) return; // Silent fail if no user
+    
     setLoading(true);
     await getMatches();
     
@@ -52,7 +58,7 @@ export default function MessagesScreen() {
   };
   
   useEffect(() => {
-    if (!user) return;
+    if (!user || !isReady) return; // Silent fail if not ready or not authenticated
     
     const loadChatPreviews = async () => {
       try {
@@ -122,7 +128,7 @@ export default function MessagesScreen() {
     };
     
     loadChatPreviews();
-  }, [user, matches, messages]);
+  }, [user, isReady, matches, messages]);
   
   const formatTime = (timestamp: number) => {
     const now = new Date();
@@ -196,11 +202,25 @@ export default function MessagesScreen() {
     );
   };
   
-  if (loading) {
+  if (loading || initialLoad || !isReady) {
     return (
       <SafeAreaView style={styles.loadingContainer} edges={['bottom']}>
         <ActivityIndicator size="large" color={Colors.dark.accent} />
         <Text style={styles.loadingText}>Loading conversations...</Text>
+      </SafeAreaView>
+    );
+  }
+  
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.errorContainer} edges={['bottom']}>
+        <Text style={styles.errorText}>Not authenticated</Text>
+        <Button
+          title="Login"
+          onPress={() => router.replace('/(auth)')}
+          variant="primary"
+          style={styles.retryButton}
+        />
       </SafeAreaView>
     );
   }
@@ -277,6 +297,20 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
     color: Colors.dark.textSecondary,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.dark.background,
+  },
+  errorText: {
+    fontSize: 18,
+    color: Colors.dark.text,
+    marginBottom: 16,
+  },
+  retryButton: {
+    minWidth: 150,
   },
   listContent: {
     padding: 16,

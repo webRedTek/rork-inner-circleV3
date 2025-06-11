@@ -12,16 +12,22 @@ import { isSupabaseConfigured, supabase, convertToCamelCase } from '@/lib/supaba
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { user, isReady } = useAuthStore();
   const { matches, getMatches } = useMatchesStore();
   const [recentMatches, setRecentMatches] = useState<UserProfile[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [initialLoad, setInitialLoad] = useState(true);
   
   useEffect(() => {
-    fetchRecentMatches();
-  }, []);
+    if (isReady && user) {
+      fetchRecentMatches();
+      setInitialLoad(false);
+    }
+  }, [isReady, user]);
   
   const fetchRecentMatches = async () => {
+    if (!user) return; // Silent fail if no user
+    
     try {
       setRefreshing(true);
       await getMatches();
@@ -58,10 +64,32 @@ export default function HomeScreen() {
   };
   
   const onRefresh = () => {
-    fetchRecentMatches();
+    if (user) {
+      fetchRecentMatches();
+    }
   };
   
-  if (!user) return null;
+  if (!isReady || initialLoad) {
+    return (
+      <SafeAreaView style={styles.loadingContainer} edges={['bottom']}>
+        <Text style={styles.loadingText}>Loading...</Text>
+      </SafeAreaView>
+    );
+  }
+  
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.errorContainer} edges={['bottom']}>
+        <Text style={styles.errorText}>Not authenticated</Text>
+        <Button
+          title="Login"
+          onPress={() => router.replace('/(auth)')}
+          variant="primary"
+          style={styles.retryButton}
+        />
+      </SafeAreaView>
+    );
+  }
   
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -201,6 +229,30 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.dark.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.dark.background,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: Colors.dark.textSecondary,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.dark.background,
+  },
+  errorText: {
+    fontSize: 18,
+    color: Colors.dark.text,
+    marginBottom: 16,
+  },
+  retryButton: {
+    minWidth: 150,
   },
   scrollView: {
     flex: 1,

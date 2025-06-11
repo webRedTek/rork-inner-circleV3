@@ -59,15 +59,11 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   error: null,
 
   sendMessage: async (conversationId: string, content: string, receiverId: string) => {
+    const { user, isReady, tierSettings } = useAuthStore.getState();
+    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    
     set({ isLoading: true, error: null });
     try {
-      const currentUser = useAuthStore.getState().user;
-      const tierSettings = useAuthStore.getState().tierSettings;
-      
-      if (!currentUser) {
-        throw new Error('User not authenticated');
-      }
-      
       // Check message sending limit based on tier settings
       if (tierSettings) {
         const dailyMessageLimit = tierSettings.message_sending_limit || 20;
@@ -79,7 +75,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           const { data: messagesData, error } = await supabase
             .from('messages')
             .select('id, created_at')
-            .eq('sender_id', currentUser.id)
+            .eq('sender_id', user.id)
             .gte('created_at', todayTimestamp);
             
           if (error) {
@@ -99,7 +95,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         // Create message in Supabase
         const newMessage: Message = {
           id: `msg-${Date.now()}`,
-          senderId: currentUser.id,
+          senderId: user.id,
           receiverId,
           content,
           type: 'text',
@@ -132,7 +128,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         // Log the action
         try {
           await supabase.rpc('log_user_action', {
-            user_id: currentUser.id,
+            user_id: user.id,
             action: 'send_message',
             details: { 
               conversation_id: conversationId,
@@ -172,15 +168,11 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   },
 
   sendVoiceMessage: async (conversationId: string, voiceUrl: string, duration: number, receiverId: string) => {
+    const { user, isReady, tierSettings } = useAuthStore.getState();
+    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    
     set({ isLoading: true, error: null });
     try {
-      const currentUser = useAuthStore.getState().user;
-      const tierSettings = useAuthStore.getState().tierSettings;
-      
-      if (!currentUser) {
-        throw new Error('User not authenticated');
-      }
-      
       // Check message sending limit based on tier settings
       if (tierSettings) {
         const dailyMessageLimit = tierSettings.message_sending_limit || 20;
@@ -192,7 +184,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           const { data: messagesData, error } = await supabase
             .from('messages')
             .select('id, created_at')
-            .eq('sender_id', currentUser.id)
+            .eq('sender_id', user.id)
             .gte('created_at', todayTimestamp);
             
           if (error) {
@@ -212,7 +204,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         // Create voice message in Supabase
         const newMessage: Message = {
           id: `msg-${Date.now()}`,
-          senderId: currentUser.id,
+          senderId: user.id,
           receiverId,
           content: 'Voice message',
           type: 'voice',
@@ -247,7 +239,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         // Log the action
         try {
           await supabase.rpc('log_user_action', {
-            user_id: currentUser.id,
+            user_id: user.id,
             action: 'send_message',
             details: { 
               conversation_id: conversationId,
@@ -288,14 +280,11 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   },
 
   getMessages: async (conversationId: string) => {
+    const { user, isReady } = useAuthStore.getState();
+    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    
     set({ isLoading: true, error: null });
     try {
-      const currentUser = useAuthStore.getState().user;
-      
-      if (!currentUser) {
-        throw new Error('User not authenticated');
-      }
-      
       if (isSupabaseConfigured() && supabase) {
         // Get messages from Supabase
         const { data: messagesData, error: messagesError } = await supabase
@@ -312,7 +301,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         // Log the action
         try {
           await supabase.rpc('log_user_action', {
-            user_id: currentUser.id,
+            user_id: user.id,
             action: 'view_messages',
             details: { 
               conversation_id: conversationId,
@@ -344,20 +333,19 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   },
 
   markAsRead: async (conversationId: string) => {
+    const { user, isReady } = useAuthStore.getState();
+    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    
     try {
       const { messages } = get();
       const conversationMessages = messages[conversationId] || [];
       
       if (conversationMessages.length === 0) return;
       
-      const currentUser = useAuthStore.getState().user;
-      
-      if (!currentUser) return;
-      
       if (isSupabaseConfigured() && supabase) {
         // Mark messages as read in Supabase
         const unreadMessageIds = conversationMessages
-          .filter(msg => msg.receiverId === currentUser.id && !msg.read)
+          .filter(msg => msg.receiverId === user.id && !msg.read)
           .map(msg => msg.id);
           
         if (unreadMessageIds.length === 0) return;
@@ -374,7 +362,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         
         // Update local state
         const updatedMessages = conversationMessages.map(msg => {
-          if (msg.receiverId === currentUser.id && !msg.read) {
+          if (msg.receiverId === user.id && !msg.read) {
             return { ...msg, read: true };
           }
           return msg;

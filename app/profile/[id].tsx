@@ -22,69 +22,73 @@ import { isSupabaseConfigured, supabase, convertToCamelCase } from '@/lib/supaba
 export default function ProfileDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { user, isReady } = useAuthStore();
   const { likeUser, passUser } = useMatchesStore();
   
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isMatch, setIsMatch] = useState(false);
+  const [initialLoad, setInitialLoad] = useState(true);
   
   useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        setLoading(true);
-        
-        if (isSupabaseConfigured() && supabase && user) {
-          // Get user profile from Supabase
-          const { data: foundUser, error: userError } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', id)
-            .single();
-          
-          if (userError || !foundUser) {
-            setError('User not found');
-            return;
-          }
-          
-          const userProfile = supabaseToUserProfile(foundUser);
-          setProfile(userProfile);
-          
-          // Check if there's a match
-          const { data: matchesData, error: matchesError } = await supabase
-            .from('matches')
-            .select('*')
-            .or(`user_id.eq.${user.id},matched_user_id.eq.${user.id}`)
-            .or(`user_id.eq.${id},matched_user_id.eq.${id}`);
-          
-          if (matchesError) {
-            console.error('Error checking matches:', matchesError);
-            setIsMatch(false);
-            return;
-          }
-          
-          const match = matchesData.find(
-            m => (m.user_id === user.id && m.matched_user_id === id) || 
-                 (m.user_id === id && m.matched_user_id === user.id)
-          );
-          
-          setIsMatch(!!match);
-        } else {
-          setError('Supabase not configured');
-        }
-      } catch (err) {
-        setError('Failed to load profile');
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    if (id) {
+    if (isReady && user && id) {
       fetchProfile();
+      setInitialLoad(false);
     }
-  }, [id, user]);
+  }, [isReady, user, id]);
+  
+  const fetchProfile = async () => {
+    if (!user || !id) return; // Silent fail if no user or id
+    
+    try {
+      setLoading(true);
+      
+      if (isSupabaseConfigured() && supabase) {
+        // Get user profile from Supabase
+        const { data: foundUser, error: userError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', id)
+          .single();
+        
+        if (userError || !foundUser) {
+          setError('User not found');
+          return;
+        }
+        
+        const userProfile = supabaseToUserProfile(foundUser);
+        setProfile(userProfile);
+        
+        // Check if there's a match
+        const { data: matchesData, error: matchesError } = await supabase
+          .from('matches')
+          .select('*')
+          .or(`user_id.eq.${user.id},matched_user_id.eq.${user.id}`)
+          .or(`user_id.eq.${id},matched_user_id.eq.${id}`);
+        
+        if (matchesError) {
+          console.error('Error checking matches:', matchesError);
+          setIsMatch(false);
+          return;
+        }
+        
+        const match = matchesData.find(
+          m => (m.user_id === user.id && m.matched_user_id === id) || 
+               (m.user_id === id && m.matched_user_id === user.id)
+        );
+        
+        setIsMatch(!!match);
+      } else {
+        setError('Supabase not configured');
+      }
+    } catch (err) {
+      setError('Failed to load profile');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
   
   const handleConnect = async () => {
     if (!profile || !user) return;
@@ -132,7 +136,7 @@ export default function ProfileDetailScreen() {
     router.push(`/chat/${profile.id}`);
   };
   
-  if (loading) {
+  if (loading || initialLoad || !isReady) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={Colors.dark.accent} />
@@ -141,7 +145,7 @@ export default function ProfileDetailScreen() {
     );
   }
   
-  if (error || !profile) {
+  if (error || !profile || !user) {
     return (
       <View style={styles.errorContainer}>
         <Text style={styles.errorText}>{error || 'Something went wrong'}</Text>

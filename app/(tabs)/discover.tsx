@@ -19,6 +19,7 @@ import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
 import { ProfileDetailCard } from '@/components/ProfileDetailCard';
 import { X, ArrowLeft, RefreshCw } from 'lucide-react-native';
+import { isSupabaseConfigured, supabase, convertToCamelCase } from '@/lib/supabase';
 
 export default function DiscoverScreen() {
   const router = useRouter();
@@ -39,30 +40,34 @@ export default function DiscoverScreen() {
     syncUsageCounters
   } = useMatchesStore();
   
-  const { user } = useAuthStore();
+  const { user, isReady } = useAuthStore();
   
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [matchedUser, setMatchedUser] = useState<UserProfile | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<UserProfile | null>(null);
   const [showProfileDetail, setShowProfileDetail] = useState(false);
   const [showLimitModal, setShowLimitModal] = useState(false);
+  const [initialLoad, setInitialLoad] = useState(true);
   
   useEffect(() => {
-    fetchPotentialMatches();
-    startBatchProcessing();
-    syncUsageCounters();
+    if (isReady && user) {
+      fetchPotentialMatches();
+      startBatchProcessing();
+      syncUsageCounters();
+      setInitialLoad(false);
+    }
     
     return () => {
       stopBatchProcessing();
     };
-  }, []);
+  }, [isReady, user, fetchPotentialMatches, syncUsageCounters]);
   
   useEffect(() => {
     // Prefetch more profiles if we're running low
-    if (potentialMatches.length <= useMatchesStore.getState().prefetchThreshold && !isPrefetching && !isLoading) {
+    if (potentialMatches.length <= useMatchesStore.getState().prefetchThreshold && !isPrefetching && !isLoading && user) {
       prefetchNextBatch();
     }
-  }, [potentialMatches.length, isPrefetching]);
+  }, [potentialMatches.length, isPrefetching, user, prefetchNextBatch, isLoading]);
   
   useEffect(() => {
     // Check for new matches and display modal
@@ -178,7 +183,7 @@ export default function DiscoverScreen() {
     setShowLimitModal(false);
   };
   
-  if (isLoading && potentialMatches.length === 0) {
+  if ((isLoading && potentialMatches.length === 0) || initialLoad || !isReady) {
     return (
       <SafeAreaView style={styles.loadingContainer} edges={['bottom']}>
         <ActivityIndicator size="large" color={Colors.dark.accent} />
@@ -381,9 +386,6 @@ const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
     successHighlight: String(camelCaseData.successHighlight || ''),
   };
 };
-
-// Import needed for Supabase operations
-import { isSupabaseConfigured, supabase, convertToCamelCase } from '@/lib/supabase';
 
 const styles = StyleSheet.create({
   container: {

@@ -11,7 +11,6 @@ import { trpc, trpcClient } from "@/lib/trpc";
 import { isSupabaseConfigured, initSupabase, testSupabaseConnection } from "@/lib/supabase";
 import { useAuthStore } from "@/store/auth-store";
 
-
 export const unstable_settings = {
   initialRouteName: "(tabs)",
 };
@@ -37,7 +36,7 @@ export default function RootLayout() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [supabaseStatus, setSupabaseStatus] = useState<boolean | null>(null);
   const router = useRouter();
-  const { user, isAuthenticated, clearCache, fetchTierSettings } = useAuthStore();
+  const { user, isAuthenticated, isReady, checkSession, clearCache } = useAuthStore();
 
   useEffect(() => {
     if (error) {
@@ -47,7 +46,6 @@ export default function RootLayout() {
   }, [error]);
 
   useEffect(() => {
-    // Initialize Supabase
     const initApp = async () => {
       try {
         console.log('Initializing app...');
@@ -61,7 +59,6 @@ export default function RootLayout() {
           hasSupabaseKey: !!supabaseKey,
           nodeEnv: process.env.NODE_ENV
         });
-        
         
         // Initialize Supabase with retry
         console.log('Initializing Supabase...');
@@ -104,18 +101,8 @@ export default function RootLayout() {
         setIsInitialized(true);
         console.log('App initialization complete', { supabaseInitialized });
         
-        // Fetch tier settings only if user is already authenticated and user ID exists
-        if (isAuthenticated && user?.id) {
-          console.log('User authenticated, fetching tier settings...');
-          try {
-            await fetchTierSettings(user.id);
-          } catch (error) {
-            console.error('Failed to fetch tier settings:', error);
-            // Don't throw, just log the error
-          }
-        } else {
-          console.log('Skipping tier settings fetch: User not authenticated or no user ID', { isAuthenticated, userId: user?.id });
-        }
+        // Check session only once during app initialization
+        await checkSession();
       } catch (err) {
         console.error("Failed to initialize data:", err);
         setSupabaseStatus(false);
@@ -127,15 +114,16 @@ export default function RootLayout() {
       initApp();
       SplashScreen.hideAsync().catch(console.error);
     }
-  }, [loaded, clearCache]);
+  }, [loaded, clearCache, checkSession]);
 
   useEffect(() => {
-    if (isInitialized && !isAuthenticated && !user) {
+    // Only redirect or handle navigation after initialization and session check are complete
+    if (isInitialized && isReady && !isAuthenticated && !user) {
       router.replace('/(auth)');
     }
-  }, [isInitialized, isAuthenticated, user, router]);
+  }, [isInitialized, isReady, isAuthenticated, user, router]);
 
-  if (!loaded || !isInitialized) {
+  if (!loaded || !isInitialized || !isReady) {
     return null;
   }
 
