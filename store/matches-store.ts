@@ -478,17 +478,80 @@ export const useMatchesStore = create<MatchesState>()(
           }
           
           if (isSupabaseConfigured() && supabase) {
-            // Process the batch of swipes using the Supabase RPC
-            const newMatches = await processBatchSwipes(swipeQueue);
-            
+            // Process right swipes (likes) first
+            const rightSwipes = swipeQueue.filter(swipe => swipe.direction === 'right');
+            const newMatches: any[] = [];
+
+            for (const swipe of rightSwipes) {
+              // Check if the other user also liked this user
+              const { data: existingLike, error: likeError } = await supabase
+                .from('likes')
+                .select('*')
+                .eq('liker_id', swipe.swipee_id)
+                .eq('liked_id', swipe.swiper_id)
+                .single();
+
+              if (likeError && likeError.code !== 'PGRST116') {
+                console.error('Error checking for existing like:', likeError);
+                continue;
+              }
+
+              // If there's a match
+              if (existingLike) {
+                // Create a match
+                const { data: match, error: matchError } = await supabase
+                  .from('matches')
+                  .insert({
+                    user_id: swipe.swiper_id,
+                    matched_user_id: swipe.swipee_id,
+                    created_at: swipe.swipe_timestamp
+                  })
+                  .select()
+                  .single();
+
+                if (matchError) {
+                  console.error('Error creating match:', matchError);
+                  continue;
+                }
+
+                if (match) {
+                  newMatches.push(match);
+                }
+              }
+
+              // Record the swipe
+              const { error: swipeError } = await supabase
+                .from('likes')
+                .insert({
+                  liker_id: swipe.swiper_id,
+                  liked_id: swipe.swipee_id,
+                  timestamp: swipe.swipe_timestamp
+                });
+
+              if (swipeError) {
+                console.error('Error recording swipe:', swipeError);
+              }
+            }
+
+            // Process left swipes (passes)
+            const leftSwipes = swipeQueue.filter(swipe => swipe.direction === 'left');
+            for (const swipe of leftSwipes) {
+              const { error: swipeError } = await supabase
+                .from('likes')
+                .insert({
+                  liker_id: swipe.swiper_id,
+                  liked_id: swipe.swipee_id,
+                  timestamp: swipe.swipe_timestamp
+                });
+
+              if (swipeError) {
+                console.error('Error recording swipe:', swipeError);
+              }
+            }
+
             // Update matches if any new ones were created
-            if (newMatches && newMatches.length > 0) {
-              const typedMatches = newMatches.map((match: any) => ({
-                id: match.matchId,
-                userId: match.userId,
-                matchedUserId: match.matchedUserId,
-                createdAt: match.createdAt
-              })) as Match[];
+            if (newMatches.length > 0) {
+              const typedMatches = newMatches.map((match: any) => supabaseToMatch(match));
               
               set(state => ({
                 matches: [...state.matches, ...typedMatches],
@@ -505,7 +568,6 @@ export const useMatchesStore = create<MatchesState>()(
                 set({ matchLimitReached: true });
               }
               
-              // Return the first match for immediate feedback if needed
               console.log(`Batch processing created ${typedMatches.length} new matches`);
             }
             
@@ -699,40 +761,5 @@ export const stopBatchProcessing = () => {
     clearInterval(batchProcessingInterval);
     batchProcessingInterval = null;
     console.log('Batch swipe processing stopped');
-  }
-};
-
-// Helper function to process batch swipes
-const processBatchSwipes = async (swipes: SwipeAction[]): Promise<any[]> => {
-  try {
-    if (!supabase) {
-      throw new Error('Supabase client not initialized');
-    }
-
-    if (!swipes || swipes.length === 0) {
-      console.log('No swipes to process');
-      return [];
-    }
-
-    console.log(`Processing batch of ${swipes.length} swipes`);
-
-    // Convert the swipes to snake_case for Supabase
-    const formattedSwipes = swipes.map(swipe => convertToSnakeCase(swipe));
-
-    // Call the RPC function to process batch swipes
-    const { data, error } = await supabase.rpc('process_batch_swipes', { swipes: formattedSwipes });
-
-    if (error) {
-      console.error('Error processing batch swipes:', error);
-      throw error;
-    }
-
-    // Convert the response back to camelCase
-    const matches = data ? data.map((match: any) => convertToCamelCase(match)) : [];
-    console.log(`Batch swipe processing complete. New matches: ${matches.length}`);
-    return matches;
-  } catch (error) {
-    console.error('Error in processBatchSwipes:', error);
-    throw error;
   }
 };
