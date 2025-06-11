@@ -223,7 +223,9 @@ export default function DiscoverScreen() {
     return (
       <SafeAreaView style={styles.loadingContainer} edges={['bottom']}>
         <ActivityIndicator size="large" color={Colors.dark.accent} />
-        <Text style={styles.loadingText}>Finding entrepreneurs...</Text>
+        <Text style={styles.loadingText}>
+          {tierSettings?.global_discovery ? "Searching for global matches..." : "Finding entrepreneurs in your area..."}
+        </Text>
       </SafeAreaView>
     );
   }

@@ -119,15 +119,13 @@ export const useMatchesStore = create<MatchesState>()(
       matchLimitReached: false,
 
       fetchPotentialMatches: async (maxDistance = 50, forceRefresh = false) => {
-        const { user, isReady } = useAuthStore.getState();
+        const { user, isReady, tierSettings } = useAuthStore.getState();
         if (!isReady || !user) return; // Silent fail if not ready or not authenticated
         
         if (get().isLoading && !forceRefresh) return;
         
         set({ isLoading: true, error: null });
         try {
-          const tierSettings = useAuthStore.getState().tierSettings;
-          
           // If we have cached matches and not forcing refresh, use them
           if (!forceRefresh && get().cachedMatches.length > 0) {
             const { cachedMatches } = get();
@@ -147,14 +145,37 @@ export const useMatchesStore = create<MatchesState>()(
             // Use user's preferred distance if available
             const userMaxDistance = user.preferredDistance || maxDistance;
             
-            // Get potential matches based on location and tier settings
-            const { data: potentialUsers, error: matchError } = await supabase
-              .rpc('find_users_within_distance', { 
-                user_id: user.id,
-                max_distance: userMaxDistance,
-                global_search: globalDiscovery
-              });
-              
+            let potentialUsers: any[] = [];
+            let matchError: any = null;
+            
+            if (globalDiscovery) {
+              // For global discovery, query users directly based on matching criteria
+              const { data, error } = await supabase
+                .from('users')
+                .select('*')
+                .neq('id', user.id);
+                
+              if (error) {
+                matchError = error;
+              } else {
+                potentialUsers = data || [];
+              }
+            } else {
+              // Get potential matches based on location
+              const { data, error } = await supabase
+                .rpc('find_users_within_distance', { 
+                  user_id: user.id,
+                  max_distance: userMaxDistance,
+                  global_search: false
+                });
+                
+              if (error) {
+                matchError = error;
+              } else {
+                potentialUsers = data || [];
+              }
+            }
+            
             if (matchError) throw matchError;
             
             // Filter out users that have already been matched or passed
@@ -173,9 +194,9 @@ export const useMatchesStore = create<MatchesState>()(
               .filter((user: any) => !likedIds.includes(user.id))
               .map(supabaseToUserProfile);
             
-            // Shuffle the array for randomization if global search, otherwise sort by distance
+            // Sort based on discovery type
             const sortedMatches = globalDiscovery 
-              ? filteredMatches.sort(() => Math.random() - 0.5)
+              ? filteredMatches.sort(() => Math.random() - 0.5) // Randomize for global
               : filteredMatches.sort((a, b) => {
                   const aDist = (a as any).distance || 0;
                   const bDist = (b as any).distance || 0;
@@ -212,36 +233,57 @@ export const useMatchesStore = create<MatchesState>()(
         } catch (error) {
           console.error('Error fetching potential matches:', getReadableError(error));
           set({ 
-            error: getReadableError(error), 
+            error: globalDiscovery ? "No global matches found. Try adjusting your preferences." : "No matches found in your area. Try increasing your distance.",
             isLoading: false 
           });
         }
       },
 
       prefetchNextBatch: async (maxDistance = 50) => {
-        const { user, isReady } = useAuthStore.getState();
+        const { user, isReady, tierSettings } = useAuthStore.getState();
         if (!isReady || !user) return; // Silent fail if not ready or not authenticated
         
         if (get().isPrefetching || get().isLoading) return;
         
         set({ isPrefetching: true, error: null });
         try {
-          const tierSettings = useAuthStore.getState().tierSettings;
+          // Use cached tier settings for global discovery
+          const globalDiscovery = tierSettings?.global_discovery || false;
+          // Use user's preferred distance if available
+          const userMaxDistance = user.preferredDistance || maxDistance;
           
           if (isSupabaseConfigured() && supabase) {
-            // Use cached tier settings for global discovery
-            const globalDiscovery = tierSettings?.global_discovery || false;
-            // Use user's preferred distance if available
-            const userMaxDistance = user.preferredDistance || maxDistance;
+            let potentialUsers: any[] = [];
+            let matchError: any = null;
             
-            // Get potential matches based on location and tier settings
-            const { data: potentialUsers, error: matchError } = await supabase
-              .rpc('find_users_within_distance', { 
-                user_id: user.id,
-                max_distance: userMaxDistance,
-                global_search: globalDiscovery
-              });
-              
+            if (globalDiscovery) {
+              // For global discovery, query users directly based on matching criteria
+              const { data, error } = await supabase
+                .from('users')
+                .select('*')
+                .neq('id', user.id);
+                
+              if (error) {
+                matchError = error;
+              } else {
+                potentialUsers = data || [];
+              }
+            } else {
+              // Get potential matches based on location
+              const { data, error } = await supabase
+                .rpc('find_users_within_distance', { 
+                  user_id: user.id,
+                  max_distance: userMaxDistance,
+                  global_search: false
+                });
+                
+              if (error) {
+                matchError = error;
+              } else {
+                potentialUsers = data || [];
+              }
+            }
+            
             if (matchError) throw matchError;
             
             // Filter out users that have already been matched or passed
@@ -260,9 +302,9 @@ export const useMatchesStore = create<MatchesState>()(
               .filter((user: any) => !likedIds.includes(user.id))
               .map(supabaseToUserProfile);
             
-            // Shuffle the array for randomization if global search, otherwise sort by distance
+            // Sort based on discovery type
             const sortedMatches = globalDiscovery 
-              ? filteredMatches.sort(() => Math.random() - 0.5)
+              ? filteredMatches.sort(() => Math.random() - 0.5) // Randomize for global
               : filteredMatches.sort((a, b) => {
                   const aDist = (a as any).distance || 0;
                   const bDist = (b as any).distance || 0;
@@ -294,7 +336,7 @@ export const useMatchesStore = create<MatchesState>()(
         } catch (error) {
           console.error('Error prefetching potential matches:', getReadableError(error));
           set({ 
-            error: getReadableError(error), 
+            error: globalDiscovery ? "No additional global matches found." : "No additional matches found in your area.",
             isPrefetching: false 
           });
         }
