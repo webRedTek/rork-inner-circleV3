@@ -85,7 +85,6 @@ const defaultTierSettings: TierSettings = {
   global_discovery: false
 };
 
-// Auth store with Supabase integration (falls back to mock if not configured)
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
@@ -512,7 +511,7 @@ export const useAuthStore = create<AuthState>()(
   try {
     console.log('Fetching tier settings for user:', userId);
     const { data: tierSettings, error: tierError } = await supabase
-      .rpc('get_user_tier_settings', { user_id: userId });
+     .rpc('get_user_tier_settings', { p_user_id: userId });
       
     if (tierError) {
       console.error('Error fetching tier settings:', JSON.stringify(tierError, null, 2));
