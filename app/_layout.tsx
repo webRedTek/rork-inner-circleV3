@@ -10,7 +10,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { trpc, trpcClient } from "@/lib/trpc";
 import { isSupabaseConfigured, initSupabase, testSupabaseConnection } from "@/lib/supabase";
 import { useAuthStore } from "@/store/auth-store";
-import AsyncStorage from '@react-native-async-storage/async-storage';
+
 
 export const unstable_settings = {
   initialRouteName: "(tabs)",
@@ -62,13 +62,6 @@ export default function RootLayout() {
           nodeEnv: process.env.NODE_ENV
         });
         
-        // Clear any existing caches if there were previous errors
-        const hasPreviousError = await AsyncStorage.getItem('app_had_error');
-        if (hasPreviousError === 'true') {
-          console.log('Previous error detected, clearing caches...');
-          await AsyncStorage.removeItem('app_had_error');
-          await clearCache();
-        }
         
         // Initialize Supabase with retry
         console.log('Initializing Supabase...');
@@ -125,7 +118,6 @@ export default function RootLayout() {
         }
       } catch (err) {
         console.error("Failed to initialize data:", err);
-        await AsyncStorage.setItem('app_had_error', 'true');
         setSupabaseStatus(false);
         setIsInitialized(true);
       }
