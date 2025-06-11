@@ -182,45 +182,7 @@ export const useAuthStore = create<AuthState>()(
               // Fetch tier settings after login
               await get().fetchTierSettings(data.user.id);
             }
-          } else {
-            console.log('Using mock data for login');
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            const mockUsers = await AsyncStorage.getItem('mockUsers');
-            const users = mockUsers ? JSON.parse(mockUsers) : [];
-            
-            const user = users.find((u: any) => 
-              u.email === email && u.password === password
-            );
-            
-            if (!user) {
-              throw new Error('Invalid email or password');
-            }
-            
-            const { password: _, ...userWithoutPassword } = user;
-            
-            set({ 
-              user: userWithoutPassword as UserProfile, 
-              isAuthenticated: true, 
-              isLoading: false 
-            });
-            // Set mock tier settings
-            const tier = userWithoutPassword.membershipTier || 'basic';
-            const mockTierSettings = {
-              daily_swipe_limit: tier === 'gold' ? 100 : tier === 'silver' ? 30 : 10,
-              daily_match_limit: tier === 'gold' ? 50 : tier === 'silver' ? 15 : 5,
-              message_sending_limit: tier === 'gold' ? 200 : tier === 'silver' ? 50 : 20,
-              can_see_who_liked_you: tier === 'gold' || tier === 'silver',
-              can_rewind_last_swipe: tier === 'gold' || tier === 'silver',
-              boost_duration: tier === 'gold' ? 60 : tier === 'silver' ? 30 : 0,
-              boost_frequency: tier === 'gold' ? 3 : tier === 'silver' ? 1 : 0,
-              profile_visibility_control: tier === 'gold' || tier === 'silver',
-              priority_listing: tier === 'gold',
-              premium_filters_access: tier === 'gold' || tier === 'silver',
-              global_discovery: tier === 'gold'
-            };
-            set({ tierSettings: mockTierSettings });
-          }
+          } 
         } catch (error) {
           console.error('Login error:', getReadableError(error));
           set({ 
