@@ -38,7 +38,7 @@ export default function RootLayout() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [supabaseStatus, setSupabaseStatus] = useState<boolean | null>(null);
   const router = useRouter();
-  const { user, isAuthenticated, clearCache } = useAuthStore();
+  const { user, isAuthenticated, clearCache, fetchTierSettings } = useAuthStore();
 
   useEffect(() => {
     if (error) {
@@ -133,6 +133,12 @@ export default function RootLayout() {
         setSupabaseStatus(supabaseInitialized);
         setIsInitialized(true);
         console.log('App initialization complete', { supabaseInitialized });
+        
+        // Fetch tier settings if user is already authenticated
+        if (isAuthenticated && user) {
+          console.log('User already authenticated, fetching tier settings...');
+          await fetchTierSettings(user.id);
+        }
       } catch (err) {
         console.error("Failed to initialize data:", err);
         await AsyncStorage.setItem('app_had_error', 'true');
