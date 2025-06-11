@@ -16,6 +16,7 @@ import { Match, Message, UserProfile } from '@/types/user';
 import { useMatchesStore } from '@/store/matches-store';
 import { useMessagesStore } from '@/store/messages-store';
 import { isSupabaseConfigured, supabase, convertToCamelCase } from '@/lib/supabase';
+import { Button } from '@/components/Button';
 
 interface ChatPreview {
   id: string;
