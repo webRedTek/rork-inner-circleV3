@@ -77,10 +77,10 @@ export default function DiscoverScreen() {
   
   useEffect(() => {
     // Prefetch more profiles if we're running low
-    if (potentialMatches.length <= useMatchesStore.getState().prefetchThreshold && !isPrefetching && !isLoading && user) {
+    if (potentialMatches.length <= 3 && !isPrefetching && !isLoading && user) {
       prefetchNextBatch();
     }
-  }, [potentialMatches.length, isPrefetching, user, prefetchNextBatch, isLoading]);
+  }, [potentialMatches.length, isPrefetching, isLoading, user, prefetchNextBatch]);
   
   useEffect(() => {
     // Check for new matches and display modal

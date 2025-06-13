@@ -73,6 +73,21 @@ const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
   };
 };
 
+// In-memory cache for user profiles
+const userProfileCache = new Map<string, UserProfile>();
+
+// Rate limiting setup
+const RATE_LIMIT = 1000; // 1 second
+let lastQueryTime = 0;
+
+const rateLimitedQuery = async () => {
+  const now = Date.now();
+  if (now - lastQueryTime < RATE_LIMIT) {
+    await new Promise(resolve => setTimeout(resolve, RATE_LIMIT - (now - lastQueryTime)));
+  }
+  lastQueryTime = Date.now();
+};
+
 interface MatchesState {
   potentialMatches: UserProfile[];
   cachedMatches: UserProfile[];
@@ -110,7 +125,7 @@ export const useMatchesStore = create<MatchesState>()(
       swipeQueue: [],
       batchSize: 25,
       prefetchThreshold: 5,
-      batchProcessingInterval: 3000, // 3 seconds
+      batchProcessingInterval: 10000, // 10 seconds
       isLoading: false,
       isPrefetching: false,
       error: null,
@@ -147,6 +162,9 @@ export const useMatchesStore = create<MatchesState>()(
             
             let potentialUsers: any[] = [];
             let matchError: any = null;
+            
+            // Apply rate limiting
+            await rateLimitedQuery();
             
             if (isGlobalDiscovery) {
               // For global discovery, query users directly based on matching criteria
@@ -186,11 +204,15 @@ export const useMatchesStore = create<MatchesState>()(
             
             const likedIds = existingLikes ? existingLikes.map((like: any) => like.liked_id) : [];
             
-            // Convert to UserProfile type
+            // Convert to UserProfile type and cache
             const potentialData = potentialUsers as Record<string, any>[] || [];
             const filteredMatches = potentialData
               .filter((user: any) => !likedIds.includes(user.id))
-              .map(supabaseToUserProfile);
+              .map((userData) => {
+                const profile = supabaseToUserProfile(userData);
+                userProfileCache.set(profile.id, profile);
+                return profile;
+              });
             
             // Sort based on discovery type
             const sortedMatches = isGlobalDiscovery 
@@ -251,6 +273,9 @@ export const useMatchesStore = create<MatchesState>()(
           const userMaxDistance = user.preferredDistance || maxDistance;
           
           if (isSupabaseConfigured() && supabase) {
+            // Apply rate limiting
+            await rateLimitedQuery();
+            
             let potentialUsers: any[] = [];
             let matchError: any = null;
             
@@ -292,11 +317,15 @@ export const useMatchesStore = create<MatchesState>()(
             
             const likedIds = existingLikes ? existingLikes.map((like: any) => like.liked_id) : [];
             
-            // Convert to UserProfile type
+            // Convert to UserProfile type and cache
             const potentialData = potentialUsers as Record<string, any>[] || [];
             const filteredMatches = potentialData
               .filter((user: any) => !likedIds.includes(user.id))
-              .map(supabaseToUserProfile);
+              .map((userData) => {
+                const profile = supabaseToUserProfile(userData);
+                userProfileCache.set(profile.id, profile);
+                return profile;
+              });
             
             // Sort based on discovery type
             const sortedMatches = isGlobalDiscovery 
@@ -455,7 +484,7 @@ export const useMatchesStore = create<MatchesState>()(
           }));
           
           // If the queue is long enough, process it immediately
-          if (get().swipeQueue.length >= 5) {
+          if (get().swipeQueue.length >= 10) {
             await get().processSwipeBatch();
           }
         } catch (error) {
@@ -478,6 +507,9 @@ export const useMatchesStore = create<MatchesState>()(
           }
           
           if (isSupabaseConfigured() && supabase) {
+            // Apply rate limiting
+            await rateLimitedQuery();
+            
             // Process right swipes (likes) first
             const rightSwipes = swipeQueue.filter(swipe => swipe.direction === 'right');
             const newMatches: any[] = [];
@@ -592,6 +624,9 @@ export const useMatchesStore = create<MatchesState>()(
         set({ isLoading: true, error: null });
         try {
           if (isSupabaseConfigured() && supabase) {
+            // Apply rate limiting
+            await rateLimitedQuery();
+            
             // Get matches from Supabase
             const { data: matchesData, error: matchesError } = await supabase
               .from('matches')
@@ -653,6 +688,9 @@ export const useMatchesStore = create<MatchesState>()(
           const todayTimestamp = today.getTime();
           
           if (isSupabaseConfigured() && supabase) {
+            // Apply rate limiting
+            await rateLimitedQuery();
+            
             const { data: likesData, error } = await supabase
               .from('likes')
               .select('id, timestamp')
@@ -689,6 +727,9 @@ export const useMatchesStore = create<MatchesState>()(
           const todayTimestamp = today.getTime();
           
           if (isSupabaseConfigured() && supabase) {
+            // Apply rate limiting
+            await rateLimitedQuery();
+            
             // Sync swipe count
             const { data: likesData, error: likesError } = await supabase
               .from('likes')
@@ -735,6 +776,7 @@ export const useMatchesStore = create<MatchesState>()(
 
 // Set up interval for processing swipe batches periodically
 let batchProcessingInterval: NodeJS.Timeout | null = null;
+let syncTimeout: NodeJS.Timeout | null = null;
 
 export const startBatchProcessing = () => {
   if (batchProcessingInterval) return;
@@ -749,8 +791,11 @@ export const startBatchProcessing = () => {
       console.log(`Periodic batch processing: ${swipeQueue.length} swipes in queue`);
       await useMatchesStore.getState().processSwipeBatch();
     }
-    // Sync usage counters periodically
-    await useMatchesStore.getState().syncUsageCounters();
+    // Sync usage counters periodically with debouncing
+    if (syncTimeout) clearTimeout(syncTimeout);
+    syncTimeout = setTimeout(() => {
+      useMatchesStore.getState().syncUsageCounters();
+    }, 5000);
   }, intervalMs) as unknown as NodeJS.Timeout;
   
   console.log('Batch swipe processing started');
@@ -761,5 +806,9 @@ export const stopBatchProcessing = () => {
     clearInterval(batchProcessingInterval);
     batchProcessingInterval = null;
     console.log('Batch swipe processing stopped');
+  }
+  if (syncTimeout) {
+    clearTimeout(syncTimeout);
+    syncTimeout = null;
   }
 };
