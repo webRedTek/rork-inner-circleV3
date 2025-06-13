@@ -127,11 +127,11 @@ export const useMatchesStore = create<MatchesState>()(
       prefetchThreshold: 5,
       batchProcessingInterval: 15000, // 15 seconds, increased to run less frequently
       isLoading: false,
-      isPrefetching: boolean;
-      error: string | null;
-      newMatch: Match | null;
-      swipeLimitReached: boolean;
-      matchLimitReached: boolean;
+      isPrefetching: false,
+      error: null,
+      newMatch: null,
+      swipeLimitReached: false,
+      matchLimitReached: false,
       fetchPotentialMatches: async (maxDistance = 50, forceRefresh = false) => {
         const { user, isReady, tierSettings } = useAuthStore.getState();
         if (!isReady || !user) return; // Silent fail if not ready or not authenticated
