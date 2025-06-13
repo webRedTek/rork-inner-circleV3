@@ -125,14 +125,13 @@ export const useMatchesStore = create<MatchesState>()(
       swipeQueue: [],
       batchSize: 25,
       prefetchThreshold: 5,
-      batchProcessingInterval: 10000, // 10 seconds
+      batchProcessingInterval: 15000, // 15 seconds, increased to run less frequently
       isLoading: false,
-      isPrefetching: false,
-      error: null,
-      newMatch: null,
-      swipeLimitReached: false,
-      matchLimitReached: false,
-
+      isPrefetching: boolean;
+      error: string | null;
+      newMatch: Match | null;
+      swipeLimitReached: boolean;
+      matchLimitReached: boolean;
       fetchPotentialMatches: async (maxDistance = 50, forceRefresh = false) => {
         const { user, isReady, tierSettings } = useAuthStore.getState();
         if (!isReady || !user) return; // Silent fail if not ready or not authenticated
@@ -484,7 +483,7 @@ export const useMatchesStore = create<MatchesState>()(
           }));
           
           // If the queue is long enough, process it immediately
-          if (get().swipeQueue.length >= 10) {
+          if (get().swipeQueue.length >= 5) {
             await get().processSwipeBatch();
           }
         } catch (error) {
@@ -775,40 +774,39 @@ export const useMatchesStore = create<MatchesState>()(
 );
 
 // Set up interval for processing swipe batches periodically
-let batchProcessingInterval: NodeJS.Timeout | null = null;
-let syncTimeout: NodeJS.Timeout | null = null;
+let batchProcessingIntervalId: number | null = null;
+let isBatchProcessingActive = false;
 
 export const startBatchProcessing = () => {
-  if (batchProcessingInterval) return;
+  if (isBatchProcessingActive || batchProcessingIntervalId !== null) {
+    console.log('Batch processing already active');
+    return;
+  }
   
   const { batchProcessingInterval: intervalMs } = useMatchesStore.getState();
-  batchProcessingInterval = setInterval(async () => {
+  batchProcessingIntervalId = setInterval(async () => {
     const { user, isReady } = useAuthStore.getState();
     if (!isReady || !user) return; // Silent fail if not ready or not authenticated
     
     const { swipeQueue } = useMatchesStore.getState();
-    if (swipeQueue.length > 0) {
+    if (swipeQueue.length >= 5) {
       console.log(`Periodic batch processing: ${swipeQueue.length} swipes in queue`);
       await useMatchesStore.getState().processSwipeBatch();
     }
-    // Sync usage counters periodically with debouncing
-    if (syncTimeout) clearTimeout(syncTimeout);
-    syncTimeout = setTimeout(() => {
-      useMatchesStore.getState().syncUsageCounters();
-    }, 5000);
-  }, intervalMs) as unknown as NodeJS.Timeout;
+  }, intervalMs) as unknown as number;
   
+  isBatchProcessingActive = true;
   console.log('Batch swipe processing started');
 };
 
 export const stopBatchProcessing = () => {
-  if (batchProcessingInterval) {
-    clearInterval(batchProcessingInterval);
-    batchProcessingInterval = null;
-    console.log('Batch swipe processing stopped');
+  if (!isBatchProcessingActive || batchProcessingIntervalId === null) {
+    console.log('Batch processing not active');
+    return;
   }
-  if (syncTimeout) {
-    clearTimeout(syncTimeout);
-    syncTimeout = null;
-  }
+  
+  clearInterval(batchProcessingIntervalId);
+  batchProcessingIntervalId = null;
+  isBatchProcessingActive = false;
+  console.log('Batch swipe processing stopped');
 };
