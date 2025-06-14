@@ -27,6 +27,27 @@ export const useAffiliateStore = create<AffiliateState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       if (isSupabaseConfigured() && supabase) {
+        // Check if affiliate_stats table exists
+        const { error: tableCheckError } = await supabase
+          .from('affiliate_stats')
+          .select('id')
+          .limit(1);
+          
+        if (tableCheckError?.message?.includes('does not exist')) {
+          set({
+            stats: {
+              totalReferrals: 0,
+              activeReferrals: 0,
+              totalEarnings: 0,
+              pendingPayouts: 0,
+              lastPayout: { amount: 0, date: "N/A" },
+            },
+            referralHistory: [],
+            isLoading: false
+          });
+          return;
+        }
+        
         // Fetch stats
         const { data: statsData, error: statsError } = await supabase
           .from('affiliate_stats')
@@ -41,7 +62,7 @@ export const useAffiliateStore = create<AffiliateState>((set, get) => ({
           activeReferrals: statsData?.active_referrals || 0,
           totalEarnings: statsData?.total_earnings || 0,
           pendingPayouts: statsData?.pending_payouts || 0,
-          lastPayout: statsData?.last_payout || { amount: 0, date: 'N/A' },
+          lastPayout: statsData?.last_payout || { amount: 0, date: "N/A" },
         };
         
         // Fetch referral history

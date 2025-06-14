@@ -131,6 +131,19 @@ create table public.affiliate_tiers (
   updated_at timestamptz not null default now()
 );
 
+-- Create affiliate_stats table
+create table public.affiliate_stats (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid not null references public.users(id) on delete cascade,
+  total_referrals integer not null default 0,
+  active_referrals integer not null default 0,
+  total_earnings decimal not null default 0.0,
+  pending_payouts decimal not null default 0.0,
+  last_payout jsonb default '{"amount": 0, "date": "N/A"}',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 -- Create affiliate_links table
 create table public.affiliate_links (
   id uuid primary key default uuid_generate_v4(),
@@ -168,6 +181,14 @@ create table public.affiliate_clicks (
   ip_address text,
   user_agent text
 );
+
+-- Enable RLS on all affiliate tables
+alter table public.affiliate_stats enable row level security;
+alter table public.affiliate_tiers enable row level security;
+alter table public.affiliate_links enable row level security;
+alter table public.affiliate_referrals enable row level security;
+alter table public.affiliate_payouts enable row level security;
+alter table public.affiliate_clicks enable row level security;
 
 -- Create function to log user actions
 create or replace function log_user_action(user_id uuid, action text, details jsonb default null)
@@ -483,6 +504,19 @@ create policy "Only admins can update affiliate tiers"
 create policy "Only admins can insert affiliate tiers"
   on public.affiliate_tiers for insert
   with check (auth.role() = 'service_role');
+
+-- Affiliate stats policies
+create policy "Users can view their own affiliate stats"
+  on public.affiliate_stats for select
+  using (auth.uid() = user_id);
+
+create policy "System can update affiliate stats"
+  on public.affiliate_stats for update
+  using (auth.uid() = user_id);
+
+create policy "System can create affiliate stats"
+  on public.affiliate_stats for insert
+  with check (auth.uid() = user_id);
 
 -- Affiliate links policies
 create policy "Users can view their own affiliate links"
