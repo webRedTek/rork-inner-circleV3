@@ -25,6 +25,7 @@ interface InputProps {
   labelStyle?: TextStyle;
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   editable?: boolean;
+  helperText?: string;
 }
 
 export const Input: React.FC<InputProps> = ({
@@ -42,6 +43,7 @@ export const Input: React.FC<InputProps> = ({
   labelStyle,
   autoCapitalize = 'none',
   editable = true,
+  helperText,
 }) => {
   return (
     <View style={[styles.container, style]}>
@@ -65,6 +67,9 @@ export const Input: React.FC<InputProps> = ({
         autoCapitalize={autoCapitalize}
         editable={editable}
       />
+      {!error && helperText && (
+        <Text style={styles.helperText}>{helperText}</Text>
+      )}
       {error && <Text style={styles.errorText}>{error}</Text>}
     </View>
   );
@@ -96,6 +101,11 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: Colors.dark.error,
+    fontSize: 12,
+    marginTop: 4,
+  },
+  helperText: {
+    color: Colors.dark.textSecondary,
     fontSize: 12,
     marginTop: 4,
   },

@@ -410,6 +410,27 @@ export const convertToSnakeCase = (obj: Record<string, any>): Record<string, any
 };
 
 /**
+ * Helper function to extract readable error message from Supabase error
+ */
+export const getReadableError = (error: any): string => {
+  if (!error) return 'Unknown error occurred';
+  
+  if (typeof error === 'string') return error;
+  
+  if (error.message) return error.message;
+  
+  if (error.details || error.hint || error.code) {
+    return `Error: ${error.code || 'N/A'} - ${error.details || error.message || 'Unknown'} ${error.hint ? `(${error.hint})` : ''}`;
+  }
+  
+  try {
+    return JSON.stringify(error, null, 2);
+  } catch (e) {
+    return 'An error occurred, but it could not be parsed';
+  }
+};
+
+/**
  * Fetches app settings from Supabase
  * @returns Promise with app settings data or error
  */
