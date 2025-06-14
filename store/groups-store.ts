@@ -308,29 +308,28 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
       }
       
       if (isSupabaseConfigured() && supabase) {
-        // Create new group
-       const newGroup: Group = {
-  id: `group-${Date.now()}`,
-  name: groupData.name || 'New Group',
-  description: groupData.description || '',
-  imageUrl: groupData.imageUrl,
-  memberIds: [user.id], // Creator is the first member
-  createdBy: user.id,
-  createdAt: Date.now(),
-  category: groupData.category || 'Interest',
-  industry: groupData.industry
-};
+        // Create new group with snake_case fields, letting Postgres generate the UUID
+        const newGroup = {
+          name: groupData.name || 'New Group',
+          description: groupData.description || '',
+          image_url: groupData.imageUrl,
+          member_ids: [user.id], // Creator is the first member
+          created_by: user.id,
+          created_at: Date.now(),
+          category: groupData.category || 'Interest',
+          industry: groupData.industry
+        };
         
-        // Insert group into Supabase
-        const { data: createdGroup, error: insertError} = await supabase
+        // Insert group into Supabase and get the created group with generated UUID
+        const { data: createdGroup, error: insertError } = await supabase
           .from('groups')
           .insert(newGroup)
-					.select()
-					.single();
+          .select()
+          .single();
           
         if (insertError) throw insertError;
         
-        // Update user's joinedGroups
+        // Update user's joinedGroups with the Postgres-generated UUID
         const updatedJoinedGroups = [...user.joinedGroups, createdGroup.id];
         
         const { error: userUpdateError } = await supabase
@@ -345,7 +344,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           await supabase.rpc('log_user_action', {
             user_id: user.id,
             action: 'create_group',
-            details: { group_id: newGroup.id, group_name: newGroup.name }
+            details: { group_id: createdGroup.id, group_name: newGroup.name }
           });
           useUsageStore.getState().incrementUsage('create_group');
         } catch (logError) {
