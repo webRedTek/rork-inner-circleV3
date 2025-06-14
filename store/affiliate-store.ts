@@ -8,8 +8,7 @@ interface AffiliateState {
   referralHistory: ReferralHistory[];
   isLoading: boolean;
   error: string | null;
-  fetchStats: () => Promise<void>;
-  fetchReferralHistory: () => Promise<void>;
+  fetchAffiliateData: () => Promise<void>;
   generateReferralLink: () => Promise<string>;
   checkReferralCode: (code: string) => Promise<boolean>;
   clearError: () => void;
@@ -21,13 +20,14 @@ export const useAffiliateStore = create<AffiliateState>((set, get) => ({
   isLoading: false,
   error: null,
 
-  fetchStats: async () => {
+  fetchAffiliateData: async () => {
     const { user, isReady } = useAuthStore.getState();
     if (!isReady || !user) return;
     
     set({ isLoading: true, error: null });
     try {
       if (isSupabaseConfigured() && supabase) {
+        // Fetch stats
         const { data: statsData, error: statsError } = await supabase
           .from('affiliate_stats')
           .select('*')
@@ -44,26 +44,7 @@ export const useAffiliateStore = create<AffiliateState>((set, get) => ({
           lastPayout: statsData?.last_payout || { amount: 0, date: 'N/A' },
         };
         
-        set({ stats, isLoading: false });
-      } else {
-        throw new Error('Supabase is not configured');
-      }
-    } catch (error) {
-      console.error('Error fetching affiliate stats:', getReadableError(error));
-      set({ 
-        error: getReadableError(error), 
-        isLoading: false 
-      });
-    }
-  },
-
-  fetchReferralHistory: async () => {
-    const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) return;
-    
-    set({ isLoading: true, error: null });
-    try {
-      if (isSupabaseConfigured() && supabase) {
+        // Fetch referral history
         const { data: historyData, error: historyError } = await supabase
           .from('affiliate_referrals')
           .select('*')
@@ -82,12 +63,12 @@ export const useAffiliateStore = create<AffiliateState>((set, get) => ({
           earnings: item.earnings || 0,
         }));
         
-        set({ referralHistory, isLoading: false });
+        set({ stats, referralHistory, isLoading: false });
       } else {
         throw new Error('Supabase is not configured');
       }
     } catch (error) {
-      console.error('Error fetching referral history:', getReadableError(error));
+      console.error('Error fetching affiliate data:', getReadableError(error));
       set({ 
         error: getReadableError(error), 
         isLoading: false 

@@ -120,6 +120,55 @@ create table public.app_settings (
   updated_at timestamptz not null default now()
 );
 
+-- Create affiliate_tiers table
+create table public.affiliate_tiers (
+  id uuid primary key default uuid_generate_v4(),
+  tier_name text not null,
+  commission_rate decimal not null default 0.0,
+  min_referrals integer not null default 0,
+  payout_threshold decimal not null default 0.0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Create affiliate_links table
+create table public.affiliate_links (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid not null references public.users(id) on delete cascade,
+  link text not null unique,
+  created_at timestamptz not null default now()
+);
+
+-- Create affiliate_referrals table
+create table public.affiliate_referrals (
+  id uuid primary key default uuid_generate_v4(),
+  referrer_id uuid not null references public.users(id) on delete cascade,
+  referred_user_id uuid not null references public.users(id) on delete cascade,
+  status text not null default 'pending',
+  subscription_type text,
+  earnings decimal not null default 0.0,
+  signup_date timestamptz not null default now(),
+  unique(referrer_id, referred_user_id)
+);
+
+-- Create affiliate_payouts table
+create table public.affiliate_payouts (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid not null references public.users(id) on delete cascade,
+  amount decimal not null,
+  payout_date timestamptz not null default now(),
+  status text not null default 'pending'
+);
+
+-- Create affiliate_clicks table
+create table public.affiliate_clicks (
+  id uuid primary key default uuid_generate_v4(),
+  link_id uuid not null references public.affiliate_links(id) on delete cascade,
+  clicked_at timestamptz not null default now(),
+  ip_address text,
+  user_agent text
+);
+
 -- Create function to log user actions
 create or replace function log_user_action(user_id uuid, action text, details jsonb default null)
 returns void as $$
@@ -130,7 +179,7 @@ end;
 $$ language plpgsql security definer;
 
 -- Create function to get user tier settings
-create or replace function get_user_tier_settings(user_id uuid)
+create or replace function get_user_tier_settings(p_user_id uuid)
 returns jsonb as $$
 declare
   user_tier text;
@@ -139,7 +188,7 @@ begin
   -- Get user's membership tier
   select membership_tier into user_tier
   from public.users
-  where id = user_id;
+  where id = p_user_id;
   
   -- Return settings based on tier
   case user_tier
@@ -155,7 +204,19 @@ begin
         'profile_visibility_control', false,
         'priority_listing', false,
         'premium_filters_access', false,
-        'global_discovery', false
+        'global_discovery', false,
+        'groups_limit', 0,
+        'groups_creation_limit', 0,
+        'featured_portfolio_limit', 0,
+        'events_per_month', 0,
+        'can_create_groups', false,
+        'has_business_verification', false,
+        'has_advanced_analytics', false,
+        'has_priority_inbox', false,
+        'can_send_direct_intro', false,
+        'has_virtual_meeting_room', false,
+        'has_custom_branding', false,
+        'has_dedicated_support', false
       );
     when 'bronze' then
       settings := jsonb_build_object(
@@ -169,7 +230,19 @@ begin
         'profile_visibility_control', false,
         'priority_listing', false,
         'premium_filters_access', false,
-        'global_discovery', false
+        'global_discovery', false,
+        'groups_limit', 0,
+        'groups_creation_limit', 0,
+        'featured_portfolio_limit', 0,
+        'events_per_month', 0,
+        'can_create_groups', false,
+        'has_business_verification', false,
+        'has_advanced_analytics', false,
+        'has_priority_inbox', false,
+        'can_send_direct_intro', false,
+        'has_virtual_meeting_room', false,
+        'has_custom_branding', false,
+        'has_dedicated_support', false
       );
     when 'silver' then
       settings := jsonb_build_object(
@@ -183,7 +256,19 @@ begin
         'profile_visibility_control', true,
         'priority_listing', false,
         'premium_filters_access', true,
-        'global_discovery', false
+        'global_discovery', false,
+        'groups_limit', 3,
+        'groups_creation_limit', 1,
+        'featured_portfolio_limit', 3,
+        'events_per_month', 2,
+        'can_create_groups', true,
+        'has_business_verification', false,
+        'has_advanced_analytics', false,
+        'has_priority_inbox', false,
+        'can_send_direct_intro', false,
+        'has_virtual_meeting_room', false,
+        'has_custom_branding', false,
+        'has_dedicated_support', false
       );
     when 'gold' then
       settings := jsonb_build_object(
@@ -197,7 +282,19 @@ begin
         'profile_visibility_control', true,
         'priority_listing', true,
         'premium_filters_access', true,
-        'global_discovery', true
+        'global_discovery', true,
+        'groups_limit', 10,
+        'groups_creation_limit', 5,
+        'featured_portfolio_limit', 10,
+        'events_per_month', 10,
+        'can_create_groups', true,
+        'has_business_verification', true,
+        'has_advanced_analytics', true,
+        'has_priority_inbox', true,
+        'can_send_direct_intro', true,
+        'has_virtual_meeting_room', true,
+        'has_custom_branding', true,
+        'has_dedicated_support', true
       );
     else
       settings := jsonb_build_object(
@@ -211,7 +308,19 @@ begin
         'profile_visibility_control', false,
         'priority_listing', false,
         'premium_filters_access', false,
-        'global_discovery', false
+        'global_discovery', false,
+        'groups_limit', 0,
+        'groups_creation_limit', 0,
+        'featured_portfolio_limit', 0,
+        'events_per_month', 0,
+        'can_create_groups', false,
+        'has_business_verification', false,
+        'has_advanced_analytics', false,
+        'has_priority_inbox', false,
+        'can_send_direct_intro', false,
+        'has_virtual_meeting_room', false,
+        'has_custom_branding', false,
+        'has_dedicated_support', false
       );
   end case;
   
@@ -361,3 +470,62 @@ create policy "Users can view their own audit logs"
 create policy "Anyone can view app settings"
   on public.app_settings for select
   using (true);
+
+-- Affiliate tiers policies
+create policy "Anyone can view affiliate tiers"
+  on public.affiliate_tiers for select
+  using (true);
+
+create policy "Only admins can update affiliate tiers"
+  on public.affiliate_tiers for update
+  using (auth.role() = 'service_role');
+
+create policy "Only admins can insert affiliate tiers"
+  on public.affiliate_tiers for insert
+  with check (auth.role() = 'service_role');
+
+-- Affiliate links policies
+create policy "Users can view their own affiliate links"
+  on public.affiliate_links for select
+  using (auth.uid() = user_id);
+
+create policy "Users can create their own affiliate links"
+  on public.affiliate_links for insert
+  with check (auth.uid() = user_id);
+
+-- Affiliate referrals policies
+create policy "Users can view their own referrals"
+  on public.affiliate_referrals for select
+  using (auth.uid() = referrer_id);
+
+create policy "System can create referrals during signup"
+  on public.affiliate_referrals for insert
+  with check (auth.role() = 'service_role' or auth.role() = 'authenticated');
+
+-- Affiliate payouts policies
+create policy "Users can view their own payouts"
+  on public.affiliate_payouts for select
+  using (auth.uid() = user_id);
+
+create policy "Only system or admins can create or update payouts"
+  on public.affiliate_payouts for insert
+  with check (auth.role() = 'service_role');
+
+create policy "Only system or admins can update payouts"
+  on public.affiliate_payouts for update
+  using (auth.role() = 'service_role');
+
+-- Affiliate clicks policies
+create policy "Users can view clicks on their links"
+  on public.affiliate_clicks for select
+  using (
+    exists (
+      select 1 from public.affiliate_links
+      where affiliate_links.id = affiliate_clicks.link_id
+      and affiliate_links.user_id = auth.uid()
+    )
+  );
+
+create policy "System can create click records"
+  on public.affiliate_clicks for insert
+  with check (true);

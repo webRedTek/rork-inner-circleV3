@@ -12,18 +12,16 @@ import QRCode from 'react-native-qrcode-svg';
 export default function AffiliateDashboardScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const { stats, referralHistory, isLoading, error, fetchStats, fetchReferralHistory, generateReferralLink } = useAffiliateStore();
+  const { stats, referralHistory, isLoading, error, fetchAffiliateData, generateReferralLink } = useAffiliateStore();
   const [referralLink, setReferralLink] = useState<string>('');
 
   useEffect(() => {
     if (user?.membershipTier !== 'silver' && user?.membershipTier !== 'gold') {
       router.replace('/(tabs)/profile');
     } else {
-      fetchStats();
-      fetchReferralHistory();
-      loadReferralLink();
+      fetchAffiliateData();
     }
-  }, [user]);
+  }, []);
 
   const loadReferralLink = async () => {
     try {
@@ -44,6 +42,10 @@ export default function AffiliateDashboardScreen() {
     Alert.alert('Share', 'Sharing referral link...');
   };
 
+  const handleGenerateLink = () => {
+    loadReferralLink();
+  };
+
   if (isLoading) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
@@ -60,8 +62,7 @@ export default function AffiliateDashboardScreen() {
         <Button
           title="Retry"
           onPress={() => {
-            fetchStats();
-            fetchReferralHistory();
+            fetchAffiliateData();
           }}
           variant="outline"
           size="large"
@@ -107,24 +108,40 @@ export default function AffiliateDashboardScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Referral Link</Text>
           <View style={styles.linkContainer}>
-            <Text style={styles.linkText}>{referralLink || 'Generating link...'}</Text>
+            {referralLink ? (
+              <Text style={styles.linkText}>{referralLink}</Text>
+            ) : (
+              <Text style={styles.linkText}>Not generated yet. Click below to generate.</Text>
+            )}
             <View style={styles.linkActions}>
-              <Button
-                title="Copy"
-                onPress={handleCopyLink}
-                variant="outline"
-                size="small"
-                icon={<Copy size={16} color={Colors.dark.text} />}
-                style={styles.linkButton}
-              />
-              <Button
-                title="Share"
-                onPress={handleShare}
-                variant="outline"
-                size="small"
-                icon={<Share2 size={16} color={Colors.dark.text} />}
-                style={styles.linkButton}
-              />
+              {referralLink ? (
+                <>
+                  <Button
+                    title="Copy"
+                    onPress={handleCopyLink}
+                    variant="outline"
+                    size="small"
+                    icon={<Copy size={16} color={Colors.dark.text} />}
+                    style={styles.linkButton}
+                  />
+                  <Button
+                    title="Share"
+                    onPress={handleShare}
+                    variant="outline"
+                    size="small"
+                    icon={<Share2 size={16} color={Colors.dark.text} />}
+                    style={styles.linkButton}
+                  />
+                </>
+              ) : (
+                <Button
+                  title="Generate Link"
+                  onPress={handleGenerateLink}
+                  variant="primary"
+                  size="small"
+                  style={styles.linkButton}
+                />
+              )}
             </View>
           </View>
           <View style={styles.qrContainer}>
@@ -136,7 +153,7 @@ export default function AffiliateDashboardScreen() {
                 backgroundColor={Colors.dark.background}
               />
             ) : (
-              <ActivityIndicator size="small" color={Colors.dark.primary} />
+              <Text style={styles.qrText}>Generate a link to display QR code</Text>
             )}
             <Text style={styles.qrText}>Scan to share your referral link</Text>
           </View>
