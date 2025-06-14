@@ -271,6 +271,123 @@ export default function AdminSettingsScreen() {
                 />
               </View>
             </View>
+            
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Business Features</Text>
+              
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Groups Limit</Text>
+                <TextInput
+                  style={styles.numberInput}
+                  value={settingsByTier[tier as MembershipTier]?.groups_limit?.toString() || '0'}
+                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'groups_limit', parseInt(text) || 0)}
+                  keyboardType="numeric"
+                  placeholder="Enter number"
+                />
+              </View>
+              
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Featured Portfolio Limit</Text>
+                <TextInput
+                  style={styles.numberInput}
+                  value={settingsByTier[tier as MembershipTier]?.featured_portfolio_limit?.toString() || '0'}
+                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'featured_portfolio_limit', parseInt(text) || 0)}
+                  keyboardType="numeric"
+                  placeholder="Enter number"
+                />
+              </View>
+              
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Events Per Month</Text>
+                <TextInput
+                  style={styles.numberInput}
+                  value={settingsByTier[tier as MembershipTier]?.events_per_month?.toString() || '0'}
+                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'events_per_month', parseInt(text) || 0)}
+                  keyboardType="numeric"
+                  placeholder="Enter number"
+                />
+              </View>
+              
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Can Create Events</Text>
+                <Switch
+                  value={settingsByTier[tier as MembershipTier]?.can_create_events || false}
+                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'can_create_events', value)}
+                  trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
+                  thumbColor={Colors.dark.background}
+                />
+              </View>
+              
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Has Business Verification</Text>
+                <Switch
+                  value={settingsByTier[tier as MembershipTier]?.has_business_verification || false}
+                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'has_business_verification', value)}
+                  trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
+                  thumbColor={Colors.dark.background}
+                />
+              </View>
+              
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Has Advanced Analytics</Text>
+                <Switch
+                  value={settingsByTier[tier as MembershipTier]?.has_advanced_analytics || false}
+                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'has_advanced_analytics', value)}
+                  trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
+                  thumbColor={Colors.dark.background}
+                />
+              </View>
+              
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Has Priority Inbox</Text>
+                <Switch
+                  value={settingsByTier[tier as MembershipTier]?.has_priority_inbox || false}
+                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'has_priority_inbox', value)}
+                  trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
+                  thumbColor={Colors.dark.background}
+                />
+              </View>
+              
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Can Send Direct Intro</Text>
+                <Switch
+                  value={settingsByTier[tier as MembershipTier]?.can_send_direct_intro || false}
+                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'can_send_direct_intro', value)}
+                  trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
+                  thumbColor={Colors.dark.background}
+                />
+              </View>
+              
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Has Virtual Meeting Room</Text>
+                <Switch
+                  value={settingsByTier[tier as MembershipTier]?.has_virtual_meeting_room || false}
+                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'has_virtual_meeting_room', value)}
+                  trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
+                  thumbColor={Colors.dark.background}
+                />
+              </View>
+              
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Has Custom Branding</Text>
+                <Switch
+                  value={settingsByTier[tier as MembershipTier]?.has_custom_branding || false}
+                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'has_custom_branding', value)}
+                  trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
+                  thumbColor={Colors.dark.background}
+                />
+              </View>
+              
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Has Dedicated Support</Text>
+                <Switch
+                  value={settingsByTier[tier as MembershipTier]?.has_dedicated_support || false}
+                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'has_dedicated_support', value)}
+                  trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
+                  thumbColor={Colors.dark.background}
+                />
+              </View>
+            </View>
           </View>
         ))}
         
