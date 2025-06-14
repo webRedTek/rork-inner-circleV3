@@ -271,6 +271,122 @@ export default function AdminSettingsScreen() {
                 />
               </View>
             </View>
+						<View style={styles.section}>
+  <Text style={styles.sectionTitle}>Business Features</Text>
+  
+  <View style={styles.settingItem}>
+    <Text style={styles.settingLabel}>Groups Limit</Text>
+    <TextInput
+      style={styles.numberInput}
+      value={settings.groups_limit?.toString() || '1'}
+      onChangeText={text => handleSettingChange('groups_limit', parseInt(text) || 1)}
+      keyboardType="numeric"
+      placeholder="Enter number"
+    />
+  </View>
+
+  <View style={styles.settingItem}>
+    <Text style={styles.settingLabel}>Featured Portfolio Limit</Text>
+    <TextInput
+      style={styles.numberInput}
+      value={settings.featured_portfolio_limit?.toString() || '1'}
+      onChangeText={text => handleSettingChange('featured_portfolio_limit', parseInt(text) || 1)}
+      keyboardType="numeric"
+      placeholder="Enter number"
+    />
+  </View>
+
+  <View style={styles.settingItem}>
+    <Text style={styles.settingLabel}>Events Per Month</Text>
+    <TextInput
+      style={styles.numberInput}
+      value={settings.events_per_month?.toString() || '0'}
+      onChangeText={text => handleSettingChange('events_per_month', parseInt(text) || 0)}
+      keyboardType="numeric"
+      placeholder="Enter number"
+    />
+  </View>
+
+  <View style={styles.settingItem}>
+    <Text style={styles.settingLabel}>Can Create Events</Text>
+    <Switch
+      value={settings.can_create_events || false}
+      onValueChange={value => handleSettingChange('can_create_events', value)}
+      trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
+      thumbColor={Colors.dark.background}
+    />
+  </View>
+
+  <View style={styles.settingItem}>
+    <Text style={styles.settingLabel}>Business Verification</Text>
+    <Switch
+      value={settings.has_business_verification || false}
+      onValueChange={value => handleSettingChange('has_business_verification', value)}
+      trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
+      thumbColor={Colors.dark.background}
+    />
+  </View>
+
+  <View style={styles.settingItem}>
+    <Text style={styles.settingLabel}>Advanced Analytics</Text>
+    <Switch
+      value={settings.has_advanced_analytics || false}
+      onValueChange={value => handleSettingChange('has_advanced_analytics', value)}
+      trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
+      thumbColor={Colors.dark.background}
+    />
+  </View>
+
+  <View style={styles.settingItem}>
+    <Text style={styles.settingLabel}>Priority Inbox</Text>
+    <Switch
+      value={settings.has_priority_inbox || false}
+      onValueChange={value => handleSettingChange('has_priority_inbox', value)}
+      trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
+      thumbColor={Colors.dark.background}
+    />
+  </View>
+
+  <View style={styles.settingItem}>
+    <Text style={styles.settingLabel}>Direct Introductions</Text>
+    <Switch
+      value={settings.can_send_direct_intro || false}
+      onValueChange={value => handleSettingChange('can_send_direct_intro', value)}
+      trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
+      thumbColor={Colors.dark.background}
+    />
+  </View>
+
+  <View style={styles.settingItem}>
+    <Text style={styles.settingLabel}>Virtual Meeting Room</Text>
+    <Switch
+      value={settings.has_virtual_meeting_room || false}
+      onValueChange={value => handleSettingChange('has_virtual_meeting_room', value)}
+      trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
+      thumbColor={Colors.dark.background}
+    />
+  </View>
+
+  <View style={styles.settingItem}>
+    <Text style={styles.settingLabel}>Custom Branding</Text>
+    <Switch
+      value={settings.has_custom_branding || false}
+      onValueChange={value => handleSettingChange('has_custom_branding', value)}
+      trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
+      thumbColor={Colors.dark.background}
+    />
+  </View>
+
+  <View style={styles.settingItem}>
+    <Text style={styles.settingLabel}>Dedicated Support</Text>
+    <Switch
+      value={settings.has_dedicated_support || false}
+      onValueChange={value => handleSettingChange('has_dedicated_support', value)}
+      trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
+      thumbColor={Colors.dark.background}
+    />
+  </View>
+</View>
           </View>
         ))}
         
