@@ -170,6 +170,37 @@ export type Database = {
           has_dedicated_support?: boolean;
         };
       };
+      usage_tracking: {
+        Row: {
+          id: string;
+          user_id: string;
+          action_type: string;
+          count: number;
+          first_action_timestamp: number;
+          last_action_timestamp: number;
+          reset_timestamp: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          action_type: string;
+          count: number;
+          first_action_timestamp: number;
+          last_action_timestamp: number;
+          reset_timestamp: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          action_type?: string;
+          count?: number;
+          first_action_timestamp?: number;
+          last_action_timestamp?: number;
+          reset_timestamp?: number;
+        };
+      };
     };
   };
 };
@@ -443,6 +474,63 @@ export const getUserTierSettings = async (tier: string) => {
   }
   
   return null;
+};
+
+/**
+ * Batch updates usage tracking data in Supabase
+ * @param userId - The user ID for whom to update usage data
+ * @param updates - Array of updates with action type, count change, and timestamp
+ * @returns Promise with result or error
+ */
+export const batchUpdateUsage = async (userId: string, updates: Array<{ action_type: string; count_change: number; timestamp: number }>) => {
+  if (!supabase) {
+    throw new Error('Supabase client not initialized');
+  }
+  
+  try {
+    const { data, error } = await supabase.rpc('batch_update_usage', {
+      p_user_id: userId,
+      p_updates: updates,
+    });
+    
+    if (error) {
+      console.error('Error in batchUpdateUsage:', error);
+      throw error;
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Exception in batchUpdateUsage:', error);
+    throw error;
+  }
+};
+
+/**
+ * Logs a user action to Supabase for analytics
+ * @param userId - The user ID performing the action
+ * @param action - The action type being performed
+ * @param details - Additional details about the action
+ * @returns Promise with result or error
+ */
+export const logUserAction = async (userId: string, action: string, details: Record<string, any> = {}) => {
+  if (!supabase) {
+    throw new Error('Supabase client not initialized');
+  }
+  
+  try {
+    const { error } = await supabase.rpc('log_user_action', {
+      user_id: userId,
+      action,
+      details,
+    });
+    
+    if (error) {
+      console.warn('Failed to log user action:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.warn('Exception while logging user action:', error);
+  }
 };
 
 // Export the supabase client

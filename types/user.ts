@@ -203,3 +203,73 @@ export interface SwipeAction {
   direction: 'left' | 'right';
   swipe_timestamp: number;
 }
+
+export interface UsageCache {
+  lastSyncTimestamp: number;
+  usageData: {
+    [actionType: string]: {
+      currentCount: number;
+      firstActionTimestamp: number;
+      lastActionTimestamp: number;
+      resetTimestamp: number;
+    };
+  };
+  premiumFeatures: {
+    boostMinutesRemaining: number;
+    boostUsesRemaining: number;
+  };
+  analytics: {
+    profileViews: number;
+    searchAppearances: number;
+  };
+}
+
+export interface BatchUpdate {
+  user_id: string;
+  updates: {
+    action_type: string;
+    count_change: number;
+    timestamp: number;
+  }[];
+}
+
+export interface SyncStrategy {
+  critical: {
+    interval: number;
+    features: string[];
+  };
+  standard: {
+    interval: number;
+    features: string[];
+  };
+  analytics: {
+    interval: number;
+    features: string[];
+  };
+}
+
+export interface RateLimits {
+  reads: { perSecond: number; perMinute: number };
+  writes: { perSecond: number; perMinute: number };
+}
+
+export interface CacheConfig {
+  standardTTL: number;
+  criticalTTL: number;
+  maxCacheAge: number;
+}
+
+export interface RetryStrategy {
+  maxRetries: number;
+  backoffMultiplier: number;
+  initialDelay: number;
+  maxDelay: number;
+  criticalActions: string[];
+}
+
+export interface ConnectionPool {
+  maxConnections: number;
+  minConnections: number;
+  idleTimeoutMillis: number;
+  connectionTimeoutMillis: number;
+}

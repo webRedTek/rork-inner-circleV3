@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { Message } from '@/types/user';
 import { isSupabaseConfigured, supabase, convertToCamelCase, convertToSnakeCase } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
+import { useUsageStore } from './usage-store';
 
 // Helper function to extract readable error message from Supabase error
 const getReadableError = (error: any): string => {
@@ -136,6 +137,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
               message_type: 'text'
             }
           });
+          useUsageStore.getState().incrementUsage('send_message');
         } catch (logError) {
           console.warn('Failed to log send_message action:', getReadableError(logError));
         }
@@ -248,6 +250,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
               duration
             }
           });
+          useUsageStore.getState().incrementUsage('send_message');
         } catch (logError) {
           console.warn('Failed to log send_message action:', getReadableError(logError));
         }
@@ -308,6 +311,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
               message_count: conversationMessages.length
             }
           });
+          useUsageStore.getState().incrementUsage('view_messages');
         } catch (logError) {
           console.warn('Failed to log view_messages action:', getReadableError(logError));
         }
@@ -325,6 +329,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
                 message_type: msg.type
               }
             });
+            useUsageStore.getState().incrementUsage('receive_message');
           } catch (logError) {
             console.warn('Failed to log receive_message action:', getReadableError(logError));
           }
@@ -393,6 +398,21 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             [conversationId]: updatedMessages 
           }
         });
+        
+        // Log the action
+        try {
+          await supabase.rpc('log_user_action', {
+            user_id: user.id,
+            action: 'mark_messages_read',
+            details: { 
+              conversation_id: conversationId,
+              count: unreadMessageIds.length
+            }
+          });
+          useUsageStore.getState().incrementUsage('mark_messages_read');
+        } catch (logError) {
+          console.warn('Failed to log mark_messages_read action:', getReadableError(logError));
+        }
       } else {
         throw new Error('Supabase is not configured');
       }

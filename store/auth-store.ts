@@ -1,13 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { UserProfile, MembershipTier, TierSettings, UserRole } from '@/types/user';
+import { UserProfile, MembershipTier, TierSettings, UserRole, UsageCache } from '@/types/user';
 import { isSupabaseConfigured, supabase, initSupabase, convertToCamelCase, convertToSnakeCase } from '@/lib/supabase';
 import { Platform } from 'react-native';
 
 interface AuthState {
   user: UserProfile | null;
   tierSettings: TierSettings | null;
+  usageCache: UsageCache | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   isReady: boolean; // Indicates if initial session check is complete
@@ -18,6 +19,9 @@ interface AuthState {
   updateProfile: (data: Partial<UserProfile>) => Promise<void>;
   updateMembership: (tier: MembershipTier) => Promise<void>;
   fetchTierSettings: (userId: string) => Promise<void>;
+  fetchUsageData: (userId: string) => Promise<void>;
+  checkLimit: (actionType: string, limit: number) => boolean;
+  incrementUsage: (actionType: string) => Promise<void>;
   clearError: () => void;
   clearCache: () => Promise<void>;
   checkSession: () => Promise<void>; // Method to check/restore session on app start
@@ -49,7 +53,7 @@ const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
   return {
     id: String(camelCaseData.id || ''),
     email: String(camelCaseData.email || ''),
-		role: String(camelCaseData.role || 'user') as UserRole,
+    role: String(camelCaseData.role || 'user') as UserRole,
     name: String(camelCaseData.name || ''),
     bio: String(camelCaseData.bio || ''),
     location: String(camelCaseData.location || ''),
@@ -89,7 +93,33 @@ const defaultTierSettings: TierSettings = {
   profile_visibility_control: false,
   priority_listing: false,
   premium_filters_access: false,
-  global_discovery: false
+  global_discovery: false,
+  groups_limit: 0,
+  groups_creation_limit: 0,
+  featured_portfolio_limit: 0,
+  events_per_month: 0,
+  can_create_groups: false,
+  has_business_verification: false,
+  has_advanced_analytics: false,
+  has_priority_inbox: false,
+  can_send_direct_intro: false,
+  has_virtual_meeting_room: false,
+  has_custom_branding: false,
+  has_dedicated_support: false,
+};
+
+// Default usage cache
+const defaultUsageCache: UsageCache = {
+  lastSyncTimestamp: 0,
+  usageData: {},
+  premiumFeatures: {
+    boostMinutesRemaining: 0,
+    boostUsesRemaining: 0,
+  },
+  analytics: {
+    profileViews: 0,
+    searchAppearances: 0,
+  },
 };
 
 export const useAuthStore = create<AuthState>()(
@@ -97,6 +127,7 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       user: null,
       tierSettings: null,
+      usageCache: null,
       isAuthenticated: false,
       isLoading: false,
       isReady: false, // Initially false until session check is complete
@@ -178,6 +209,7 @@ export const useAuthStore = create<AuthState>()(
                 });
                 // Fetch tier settings after creating profile
                 await get().fetchTierSettings(data.user.id);
+                await get().fetchUsageData(data.user.id);
               } else {
                 throw profileError;
               }
@@ -192,6 +224,7 @@ export const useAuthStore = create<AuthState>()(
               });
               // Fetch tier settings after login
               await get().fetchTierSettings(data.user.id);
+              await get().fetchUsageData(data.user.id);
             }
           } else {
             throw new Error('Supabase is not configured');
@@ -287,6 +320,7 @@ export const useAuthStore = create<AuthState>()(
               // Fetch tier settings after signup
               if (data.user?.id) {
                 await get().fetchTierSettings(data.user.id);
+                await get().fetchUsageData(data.user.id);
               }
             } catch (supabaseError) {
               console.error('Supabase signup error:', getReadableError(supabaseError));
@@ -318,14 +352,14 @@ export const useAuthStore = create<AuthState>()(
           
           await AsyncStorage.removeItem('auth-storage');
           
-          set({ user: null, tierSettings: null, isAuthenticated: false, isLoading: false });
+          set({ user: null, tierSettings: null, usageCache: null, isAuthenticated: false, isLoading: false });
           
           console.log('Logout successful');
           return;
         } catch (error) {
           console.error('Logout error:', getReadableError(error));
           await AsyncStorage.removeItem('auth-storage');
-          set({ user: null, tierSettings: null, isAuthenticated: false, isLoading: false });
+          set({ user: null, tierSettings: null, usageCache: null, isAuthenticated: false, isLoading: false });
         }
       },
 
@@ -438,6 +472,130 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      fetchUsageData: async (userId: string) => {
+        if (!userId || userId.trim() === '' || !isSupabaseConfigured() || !supabase) {
+          console.log('Skipping usage data fetch: Invalid user ID or Supabase not configured', { 
+            userId, 
+            supabaseConfigured: isSupabaseConfigured(),
+            hasSupabase: !!supabase
+          });
+          set({ usageCache: defaultUsageCache });
+          return;
+        }
+
+        set({ isLoading: true, error: null });
+        try {
+          console.log('Fetching usage data for user:', userId);
+          const { data: usageData, error: usageError } = await supabase
+            .from('usage_tracking')
+            .select('*')
+            .eq('user_id', userId);
+
+          if (usageError) {
+            console.error('Error fetching usage data:', JSON.stringify(usageError, null, 2));
+            set({ usageCache: defaultUsageCache, isLoading: false });
+          } else {
+            const usageCache: UsageCache = {
+              lastSyncTimestamp: Date.now(),
+              usageData: {},
+              premiumFeatures: {
+                boostMinutesRemaining: 0,
+                boostUsesRemaining: 0,
+              },
+              analytics: {
+                profileViews: 0,
+                searchAppearances: 0,
+              },
+            };
+
+            usageData?.forEach(entry => {
+              usageCache.usageData[entry.action_type] = {
+                currentCount: entry.count,
+                firstActionTimestamp: entry.first_action_timestamp || Date.now(),
+                lastActionTimestamp: entry.last_action_timestamp || Date.now(),
+                resetTimestamp: entry.reset_timestamp || Date.now() + 24 * 60 * 60 * 1000,
+              };
+            });
+
+            console.log('Usage data fetched successfully:', usageCache);
+            set({ usageCache, isLoading: false });
+          }
+        } catch (error) {
+          console.error('Fetch usage data error:', JSON.stringify(error, null, 2));
+          set({ 
+            usageCache: defaultUsageCache,
+            error: getReadableError(error), 
+            isLoading: false 
+          });
+        }
+      },
+
+      checkLimit: (actionType: string, limit: number) => {
+        const { usageCache } = get();
+        if (!usageCache || !usageCache.usageData[actionType]) {
+          return true; // Allow action if no usage data is available
+        }
+
+        const now = Date.now();
+        const usage = usageCache.usageData[actionType];
+        if (now > usage.resetTimestamp) {
+          // Reset count if past reset timestamp
+          set(state => ({
+            usageCache: state.usageCache ? {
+              ...state.usageCache,
+              usageData: {
+                ...state.usageCache.usageData,
+                [actionType]: {
+                  ...state.usageCache.usageData[actionType],
+                  currentCount: 0,
+                  resetTimestamp: now + 24 * 60 * 60 * 1000, // Reset after 24 hours
+                },
+              },
+            } : state.usageCache,
+          }));
+          return true;
+        }
+
+        return usage.currentCount < limit;
+      },
+
+      incrementUsage: async (actionType: string) => {
+        const { user, usageCache } = get();
+        if (!user || !usageCache) return;
+
+        const now = Date.now();
+        const usageData = usageCache.usageData[actionType];
+        const resetTimestamp = usageData?.resetTimestamp || now + 24 * 60 * 60 * 1000;
+        const updatedCount = usageData ? usageData.currentCount + 1 : 1;
+
+        set(state => ({
+          usageCache: state.usageCache ? {
+            ...state.usageCache,
+            usageData: {
+              ...state.usageCache.usageData,
+              [actionType]: {
+                currentCount: updatedCount,
+                firstActionTimestamp: usageData?.firstActionTimestamp || now,
+                lastActionTimestamp: now,
+                resetTimestamp,
+              },
+            },
+          } : state.usageCache,
+        }));
+
+        if (isSupabaseConfigured() && supabase) {
+          try {
+            await supabase.rpc('log_user_action', {
+              user_id: user.id,
+              action: actionType,
+              details: { timestamp: now },
+            });
+          } catch (error) {
+            console.warn('Failed to log user action:', getReadableError(error));
+          }
+        }
+      },
+
       clearError: () => set({ error: null }),
       
       clearCache: async () => {
@@ -447,6 +605,7 @@ export const useAuthStore = create<AuthState>()(
           set({ 
             user: null, 
             tierSettings: null,
+            usageCache: null,
             isAuthenticated: false, 
             isLoading: false,
             error: null
@@ -497,6 +656,7 @@ export const useAuthStore = create<AuthState>()(
               });
               // Fetch tier settings only after confirming session and user ID
               await get().fetchTierSettings(data.session.user.id);
+              await get().fetchUsageData(data.session.user.id);
             } else {
               set({ isReady: true, isLoading: false, isAuthenticated: false });
             }

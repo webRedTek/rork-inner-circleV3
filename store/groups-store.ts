@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { Group } from '@/types/user';
 import { isSupabaseConfigured, supabase, convertToCamelCase, convertToSnakeCase } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
+import { useUsageStore } from './usage-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Helper function to extract readable error message from Supabase error
@@ -99,6 +100,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
               available_groups_count: availableGroups.length
             }
           });
+          useUsageStore.getState().incrementUsage('view_groups');
         } catch (logError) {
           console.warn('Failed to log view_groups action:', getReadableError(logError));
         }
@@ -179,6 +181,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
             action: 'join_group',
             details: { group_id: groupId, group_name: group.name }
           });
+          useUsageStore.getState().incrementUsage('join_group');
         } catch (logError) {
           console.warn('Failed to log join_group action:', getReadableError(logError));
         }
@@ -255,6 +258,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
             action: 'leave_group',
             details: { group_id: groupId, group_name: group.name }
           });
+          useUsageStore.getState().incrementUsage('leave_group');
         } catch (logError) {
           console.warn('Failed to log leave_group action:', getReadableError(logError));
         }
@@ -344,6 +348,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
             action: 'create_group',
             details: { group_id: newGroup.id, group_name: newGroup.name }
           });
+          useUsageStore.getState().incrementUsage('create_group');
         } catch (logError) {
           console.warn('Failed to log create_group action:', getReadableError(logError));
         }
