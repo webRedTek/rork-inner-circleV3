@@ -130,7 +130,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       // Check membership tier restrictions using tier settings
-      if (!tierSettings || !tierSettings.can_create_groups) { // Basic or Bronze tier (based on swipe limit)
+      if (!tierSettings || tierSettings.groups_limit <= 0) { // Check if user's tier allows group joining
         throw new Error('Basic/Bronze members cannot join groups. Please upgrade to Silver or Gold.');
       }
       
