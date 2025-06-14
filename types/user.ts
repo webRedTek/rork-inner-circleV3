@@ -175,6 +175,18 @@ export interface TierSettings {
   priority_listing: boolean;
   premium_filters_access: boolean;
   global_discovery: boolean;
+  groups_limit: number;
+  groups_creation_limit: number;
+  featured_portfolio_limit: number;
+  events_per_month: number;
+  can_create_groups: boolean;
+  has_business_verification: boolean;
+  has_advanced_analytics: boolean;
+  has_priority_inbox: boolean;
+  can_send_direct_intro: boolean;
+  has_virtual_meeting_room: boolean;
+  has_custom_branding: boolean;
+  has_dedicated_support: boolean;
 }
 
 export interface AuditLogEntry {

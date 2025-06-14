@@ -99,6 +99,18 @@ export type Database = {
           global_discovery: boolean;
           created_at: string;
           updated_at: string;
+          groups_limit: number;
+          groups_creation_limit: number;
+          featured_portfolio_limit: number;
+          events_per_month: number;
+          can_create_groups: boolean;
+          has_business_verification: boolean;
+          has_advanced_analytics: boolean;
+          has_priority_inbox: boolean;
+          can_send_direct_intro: boolean;
+          has_virtual_meeting_room: boolean;
+          has_custom_branding: boolean;
+          has_dedicated_support: boolean;
         };
         Insert: {
           id?: string;
@@ -116,6 +128,18 @@ export type Database = {
           global_discovery: boolean;
           created_at?: string;
           updated_at?: string;
+          groups_limit?: number;
+          groups_creation_limit?: number;
+          featured_portfolio_limit?: number;
+          events_per_month?: number;
+          can_create_groups?: boolean;
+          has_business_verification?: boolean;
+          has_advanced_analytics?: boolean;
+          has_priority_inbox?: boolean;
+          can_send_direct_intro?: boolean;
+          has_virtual_meeting_room?: boolean;
+          has_custom_branding?: boolean;
+          has_dedicated_support?: boolean;
         };
         Update: {
           id?: string;
@@ -132,6 +156,18 @@ export type Database = {
           premium_filters_access?: boolean;
           global_discovery?: boolean;
           updated_at?: string;
+          groups_limit?: number;
+          groups_creation_limit?: number;
+          featured_portfolio_limit?: number;
+          events_per_month?: number;
+          can_create_groups?: boolean;
+          has_business_verification?: boolean;
+          has_advanced_analytics?: boolean;
+          has_priority_inbox?: boolean;
+          can_send_direct_intro?: boolean;
+          has_virtual_meeting_room?: boolean;
+          has_custom_branding?: boolean;
+          has_dedicated_support?: boolean;
         };
       };
     };
@@ -381,6 +417,32 @@ export const updateAppSettings = async (settings: Record<string, any>) => {
   }
   
   return data;
+};
+
+/**
+ * Fetches tier settings for a specific membership tier
+ * @param tier - The membership tier to fetch settings for
+ * @returns Promise with tier settings data or error
+ */
+export const getUserTierSettings = async (tier: string) => {
+  if (!supabase) {
+    throw new Error('Supabase client not initialized');
+  }
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('*')
+    .eq('tier', tier)
+    .limit(1);
+  
+  if (error) {
+    throw error;
+  }
+  
+  if (data && data.length > 0) {
+    return data[0];
+  }
+  
+  return null;
 };
 
 // Export the supabase client

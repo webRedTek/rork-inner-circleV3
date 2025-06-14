@@ -273,7 +273,7 @@ export default function AdminSettingsScreen() {
             </View>
             
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Business Features</Text>
+              <Text style={styles.sectionTitle}>Group Settings</Text>
               
               <View style={styles.settingItem}>
                 <Text style={styles.settingLabel}>Groups Limit</Text>
@@ -287,6 +287,21 @@ export default function AdminSettingsScreen() {
               </View>
               
               <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Groups Creation Limit</Text>
+                <TextInput
+                  style={styles.numberInput}
+                  value={settingsByTier[tier as MembershipTier]?.groups_creation_limit?.toString() || '0'}
+                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'groups_creation_limit', parseInt(text) || 0)}
+                  keyboardType="numeric"
+                  placeholder="Enter number"
+                />
+              </View>
+            </View>
+            
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Portfolio Settings</Text>
+              
+              <View style={styles.settingItem}>
                 <Text style={styles.settingLabel}>Featured Portfolio Limit</Text>
                 <TextInput
                   style={styles.numberInput}
@@ -296,6 +311,10 @@ export default function AdminSettingsScreen() {
                   placeholder="Enter number"
                 />
               </View>
+            </View>
+            
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Event Settings</Text>
               
               <View style={styles.settingItem}>
                 <Text style={styles.settingLabel}>Events Per Month</Text>
@@ -307,6 +326,10 @@ export default function AdminSettingsScreen() {
                   placeholder="Enter number"
                 />
               </View>
+            </View>
+            
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Business Features</Text>
               
               <View style={styles.settingItem}>
                 <Text style={styles.settingLabel}>Can Create Groups</Text>
