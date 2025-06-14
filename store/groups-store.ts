@@ -310,7 +310,6 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
       if (isSupabaseConfigured() && supabase) {
         // Create new group
         const newGroup: Group = {
-          id: `group-${Date.now()}`,
           name: groupData.name || 'New Group',
           description: groupData.description || '',
           imageUrl: groupData.imageUrl,
@@ -321,13 +320,10 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           industry: groupData.industry
         };
         
-        // Convert Group to snake_case for Supabase
-        const groupRecord = convertToSnakeCase(newGroup);
-        
         // Insert group into Supabase
         const { error: insertError } = await supabase
           .from('groups')
-          .insert(groupRecord);
+          .insert(newGroup);
           
         if (insertError) throw insertError;
         
