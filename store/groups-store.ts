@@ -309,26 +309,29 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
       
       if (isSupabaseConfigured() && supabase) {
         // Create new group
-        const newGroup: Group = {
-          name: groupData.name || 'New Group',
-          description: groupData.description || '',
-          imageUrl: groupData.imageUrl,
-          memberIds: [user.id], // Creator is the first member
-          createdBy: user.id,
-          createdAt: Date.now(),
-          category: groupData.category || 'Interest',
-          industry: groupData.industry
-        };
+       const newGroup: Group = {
+  id: `group-${Date.now()}`,
+  name: groupData.name || 'New Group',
+  description: groupData.description || '',
+  imageUrl: groupData.imageUrl,
+  memberIds: [user.id], // Creator is the first member
+  createdBy: user.id,
+  createdAt: Date.now(),
+  category: groupData.category || 'Interest',
+  industry: groupData.industry
+};
         
         // Insert group into Supabase
         const { error: insertError } = await supabase
           .from('groups')
-          .insert(newGroup);
+          .insert(newGroup)
+					.select()
+					.single();
           
         if (insertError) throw insertError;
         
         // Update user's joinedGroups
-        const updatedJoinedGroups = [...user.joinedGroups, newGroup.id];
+        const updatedJoinedGroups = [...user.joinedGroups, data.id];
         
         const { error: userUpdateError } = await supabase
           .from('users')
