@@ -102,33 +102,51 @@ create table public.audit_log (
 );
 
 -- Create app_settings table
-create table public.app_settings (
-  id uuid primary key default uuid_generate_v4(),
-  tier text not null,
-  daily_swipe_limit integer not null,
-  daily_match_limit integer not null,
-  message_sending_limit integer not null,
-  can_see_who_liked_you boolean not null default false,
-  can_rewind_last_swipe boolean not null default false,
-  boost_duration integer not null default 0,
-  boost_frequency integer not null default 0,
-  profile_visibility_control boolean not null default false,
-  priority_listing boolean not null default false,
-  premium_filters_access boolean not null default false,
-  global_discovery boolean not null default false,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+CREATE TABLE public.app_settings (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  tier text NOT NULL,
+  daily_swipe_limit integer NOT NULL,
+  daily_match_limit integer NOT NULL,
+  message_sending_limit integer NOT NULL,
+  can_see_who_liked_you boolean NOT NULL DEFAULT false,
+  can_rewind_last_swipe boolean NOT NULL DEFAULT false,
+  boost_duration integer NOT NULL DEFAULT 0,
+  boost_frequency integer NOT NULL DEFAULT 0,
+  profile_visibility_control boolean NOT NULL DEFAULT false,
+  priority_listing boolean NOT NULL DEFAULT false,
+  premium_filters_access boolean NOT NULL DEFAULT false,
+  global_discovery boolean NOT NULL DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  groups_limit integer NOT NULL DEFAULT 1,
+  featured_portfolio_limit integer NOT NULL DEFAULT 1,
+  events_per_month integer NOT NULL DEFAULT 0,
+  has_business_verification boolean NOT NULL DEFAULT false,
+  has_advanced_analytics boolean NOT NULL DEFAULT false,
+  has_priority_inbox boolean NOT NULL DEFAULT false,
+  can_send_direct_intro boolean NOT NULL DEFAULT false,
+  has_virtual_meeting_room boolean NOT NULL DEFAULT false,
+  has_custom_branding boolean NOT NULL DEFAULT false,
+  has_dedicated_support boolean NOT NULL DEFAULT false,
+  can_create_groups boolean NOT NULL DEFAULT false,
+  groups_creation_limit integer NOT NULL DEFAULT 0,
+  CONSTRAINT app_settings_pkey PRIMARY KEY (id)
 );
 
 -- Create affiliate_tiers table
-create table public.affiliate_tiers (
-  id uuid primary key default uuid_generate_v4(),
-  tier_name text not null,
-  commission_rate decimal not null default 0.0,
-  min_referrals integer not null default 0,
-  payout_threshold decimal not null default 0.0,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+CREATE TABLE public.affiliate_tiers (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  name text NOT NULL CHECK (name = ANY (ARRAY['bronze_affiliate', 'silver_affiliate', 'gold_affiliate'])),
+  payout_type text NOT NULL CHECK (payout_type = ANY (ARRAY['one_time', 'recurring'])),
+  monetary_value numeric NOT NULL,
+  recurring_percentage numeric,
+  max_invites integer NOT NULL,
+  min_payout_threshold numeric NOT NULL DEFAULT 50.00,
+  payout_schedule text NOT NULL DEFAULT 'monthly' CHECK (payout_schedule = ANY (ARRAY['weekly', 'monthly', 'quarterly'])),
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT affiliate_tiers_pkey PRIMARY KEY (id)
 );
 
 -- Create affiliate_stats table
@@ -145,41 +163,107 @@ create table public.affiliate_stats (
 );
 
 -- Create affiliate_links table
-create table public.affiliate_links (
-  id uuid primary key default uuid_generate_v4(),
-  user_id uuid not null references public.users(id) on delete cascade,
-  link text not null unique,
-  created_at timestamptz not null default now()
+CREATE TABLE public.affiliate_links (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  user_id uuid NOT NULL,
+  tier_id uuid NOT NULL,
+  referral_code text NOT NULL UNIQUE,
+  app_store_link text,
+  play_store_link text,
+  total_clicks integer NOT NULL DEFAULT 0,
+  unique_clicks integer NOT NULL DEFAULT 0,
+  last_clicked_at timestamp with time zone,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT affiliate_links_pkey PRIMARY KEY (id),
+  CONSTRAINT affiliate_links_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
+  CONSTRAINT affiliate_links_tier_id_fkey FOREIGN KEY (tier_id) REFERENCES public.affiliate_tiers(id)
 );
 
 -- Create affiliate_referrals table
-create table public.affiliate_referrals (
-  id uuid primary key default uuid_generate_v4(),
-  referrer_id uuid not null references public.users(id) on delete cascade,
-  referred_user_id uuid not null references public.users(id) on delete cascade,
-  status text not null default 'pending',
-  subscription_type text,
-  earnings decimal not null default 0.0,
-  signup_date timestamptz not null default now(),
-  unique(referrer_id, referred_user_id)
+CREATE TABLE public.affiliate_referrals (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  referrer_id uuid NOT NULL,
+  referred_id uuid NOT NULL,
+  tier_id uuid NOT NULL,
+  referral_code text NOT NULL,
+  status text NOT NULL DEFAULT 'pending' CHECK (status = ANY (ARRAY['pending', 'completed', 'expired'])),
+  subscription_id text,
+  subscription_status text CHECK (subscription_status = ANY (ARRAY['trial', 'active', 'expired', 'cancelled'])),
+  initial_subscription_date timestamp with time zone,
+  last_renewal_date timestamp with time zone,
+  next_renewal_date timestamp with time zone,
+  total_paid_months integer DEFAULT 0,
+  lifetime_value numeric DEFAULT 0.00,
+  payout_status text NOT NULL DEFAULT 'pending' CHECK (payout_status = ANY (ARRAY['pending', 'processing', 'paid', 'failed'])),
+  last_payout_date timestamp with time zone,
+  next_payout_date timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT affiliate_referrals_pkey PRIMARY KEY (id),
+  CONSTRAINT affiliate_referrals_referrer_id_fkey FOREIGN KEY (referrer_id) REFERENCES public.users(id),
+  CONSTRAINT affiliate_referrals_tier_id_fkey FOREIGN KEY (tier_id) REFERENCES public.affiliate_tiers(id),
+  CONSTRAINT affiliate_referrals_referred_id_fkey FOREIGN KEY (referred_id) REFERENCES public.users(id)
 );
 
 -- Create affiliate_payouts table
-create table public.affiliate_payouts (
-  id uuid primary key default uuid_generate_v4(),
-  user_id uuid not null references public.users(id) on delete cascade,
-  amount decimal not null,
-  payout_date timestamptz not null default now(),
-  status text not null default 'pending'
+CREATE TABLE public.affiliate_payouts (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  affiliate_id uuid NOT NULL,
+  period_start timestamp with time zone NOT NULL,
+  period_end timestamp with time zone NOT NULL,
+  amount numeric NOT NULL,
+  status text NOT NULL DEFAULT 'pending' CHECK (status = ANY (ARRAY['pending', 'processing', 'completed', 'failed'])),
+  payout_method text NOT NULL,
+  payout_details jsonb,
+  transaction_id text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT affiliate_payouts_pkey PRIMARY KEY (id),
+  CONSTRAINT affiliate_payouts_affiliate_id_fkey FOREIGN KEY (affiliate_id) REFERENCES public.users(id)
 );
 
 -- Create affiliate_clicks table
-create table public.affiliate_clicks (
-  id uuid primary key default uuid_generate_v4(),
-  link_id uuid not null references public.affiliate_links(id) on delete cascade,
-  clicked_at timestamptz not null default now(),
+CREATE TABLE public.affiliate_clicks (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  link_id uuid NOT NULL,
   ip_address text,
-  user_agent text
+  user_agent text,
+  referrer text,
+  platform text CHECK (platform = ANY (ARRAY['ios', 'android', 'web'])),
+  clicked_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT affiliate_clicks_pkey PRIMARY KEY (id),
+  CONSTRAINT affiliate_clicks_link_id_fkey FOREIGN KEY (link_id) REFERENCES public.affiliate_links(id)
+);
+
+-- Create usage_tracking table
+CREATE TABLE public.usage_tracking (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  user_id uuid NOT NULL,
+  action_type text NOT NULL CHECK (action_type = ANY (ARRAY['swipe', 'match', 'message', 'group_join', 'group_create', 'portfolio_feature', 'event_create', 'direct_intro', 'boost_use', 'rewind_use', 'virtual_meeting'])),
+  first_action_timestamp bigint NOT NULL,
+  last_action_timestamp bigint NOT NULL,
+  current_count integer NOT NULL DEFAULT 0,
+  reset_timestamp bigint NOT NULL,
+  boost_minutes_remaining integer DEFAULT 0,
+  boost_uses_remaining integer DEFAULT 0,
+  events_created_this_month integer DEFAULT 0,
+  events_month_reset_timestamp bigint,
+  direct_intros_sent integer DEFAULT 0,
+  virtual_meetings_hosted integer DEFAULT 0,
+  groups_joined integer DEFAULT 0,
+  groups_created integer DEFAULT 0,
+  featured_portfolios_count integer DEFAULT 0,
+  messages_sent_count integer DEFAULT 0,
+  priority_messages_sent integer DEFAULT 0,
+  profile_views_received integer DEFAULT 0,
+  search_appearances integer DEFAULT 0,
+  premium_features_used jsonb,
+  last_tier_change_timestamp bigint,
+  tier_history jsonb,
+  CONSTRAINT usage_tracking_pkey PRIMARY KEY (id),
+  CONSTRAINT usage_tracking_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
 
 -- Enable RLS on all affiliate tables
@@ -539,7 +623,7 @@ create policy "System can create referrals during signup"
 -- Affiliate payouts policies
 create policy "Users can view their own payouts"
   on public.affiliate_payouts for select
-  using (auth.uid() = user_id);
+  using (auth.uid() = affiliate_id);
 
 create policy "Only system or admins can create or update payouts"
   on public.affiliate_payouts for insert

@@ -77,11 +77,11 @@ export const useAffiliateStore = create<AffiliateState>((set, get) => ({
           id: item.id,
           referredUser: {
             name: item.referred_user_name || 'Anonymous',
-            signupDate: item.signup_date || 'Unknown',
+            signupDate: item.initial_subscription_date || 'Unknown',
           },
           status: item.status || 'inactive',
-          subscriptionType: item.subscription_type || 'N/A',
-          earnings: item.earnings || 0,
+          subscriptionType: item.subscription_status || 'N/A',
+          earnings: item.lifetime_value || 0,
         }));
         
         set({ stats, referralHistory, isLoading: false });
@@ -106,27 +106,31 @@ export const useAffiliateStore = create<AffiliateState>((set, get) => ({
       if (isSupabaseConfigured() && supabase) {
         const { data: linkData, error: linkError } = await supabase
           .from('affiliate_links')
-          .select('link')
+          .select('referral_code')
           .eq('user_id', user.id)
           .single();
           
         if (linkError) {
           // If no link exists, create one
           if (linkError.code === 'PGRST116') {
-            const newLink = `https://app.example.com/referral/${user.referralCode || 'ref-' + Date.now()}`;
+            const newCode = `ref-${user.id.substring(0, 8)}-${Date.now()}`;
             const { error: insertError } = await supabase
               .from('affiliate_links')
-              .insert({ user_id: user.id, link: newLink });
+              .insert({ 
+                user_id: user.id, 
+                referral_code: newCode,
+                tier_id: '00000000-0000-0000-0000-000000000000' // Placeholder UUID, should be updated based on actual tier
+              });
               
             if (insertError) throw insertError;
             set({ isLoading: false });
-            return newLink;
+            return `https://app.example.com/referral/${newCode}`;
           }
           throw linkError;
         }
         
         set({ isLoading: false });
-        return linkData?.link || '';
+        return `https://app.example.com/referral/${linkData?.referral_code || ''}`;
       } else {
         throw new Error('Supabase is not configured');
       }
@@ -145,7 +149,7 @@ export const useAffiliateStore = create<AffiliateState>((set, get) => ({
     try {
       if (isSupabaseConfigured() && supabase) {
         const { data: codeData, error: codeError } = await supabase
-          .from('users')
+          .from('affiliate_links')
           .select('id')
           .eq('referral_code', code)
           .single();
