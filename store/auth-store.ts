@@ -49,6 +49,7 @@ const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
   return {
     id: String(camelCaseData.id || ''),
     email: String(camelCaseData.email || ''),
+		role: String(camelCaseData.role || 'user') as UserRole,
     name: String(camelCaseData.name || ''),
     bio: String(camelCaseData.bio || ''),
     location: String(camelCaseData.location || ''),
