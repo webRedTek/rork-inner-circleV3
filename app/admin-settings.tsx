@@ -309,10 +309,10 @@ export default function AdminSettingsScreen() {
               </View>
               
               <View style={styles.settingItem}>
-                <Text style={styles.settingLabel}>Can Create Events</Text>
+                <Text style={styles.settingLabel}>Can Create Groups</Text>
                 <Switch
-                  value={settingsByTier[tier as MembershipTier]?.can_create_events || false}
-                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'can_create_events', value)}
+                  value={settingsByTier[tier as MembershipTier]?.can_create_groups || false}
+                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'can_create_groups', value)}
                   trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
                   thumbColor={Colors.dark.background}
                 />

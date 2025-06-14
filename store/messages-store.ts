@@ -312,6 +312,24 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           console.warn('Failed to log view_messages action:', getReadableError(logError));
         }
         
+        // Log received messages
+        const receivedMessages = conversationMessages.filter(msg => msg.receiverId === user.id);
+        for (const msg of receivedMessages) {
+          try {
+            await supabase.rpc('log_user_action', {
+              user_id: user.id,
+              action: 'receive_message',
+              details: { 
+                conversation_id: conversationId,
+                sender_id: msg.senderId,
+                message_type: msg.type
+              }
+            });
+          } catch (logError) {
+            console.warn('Failed to log receive_message action:', getReadableError(logError));
+          }
+        }
+        
         // Update state
         set({ 
           messages: { 

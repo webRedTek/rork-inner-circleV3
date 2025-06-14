@@ -132,12 +132,11 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         throw new Error('Basic/Bronze members cannot join groups. Please upgrade to Silver or Gold.');
       }
       
-      if (tierSettings.daily_swipe_limit <= 30) { // Silver tier (based on swipe limit)
-        // Silver members can only join one group
-        const userGroups = get().userGroups;
-        if (userGroups.length >= 1) {
-          throw new Error('Silver members can only join one group. Please leave a group or upgrade to Gold.');
-        }
+      const userGroups = get().userGroups;
+      const groupsLimit = tierSettings.groups_limit || 0;
+      if (userGroups.length >= groupsLimit) {
+        const nextTier = tierSettings.daily_swipe_limit <= 30 ? 'Gold' : 'Platinum';
+        throw new Error(`You have reached your group limit (${userGroups.length} of ${groupsLimit} groups). Upgrade to ${nextTier} to join more groups.`);
       }
       
       if (isSupabaseConfigured() && supabase) {
@@ -295,6 +294,13 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
       // Check membership tier restrictions using tier settings
       if (!tierSettings || tierSettings.daily_swipe_limit <= 10) { // Basic or Bronze tier (based on swipe limit)
         throw new Error('Basic/Bronze members cannot create groups. Please upgrade to Silver or Gold.');
+      }
+      
+      const userGroups = get().userGroups;
+      const groupsLimit = tierSettings.groups_limit || 0;
+      if (userGroups.length >= groupsLimit) {
+        const nextTier = tierSettings.daily_swipe_limit <= 30 ? 'Gold' : 'Platinum';
+        throw new Error(`You have reached your group creation limit (${userGroups.length} of ${groupsLimit} groups). Upgrade to ${nextTier} to create more groups.`);
       }
       
       if (isSupabaseConfigured() && supabase) {
