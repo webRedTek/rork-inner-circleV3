@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { UserProfile, MembershipTier, TierSettings } from '@/types/user';
+import { UserProfile, MembershipTier, TierSettings, UserRole } from '@/types/user';
 import { isSupabaseConfigured, supabase, initSupabase, convertToCamelCase, convertToSnakeCase } from '@/lib/supabase';
 import { Platform } from 'react-native';
 
