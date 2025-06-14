@@ -192,6 +192,13 @@ function RootLayoutNav({ supabaseStatus }: { supabaseStatus: boolean | null }) {
           animation: 'slide_from_right',
         }}
       />
+      <Stack.Screen
+        name="admin-settings"
+        options={{
+          title: "Admin Settings",
+          animation: 'slide_from_right',
+        }}
+      />
     </Stack>
   );
 }

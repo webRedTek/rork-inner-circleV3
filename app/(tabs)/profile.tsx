@@ -8,7 +8,7 @@ import { Button } from '@/components/Button';
 import { ProfileDetailCard } from '@/components/ProfileDetailCard';
 import { SupabaseStatus } from '@/components/SupabaseStatus';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { Settings, Edit, LogOut, Database, RefreshCw, MapPin } from 'lucide-react-native';
+import { Settings, Edit, LogOut, Database, RefreshCw, MapPin, Shield } from 'lucide-react-native';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -54,6 +54,10 @@ export default function ProfileScreen() {
 
   const handleSupabaseSetup = () => {
     router.push('/supabase-setup');
+  };
+
+  const handleAdminSettings = () => {
+    router.push('/admin-settings');
   };
 
   const handleClearCache = async () => {
@@ -269,6 +273,17 @@ export default function ProfileScreen() {
           />
         </View>
         
+        {user.role === 'admin' && (
+          <Button
+            title="Admin Settings"
+            onPress={handleAdminSettings}
+            variant="outline"
+            size="large"
+            icon={<Shield size={18} color={Colors.dark.primary} />}
+            style={styles.adminButton}
+          />
+        )}
+        
         <Button
           title="Log Out"
           onPress={handleLogout}
@@ -453,6 +468,10 @@ const styles = StyleSheet.create({
   logoutButton: {
     marginHorizontal: 16,
     marginBottom: 32,
+  },
+  adminButton: {
+    marginHorizontal: 16,
+    marginBottom: 16,
   },
   clearCacheButton: {
     marginTop: 8,

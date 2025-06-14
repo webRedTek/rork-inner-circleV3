@@ -82,6 +82,58 @@ export type Database = {
           looking_for?: string[] | null;
         };
       };
+      app_settings: {
+        Row: {
+          id: string;
+          tier: string;
+          daily_swipe_limit: number;
+          daily_match_limit: number;
+          message_sending_limit: number;
+          can_see_who_liked_you: boolean;
+          can_rewind_last_swipe: boolean;
+          boost_duration: number;
+          boost_frequency: number;
+          profile_visibility_control: boolean;
+          priority_listing: boolean;
+          premium_filters_access: boolean;
+          global_discovery: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          tier: string;
+          daily_swipe_limit: number;
+          daily_match_limit: number;
+          message_sending_limit: number;
+          can_see_who_liked_you: boolean;
+          can_rewind_last_swipe: boolean;
+          boost_duration: number;
+          boost_frequency: number;
+          profile_visibility_control: boolean;
+          priority_listing: boolean;
+          premium_filters_access: boolean;
+          global_discovery: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          tier?: string;
+          daily_swipe_limit?: number;
+          daily_match_limit?: number;
+          message_sending_limit?: number;
+          can_see_who_liked_you?: boolean;
+          can_rewind_last_swipe?: boolean;
+          boost_duration?: number;
+          boost_frequency?: number;
+          profile_visibility_control?: boolean;
+          priority_listing?: boolean;
+          premium_filters_access?: boolean;
+          global_discovery?: boolean;
+          updated_at?: string;
+        };
+      };
     };
   };
 };
@@ -288,6 +340,47 @@ export const convertToSnakeCase = (obj: Record<string, any>): Record<string, any
       : value;
     return acc;
   }, {} as Record<string, any>);
+};
+
+/**
+ * Fetches app settings from Supabase
+ * @returns Promise with app settings data or error
+ */
+export const getAppSettings = async () => {
+  if (!supabase) {
+    throw new Error('Supabase client not initialized');
+  }
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('*')
+    .limit(1);
+  
+  if (error) {
+    throw error;
+  }
+  
+  return data?.[0] || null;
+};
+
+/**
+ * Updates app settings in Supabase
+ * @param settings - The settings object to update
+ * @returns Promise with updated data or error
+ */
+export const updateAppSettings = async (settings: Record<string, any>) => {
+  if (!supabase) {
+    throw new Error('Supabase client not initialized');
+  }
+  const { data, error } = await supabase
+    .from('app_settings')
+    .update(settings)
+    .eq('id', settings.id);
+  
+  if (error) {
+    throw error;
+  }
+  
+  return data;
 };
 
 // Export the supabase client
