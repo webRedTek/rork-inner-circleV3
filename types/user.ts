@@ -57,6 +57,7 @@ export type AvailabilityLevel =
 export type MembershipTier = 'basic' | 'bronze' | 'silver' | 'gold';
 
 export type LocationPrivacy = 'public' | 'matches_only' | 'hidden';
+export type UserRole = 'member' | 'admin';
 
 export interface UserProfile {
   id: string;
