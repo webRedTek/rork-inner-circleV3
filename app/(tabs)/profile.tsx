@@ -247,41 +247,37 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Supabase Status</Text>
           <SupabaseStatus />
-          
-          <View style={styles.supabaseActions}>
+        </View>
+        
+        {user.role === 'admin' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>App Data</Text>
             <Button
               title="Configure Supabase"
               onPress={handleSupabaseSetup}
               variant="outline"
-              size="small"
-              icon={<Database size={16} color={Colors.dark.text} />}
-              style={styles.supabaseButton}
+              size="large"
+              icon={<Database size={18} color={Colors.dark.text} />}
+              style={styles.adminButton}
+            />
+            <Button
+              title="Admin Settings"
+              onPress={handleAdminSettings}
+              variant="outline"
+              size="large"
+              icon={<Shield size={18} color={Colors.dark.primary} />}
+              style={styles.adminButton}
+            />
+            <Button
+              title="Clear Cache & Restart"
+              onPress={handleClearCache}
+              variant="danger"
+              size="large"
+              icon={<RefreshCw size={18} color={Colors.dark.error} />}
+              style={styles.clearCacheButton}
+              loading={isLoading}
             />
           </View>
-        </View>
-        
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>App Data</Text>
-          <Button
-            title="Clear Cache & Restart"
-            onPress={handleClearCache}
-            variant="danger"
-            size="large"
-            icon={<RefreshCw size={18} color={Colors.dark.error} />}
-            style={styles.clearCacheButton}
-            loading={isLoading}
-          />
-        </View>
-        
-        {user.role === 'admin' && (
-          <Button
-            title="Admin Settings"
-            onPress={handleAdminSettings}
-            variant="outline"
-            size="large"
-            icon={<Shield size={18} color={Colors.dark.primary} />}
-            style={styles.adminButton}
-          />
         )}
         
         <Button
@@ -470,11 +466,12 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   adminButton: {
-    marginHorizontal: 16,
+    marginHorizontal: 0,
     marginBottom: 16,
   },
   clearCacheButton: {
     marginTop: 8,
+    marginBottom: 0,
   },
   loadingContainer: {
     flex: 1,
