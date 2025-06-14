@@ -130,14 +130,14 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       // Check membership tier restrictions using tier settings
-      if (!tierSettings || tierSettings.daily_swipe_limit <= 10) { // Basic or Bronze tier (based on swipe limit)
+      if (!tierSettings || !tierSettings.can_create_groups) { // Basic or Bronze tier (based on swipe limit)
         throw new Error('Basic/Bronze members cannot join groups. Please upgrade to Silver or Gold.');
       }
       
       const userGroups = get().userGroups;
       const groupsLimit = tierSettings.groups_limit || 0;
       if (userGroups.length >= groupsLimit) {
-        const nextTier = tierSettings.daily_swipe_limit <= 30 ? 'Gold' : 'Platinum';
+        const nextTier = tierSettings.groups_limit <= 3 ? 'Gold' : 'Gold';
         throw new Error(`You have reached your group limit (${userGroups.length} of ${groupsLimit} groups). Upgrade to ${nextTier} to join more groups.`);
       }
       
@@ -296,14 +296,14 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       // Check membership tier restrictions using tier settings
-      if (!tierSettings || tierSettings.daily_swipe_limit <= 10) { // Basic or Bronze tier (based on swipe limit)
+      if (!tierSettings || !tierSettings.can_create_groups) {  // Basic or Bronze tier (based on swipe limit)
         throw new Error('Basic/Bronze members cannot create groups. Please upgrade to Silver or Gold.');
       }
       
       const userGroups = get().userGroups;
       const groupsLimit = tierSettings.groups_limit || 0;
       if (userGroups.length >= groupsLimit) {
-        const nextTier = tierSettings.daily_swipe_limit <= 30 ? 'Gold' : 'Platinum';
+        const nextTier = tierSettings.groups_creation_limit <= 1 ? 'Gold' : 'Gold';
         throw new Error(`You have reached your group creation limit (${userGroups.length} of ${groupsLimit} groups). Upgrade to ${nextTier} to create more groups.`);
       }
       
