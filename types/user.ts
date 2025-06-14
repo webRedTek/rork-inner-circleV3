@@ -99,6 +99,7 @@ export interface UserProfile {
   businessVerified: boolean;
   joinedGroups: string[];
   createdAt: number;
+  referralCode?: string;
   [key: string]: any; // Add index signature to allow any string key
 }
 
@@ -272,4 +273,26 @@ export interface ConnectionPool {
   minConnections: number;
   idleTimeoutMillis: number;
   connectionTimeoutMillis: number;
+}
+
+export interface AffiliateStats {
+  totalReferrals: number;
+  activeReferrals: number;
+  totalEarnings: number;
+  pendingPayouts: number;
+  lastPayout: {
+    amount: number;
+    date: string;
+  };
+}
+
+export interface ReferralHistory {
+  id: string;
+  referredUser: {
+    name: string;
+    signupDate: string;
+  };
+  status: 'active' | 'inactive';
+  subscriptionType: string;
+  earnings: number;
 }

@@ -199,6 +199,13 @@ function RootLayoutNav({ supabaseStatus }: { supabaseStatus: boolean | null }) {
           animation: 'slide_from_right',
         }}
       />
+      <Stack.Screen 
+        name="affiliate-dashboard" 
+        options={{ 
+          title: "Affiliate Dashboard",
+          animation: 'slide_from_right',
+        }} 
+      />
     </Stack>
   );
 }

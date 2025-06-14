@@ -8,7 +8,7 @@ import { Button } from '@/components/Button';
 import { ProfileDetailCard } from '@/components/ProfileDetailCard';
 import { SupabaseStatus } from '@/components/SupabaseStatus';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { Settings, Edit, LogOut, Database, RefreshCw, MapPin, Shield } from 'lucide-react-native';
+import { Settings, Edit, LogOut, Database, RefreshCw, MapPin, Shield, Gift } from 'lucide-react-native';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -50,6 +50,10 @@ export default function ProfileScreen() {
 
   const handleMembership = () => {
     router.push('/membership');
+  };
+
+  const handleAffiliateDashboard = () => {
+    router.push('/affiliate-dashboard');
   };
 
   const handleSupabaseSetup = () => {
@@ -132,6 +136,16 @@ export default function ProfileScreen() {
               icon={<Settings size={16} color={Colors.dark.text} />}
               style={styles.actionButton}
             />
+            {(user.membershipTier === 'silver' || user.membershipTier === 'gold') && (
+              <Button
+                title="Affiliate Dashboard"
+                onPress={handleAffiliateDashboard}
+                variant="outline"
+                size="small"
+                icon={<Gift size={16} color={Colors.dark.text} />}
+                style={styles.actionButton}
+              />
+            )}
           </View>
         </View>
         

@@ -22,6 +22,7 @@ export default function SignupScreen() {
   const [businessField, setBusinessField] = useState<BusinessField>('Technology');
   const [entrepreneurStatus, setEntrepreneurStatus] = useState<EntrepreneurStatus>('upcoming');
   const [bio, setBio] = useState('');
+  const [referralCode, setReferralCode] = useState('');
   
   const [lookingFor, setLookingFor] = useState<LookingFor[]>([]);
   const [businessStage, setBusinessStage] = useState<BusinessStage>('Idea Phase');
@@ -207,7 +208,8 @@ export default function SignupScreen() {
             membershipTier: 'basic',
             businessVerified: false,
             joinedGroups: [],
-            createdAt: Date.now()
+            createdAt: Date.now(),
+            referralCode: referralCode || ''
           },
           password
         );
@@ -335,6 +337,15 @@ export default function SignupScreen() {
             placeholder="Confirm your password"
             secureTextEntry
             error={confirmPasswordError}
+            editable={!isLoading && !localLoading && !rateLimitCooldown}
+          />
+          
+          <Input
+            label="Referral Code (Optional)"
+            value={referralCode}
+            onChangeText={setReferralCode}
+            placeholder="Enter referral code"
+            autoCapitalize="none"
             editable={!isLoading && !localLoading && !rateLimitCooldown}
           />
           
