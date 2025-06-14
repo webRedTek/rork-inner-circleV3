@@ -384,10 +384,13 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
   },
   actionButton: {
     flex: 1,
     marginHorizontal: 4,
+    marginBottom: 8,
+    minWidth: 100,
   },
   section: {
     padding: 16,

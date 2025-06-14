@@ -10,10 +10,12 @@ import { BusinessField, EntrepreneurStatus, BusinessStage, LookingFor, Skill, Av
 import { MultiSelect } from '@/components/MultiSelect';
 import { SingleSelect } from '@/components/SingleSelect';
 import { isSupabaseConfigured, testSupabaseConnection } from '@/lib/supabase';
+import { useAffiliateStore } from '@/store/affiliate-store';
 
 export default function SignupScreen() {
   const router = useRouter();
   const { signup, isAuthenticated, isLoading, error, clearError } = useAuthStore();
+  const { checkReferralCode } = useAffiliateStore();
   
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -42,6 +44,7 @@ export default function SignupScreen() {
   const [confirmPasswordError, setConfirmPasswordError] = useState('');
   const [bioError, setBioError] = useState('');
   const [zipCodeError, setZipCodeError] = useState('');
+  const [referralCodeError, setReferralCodeError] = useState('');
   const [signupError, setSignupError] = useState('');
   const [localLoading, setLocalLoading] = useState(false);
   const [rateLimitCooldown, setRateLimitCooldown] = useState(false);
@@ -111,6 +114,7 @@ export default function SignupScreen() {
   const validateForm = () => {
     let isValid = true;
     setSignupError('');
+    setReferralCodeError('');
     
     if (!name.trim()) {
       setNameError('Name is required');
@@ -163,6 +167,10 @@ export default function SignupScreen() {
       setZipCodeError('');
     }
     
+    if (referralCode.trim()) {
+      // We'll validate referral code asynchronously in handleSignup
+    }
+    
     return isValid;
   };
   
@@ -184,6 +192,16 @@ export default function SignupScreen() {
       try {
         setLocalLoading(true);
         setSignupError('');
+        
+        // Validate referral code if provided
+        if (referralCode.trim()) {
+          const isValidCode = await checkReferralCode(referralCode);
+          if (!isValidCode) {
+            setReferralCodeError('Invalid referral code. Please check and try again.');
+            setLocalLoading(false);
+            return;
+          }
+        }
         
         await new Promise(resolve => setTimeout(resolve, 2000));
         
@@ -288,6 +306,20 @@ export default function SignupScreen() {
           <Text style={styles.sectionTitle}>Basic Information</Text>
           
           <Input
+            label="Referral Code (Optional)"
+            value={referralCode}
+            onChangeText={(text) => {
+              setReferralCode(text);
+              setReferralCodeError('');
+            }}
+            placeholder="Enter referral code"
+            autoCapitalize="none"
+            error={referralCodeError}
+            editable={!isLoading && !localLoading && !rateLimitCooldown}
+            helperText="Enter a referral code if someone invited you"
+          />
+          
+          <Input
             label="Full Name"
             value={name}
             onChangeText={(text) => {
@@ -337,15 +369,6 @@ export default function SignupScreen() {
             placeholder="Confirm your password"
             secureTextEntry
             error={confirmPasswordError}
-            editable={!isLoading && !localLoading && !rateLimitCooldown}
-          />
-          
-          <Input
-            label="Referral Code (Optional)"
-            value={referralCode}
-            onChangeText={setReferralCode}
-            placeholder="Enter referral code"
-            autoCapitalize="none"
             editable={!isLoading && !localLoading && !rateLimitCooldown}
           />
           
