@@ -322,7 +322,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
 };
         
         // Insert group into Supabase
-        const { error: insertError } = await supabase
+        const { data: createdGroup, error: insertError} = await supabase
           .from('groups')
           .insert(newGroup)
 					.select()
@@ -331,7 +331,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         if (insertError) throw insertError;
         
         // Update user's joinedGroups
-        const updatedJoinedGroups = [...user.joinedGroups, data.id];
+        const updatedJoinedGroups = [...user.joinedGroups, createdGroup.id];
         
         const { error: userUpdateError } = await supabase
           .from('users')
