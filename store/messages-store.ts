@@ -73,7 +73,10 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         const todayTimestamp = today.getTime();
         
         if (isSupabaseConfigured()) {
-          const messagesResult = await supabase.from('messages').select('id, created_at').eq('sender_id', user.id).gte('created_at', todayTimestamp);
+          const queryBuilder = supabase.from('messages').select('id, created_at');
+          queryBuilder.eq('sender_id', user.id);
+          queryBuilder.gte('created_at', todayTimestamp);
+          const messagesResult = await queryBuilder.then();
             
           if (messagesResult.error) {
             console.error('Error checking message limit:', messagesResult.error);
@@ -174,7 +177,10 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         const todayTimestamp = today.getTime();
         
         if (isSupabaseConfigured()) {
-          const messagesResult = await supabase.from('messages').select('id, created_at').eq('sender_id', user.id).gte('created_at', todayTimestamp);
+          const queryBuilder = supabase.from('messages').select('id, created_at');
+          queryBuilder.eq('sender_id', user.id);
+          queryBuilder.gte('created_at', todayTimestamp);
+          const messagesResult = await queryBuilder.then();
             
           if (messagesResult.error) {
             console.error('Error checking message limit:', messagesResult.error);
@@ -272,7 +278,10 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     try {
       if (isSupabaseConfigured()) {
         // Get messages from Supabase
-        const messagesResult = await supabase.from('messages').select('*').eq('conversation_id', conversationId).order('created_at', { ascending: true });
+        const queryBuilder = supabase.from('messages').select('*');
+        queryBuilder.eq('conversation_id', conversationId);
+        queryBuilder.order('created_at', { ascending: true });
+        const messagesResult = await queryBuilder.then();
           
         if (messagesResult.error) throw messagesResult.error;
         

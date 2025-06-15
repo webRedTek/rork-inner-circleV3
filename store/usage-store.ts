@@ -111,7 +111,9 @@ export const useUsageStore = create<UsageState>()(
 
         try {
           console.log('Initializing usage data for user:', userId);
-          const usageResult = await supabase.from('usage_tracking').select('*').eq('user_id', userId);
+          const queryBuilder = supabase.from('usage_tracking').select('*');
+          queryBuilder.eq('user_id', userId);
+          const usageResult = await queryBuilder.then();
 
           if (usageResult.error) {
             console.error('Error initializing usage data:', usageResult.error);
@@ -130,7 +132,7 @@ export const useUsageStore = create<UsageState>()(
               },
             };
 
-            usageResult?.forEach(entry => {
+            usageResult?.forEach((entry: Record<string, any>) => {
               usageCache.usageData[entry.action_type] = {
                 currentCount: entry.count,
                 firstActionTimestamp: entry.first_action_timestamp || Date.now(),

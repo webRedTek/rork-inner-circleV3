@@ -71,7 +71,8 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     try {
       if (isSupabaseConfigured()) {
         // Fetch groups from Supabase
-        const groupsResult = await supabase.from('groups').select('*');
+        const queryBuilder = supabase.from('groups').select('*');
+        const groupsResult = await queryBuilder.then();
           
         if (groupsResult.error) throw groupsResult.error;
         
@@ -141,8 +142,10 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
       
       if (isSupabaseConfigured()) {
         // Get the group to update
-        const groupResult = await supabase.from('groups').select('*').eq('id', groupId).single();
-          
+        const queryBuilder = supabase.from('groups').select('*');
+        queryBuilder.eq('id', groupId);
+        const groupResult = await queryBuilder.single();
+        
         if (groupResult.error) throw groupResult.error;
         
         // Convert to Group type
@@ -208,7 +211,9 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     try {
       if (isSupabaseConfigured()) {
         // Get the group to update
-        const groupResult = await supabase.from('groups').select('*').eq('id', groupId).single();
+        const queryBuilder = supabase.from('groups').select('*');
+        queryBuilder.eq('id', groupId);
+        const groupResult = await queryBuilder.single();
           
         if (groupResult.error) throw groupResult.error;
         
@@ -299,12 +304,17 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         };
         
         // Insert group into Supabase and get the created group with generated UUID
-        const createGroupResult = await supabase.from('groups').insert(newGroup).select().single();
+        const createGroupResult = await supabase.from('groups').insert(newGroup);
+        const queryBuilder = supabase.from('groups').select('*');
+        queryBuilder.eq('created_by', user.id);
+        queryBuilder.order('created_at', { ascending: false });
+        queryBuilder.limit(1);
+        const createdGroup = await queryBuilder.single();
           
         if (createGroupResult.error) throw createGroupResult.error;
         
         // Update user's joinedGroups with the Postgres-generated UUID
-        const updatedJoinedGroups = [...user.joinedGroups, createGroupResult.id];
+        const updatedJoinedGroups = [...user.joinedGroups, createdGroup.id];
         
         const updateUserResult = await supabase.from('users').update({ joined_groups: updatedJoinedGroups }).eq('id', user.id);
           
@@ -315,7 +325,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           await supabase.rpc('log_user_action', {
             user_id: user.id,
             action: 'create_group',
-            details: { group_id: createGroupResult.id, group_name: newGroup.name }
+            details: { group_id: createdGroup.id, group_name: newGroup.name }
           });
           useUsageStore.getState().incrementUsage('create_group');
         } catch (logError) {

@@ -489,7 +489,7 @@ export const signOut = async () => {
     throw new Error('Supabase not initialized');
   }
 
-  const token = await AsyncStorage.getItem('supabase_access_token');
+  const token = await AsyncStorage.getItem('supabase_access_token') || '';
   if (!token) return;
 
   const response = await fetch(`${supabaseUrl}/auth/v1/logout`, {
@@ -512,8 +512,8 @@ export const signOut = async () => {
 };
 
 export const getSession = async () => {
-  const token = await AsyncStorage.getItem('supabase_access_token');
-  const refreshToken = await AsyncStorage.getItem('supabase_refresh_token');
+  const token = (await AsyncStorage.getItem('supabase_access_token')) || '';
+  const refreshToken = (await AsyncStorage.getItem('supabase_refresh_token')) || '';
 
   if (!token || !refreshToken) {
     return { session: null };
@@ -568,56 +568,90 @@ export const getSession = async () => {
  */
 export const from = (table: string) => {
   return {
-    select: (columns: string) => ({
-      eq: async (column: string, value: any) => {
-        const token = await AsyncStorage.getItem('supabase_access_token');
-        return fetchSupabase(`${table}?${column}=eq.${encodeURIComponent(value)}&select=${columns}`, 'GET', undefined, token);
-      },
-      neq: async (column: string, value: any) => {
-        const token = await AsyncStorage.getItem('supabase_access_token');
-        return fetchSupabase(`${table}?${column}=neq.${encodeURIComponent(value)}&select=${columns}`, 'GET', undefined, token);
-      },
-      gte: async (column: string, value: any) => {
-        const token = await AsyncStorage.getItem('supabase_access_token');
-        return fetchSupabase(`${table}?${column}=gte.${encodeURIComponent(value)}&select=${columns}`, 'GET', undefined, token);
-      },
-      or: async (conditions: string) => {
-        const token = await AsyncStorage.getItem('supabase_access_token');
-        return fetchSupabase(`${table}?or=(${conditions})&select=${columns}`, 'GET', undefined, token);
-      },
-      order: async (column: string, options: { ascending: boolean }) => {
-        const token = await AsyncStorage.getItem('supabase_access_token');
-        return fetchSupabase(`${table}?order=${column}.${options.ascending ? 'asc' : 'desc'}&select=${columns}`, 'GET', undefined, token);
-      },
-      limit: async (count: number) => {
-        const token = await AsyncStorage.getItem('supabase_access_token');
-        return fetchSupabase(`${table}?limit=${count}&select=${columns}`, 'GET', undefined, token);
-      },
-      single: async () => {
-        const token = await AsyncStorage.getItem('supabase_access_token');
-        const data = await fetchSupabase(`${table}?limit=1&select=${columns}`, 'GET', undefined, token);
-        return data?.[0] || null;
-      },
-      then: async () => {
-        const token = await AsyncStorage.getItem('supabase_access_token');
-        return fetchSupabase(`${table}?select=${columns}`, 'GET', undefined, token);
-      },
-    }),
+    select: (columns: string) => {
+      const queryBuilder = {
+        query: `${table}?select=${columns}`,
+        filters: [] as string[],
+        limitCount: null as number | null,
+        orderBy: null as string | null,
+        ascending: true,
+        eq: function(column: string, value: any) {
+          this.filters.push(`${column}=eq.${encodeURIComponent(value)}`);
+          return this;
+        },
+        neq: function(column: string, value: any) {
+          this.filters.push(`${column}=neq.${encodeURIComponent(value)}`);
+          return this;
+        },
+        gte: function(column: string, value: any) {
+          this.filters.push(`${column}=gte.${encodeURIComponent(value)}`);
+          return this;
+        },
+        or: function(conditions: string) {
+          this.filters.push(`or=(${conditions})`);
+          return this;
+        },
+        order: function(column: string, options: { ascending: boolean }) {
+          this.orderBy = `${column}.${options.ascending ? 'asc' : 'desc'}`;
+          this.ascending = options.ascending;
+          return this;
+        },
+        limit: function(count: number) {
+          this.limitCount = count;
+          return this;
+        },
+        single: async function() {
+          this.limitCount = 1;
+          const data = await this.then();
+          return data?.[0] || null;
+        },
+        then: async function() {
+          let finalQuery = this.query;
+          if (this.filters.length > 0) {
+            finalQuery += `&${this.filters.join('&')}`;
+          }
+          if (this.limitCount !== null) {
+            finalQuery += `&limit=${this.limitCount}`;
+          }
+          if (this.orderBy) {
+            finalQuery += `&order=${this.orderBy}`;
+          }
+          const token = (await AsyncStorage.getItem('supabase_access_token')) || '';
+          return fetchSupabase(finalQuery, 'GET', undefined, token);
+        }
+      };
+      return queryBuilder;
+    },
     insert: async (data: any) => {
-      const token = await AsyncStorage.getItem('supabase_access_token');
+      const token = (await AsyncStorage.getItem('supabase_access_token')) || '';
       return fetchSupabase(table, 'POST', data, token);
     },
-    update: async (data: any) => ({
-      eq: async (column: string, value: any) => {
-        const token = await AsyncStorage.getItem('supabase_access_token');
-        return fetchSupabase(`${table}?${column}=eq.${encodeURIComponent(value)}`, 'PATCH', data, token);
-      },
-      in: async (column: string, values: any[]) => {
-        const token = await AsyncStorage.getItem('supabase_access_token');
-        const valueList = values.map(v => encodeURIComponent(v)).join(',');
-        return fetchSupabase(`${table}?${column}=in.(${valueList})`, 'PATCH', data, token);
-      },
-    }),
+    update: async (data: any) => {
+      const queryBuilder = {
+        query: table,
+        filters: [] as string[],
+        eq: async function(column: string, value: any) {
+          this.filters.push(`${column}=eq.${encodeURIComponent(value)}`);
+          let finalQuery = this.query;
+          if (this.filters.length > 0) {
+            finalQuery += `?${this.filters.join('&')}`;
+          }
+          const token = (await AsyncStorage.getItem('supabase_access_token')) || '';
+          return fetchSupabase(finalQuery, 'PATCH', data, token);
+        },
+        in: async function(column: string, values: any[]) {
+          const valueList = values.map(v => encodeURIComponent(v)).join(',');
+          this.filters.push(`${column}=in.(${valueList})`);
+          let finalQuery = this.query;
+          if (this.filters.length > 0) {
+            finalQuery += `?${this.filters.join('&')}`;
+          }
+          const token = (await AsyncStorage.getItem('supabase_access_token')) || '';
+          return fetchSupabase(finalQuery, 'PATCH', data, token);
+        }
+      };
+      return queryBuilder;
+    },
   };
 };
 
@@ -629,7 +663,7 @@ export const rpc = async (functionName: string, params: Record<string, any>) => 
     throw new Error('Supabase not initialized');
   }
 
-  const token = await AsyncStorage.getItem('supabase_access_token');
+  const token = (await AsyncStorage.getItem('supabase_access_token')) || '';
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'apikey': supabaseAnonKey,
@@ -666,7 +700,9 @@ export const getAppSettings = async () => {
   if (!initialized) {
     throw new Error('Supabase client not initialized');
   }
-  const data = await from('app_settings').select('*').limit(1);
+  const queryBuilder = from('app_settings').select('*');
+  queryBuilder.limit(1);
+  const data = await queryBuilder.then();
   return data?.[0] || null;
 };
 
@@ -691,7 +727,10 @@ export const getUserTierSettings = async (tier: string) => {
   if (!initialized) {
     throw new Error('Supabase client not initialized');
   }
-  const data = await from('app_settings').select('*').eq('tier', tier).limit(1);
+  const queryBuilder = from('app_settings').select('*');
+  queryBuilder.eq('tier', tier);
+  queryBuilder.limit(1);
+  const data = await queryBuilder.then();
   return data?.[0] || null;
 };
 

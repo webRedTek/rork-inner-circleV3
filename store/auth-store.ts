@@ -149,7 +149,9 @@ export const useAuthStore = create<AuthState>()(
             }
 
             console.log('Supabase login successful, fetching profile...');
-            const profileData = await supabase.from('users').select('*').eq('id', data.user.id).single();
+            const queryBuilder = supabase.from('users').select('*');
+            queryBuilder.eq('id', data.user.id);
+            const profileData = await queryBuilder.single();
 
             if (profileData.error) {
               console.error('Profile fetch error:', profileData.error);
@@ -459,7 +461,9 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           console.log('Fetching usage data for user:', userId);
-          const usageDataResult = await supabase.from('usage_tracking').select('*').eq('user_id', userId);
+          const queryBuilder = supabase.from('usage_tracking').select('*');
+          queryBuilder.eq('user_id', userId);
+          const usageDataResult = await queryBuilder.then();
 
           if (usageDataResult.error) {
             console.error('Error fetching usage data:', JSON.stringify(usageDataResult.error, null, 2));
@@ -478,7 +482,7 @@ export const useAuthStore = create<AuthState>()(
               },
             };
 
-            usageDataResult?.forEach(entry => {
+            usageDataResult?.forEach((entry: Record<string, any>) => {
               usageCache.usageData[entry.action_type] = {
                 currentCount: entry.count,
                 firstActionTimestamp: entry.first_action_timestamp || Date.now(),
@@ -597,35 +601,32 @@ export const useAuthStore = create<AuthState>()(
           await initSupabase();
           
           if (isSupabaseConfigured()) {
-            const { session, error } = await supabase.auth.getSession();
-            if (error) {
-              console.error('Error checking session:', error);
+            const { session } = await supabase.auth.getSession();
+            if (!session || !session.user) {
               set({ isReady: true, isLoading: false, isAuthenticated: false });
               return;
             }
 
-            if (session && session.user) {
-              const profileData = await supabase.from('users').select('*').eq('id', session.user.id).single();
+            const queryBuilder = supabase.from('users').select('*');
+            queryBuilder.eq('id', session.user.id);
+            const profileData = await queryBuilder.single();
 
-              if (profileData.error) {
-                console.error('Error fetching user profile on session check:', profileData.error);
-                set({ isReady: true, isLoading: false, isAuthenticated: false });
-                return;
-              }
-
-              const userProfile = supabaseToUserProfile(profileData);
-              set({
-                user: userProfile,
-                isAuthenticated: true,
-                isReady: true,
-                isLoading: false,
-              });
-              // Fetch tier settings only after confirming session and user ID
-              await get().fetchTierSettings(session.user.id);
-              await get().fetchUsageData(session.user.id);
-            } else {
+            if (profileData.error) {
+              console.error('Error fetching user profile on session check:', profileData.error);
               set({ isReady: true, isLoading: false, isAuthenticated: false });
+              return;
             }
+
+            const userProfile = supabaseToUserProfile(profileData);
+            set({
+              user: userProfile,
+              isAuthenticated: true,
+              isReady: true,
+              isLoading: false,
+            });
+            // Fetch tier settings only after confirming session and user ID
+            await get().fetchTierSettings(session.user.id);
+            await get().fetchUsageData(session.user.id);
           } else {
             set({ isReady: true, isLoading: false, isAuthenticated: false });
           }
