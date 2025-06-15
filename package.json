@@ -12,7 +12,7 @@
     "@hono/trpc-server": "^0.3.4",
     "@react-native-async-storage/async-storage": "2.1.2",
     "@react-navigation/native": "^7.1.6",
-    "@supabase/supabase-js-react-native": "latest",
+    "supabase-js-react-native": "latest",
     "@tanstack/react-query": "^5.75.1",
     "@tradle/react-native-http": "^2.0.1",
     "@trpc/client": "^11.1.2",
