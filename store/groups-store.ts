@@ -69,16 +69,14 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     
     set({ isLoading: true, error: null });
     try {
-      if (isSupabaseConfigured() && supabase) {
+      if (isSupabaseConfigured()) {
         // Fetch groups from Supabase
-        const { data: groupsData, error: groupsError } = await supabase
-          .from('groups')
-          .select('*');
+        const groupsResult = await supabase.from('groups').select('*');
           
-        if (groupsError) throw groupsError;
+        if (groupsResult.error) throw groupsResult.error;
         
         // Convert Supabase response to Group type
-        const typedGroups: Group[] = (groupsData || []).map(supabaseToGroup);
+        const typedGroups: Group[] = (groupsResult || []).map(supabaseToGroup);
         
         // Filter groups for the current user
         const userGroups = typedGroups.filter((group: Group) => 
@@ -141,38 +139,28 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         throw new Error(`You have reached your group limit (${userGroups.length} of ${groupsLimit} groups). Upgrade to ${nextTier} to join more groups.`);
       }
       
-      if (isSupabaseConfigured() && supabase) {
+      if (isSupabaseConfigured()) {
         // Get the group to update
-        const { data: groupData, error: groupError } = await supabase
-          .from('groups')
-          .select('*')
-          .eq('id', groupId)
-          .single();
+        const groupResult = await supabase.from('groups').select('*').eq('id', groupId).single();
           
-        if (groupError) throw groupError;
+        if (groupResult.error) throw groupResult.error;
         
         // Convert to Group type
-        const group = supabaseToGroup(groupData || {});
+        const group = supabaseToGroup(groupResult || {});
         
         // Update the group with the new member
         const updatedMemberIds = [...group.memberIds, user.id];
         
-        const { error: updateError } = await supabase
-          .from('groups')
-          .update({ member_ids: updatedMemberIds })
-          .eq('id', groupId);
+        const updateGroupResult = await supabase.from('groups').update({ member_ids: updatedMemberIds }).eq('id', groupId);
           
-        if (updateError) throw updateError;
+        if (updateGroupResult.error) throw updateGroupResult.error;
         
         // Update user's joinedGroups
         const updatedJoinedGroups = [...user.joinedGroups, groupId];
         
-        const { error: userUpdateError } = await supabase
-          .from('users')
-          .update({ joined_groups: updatedJoinedGroups })
-          .eq('id', user.id);
+        const updateUserResult = await supabase.from('users').update({ joined_groups: updatedJoinedGroups }).eq('id', user.id);
           
-        if (userUpdateError) throw userUpdateError;
+        if (updateUserResult.error) throw updateUserResult.error;
         
         // Log the action
         try {
@@ -218,38 +206,28 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     
     set({ isLoading: true, error: null });
     try {
-      if (isSupabaseConfigured() && supabase) {
+      if (isSupabaseConfigured()) {
         // Get the group to update
-        const { data: groupData, error: groupError } = await supabase
-          .from('groups')
-          .select('*')
-          .eq('id', groupId)
-          .single();
+        const groupResult = await supabase.from('groups').select('*').eq('id', groupId).single();
           
-        if (groupError) throw groupError;
+        if (groupResult.error) throw groupResult.error;
         
         // Convert to Group type
-        const group = supabaseToGroup(groupData || {});
+        const group = supabaseToGroup(groupResult || {});
         
         // Update the group by removing the member
         const updatedMemberIds = group.memberIds.filter((id: string) => id !== user.id);
         
-        const { error: updateError } = await supabase
-          .from('groups')
-          .update({ member_ids: updatedMemberIds })
-          .eq('id', groupId);
+        const updateGroupResult = await supabase.from('groups').update({ member_ids: updatedMemberIds }).eq('id', groupId);
           
-        if (updateError) throw updateError;
+        if (updateGroupResult.error) throw updateGroupResult.error;
         
         // Update user's joinedGroups
         const updatedJoinedGroups = user.joinedGroups.filter((id: string) => id !== groupId);
         
-        const { error: userUpdateError } = await supabase
-          .from('users')
-          .update({ joined_groups: updatedJoinedGroups })
-          .eq('id', user.id);
+        const updateUserResult = await supabase.from('users').update({ joined_groups: updatedJoinedGroups }).eq('id', user.id);
           
-        if (userUpdateError) throw userUpdateError;
+        if (updateUserResult.error) throw updateUserResult.error;
         
         // Log the action
         try {
@@ -307,7 +285,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         throw new Error(`You have reached your group creation limit (${userGroups.length} of ${groupsLimit} groups). Upgrade to ${nextTier} to create more groups.`);
       }
       
-      if (isSupabaseConfigured() && supabase) {
+      if (isSupabaseConfigured()) {
         // Create new group with snake_case fields, letting Postgres generate the UUID
         const newGroup = {
           name: groupData.name || 'New Group',
@@ -321,30 +299,23 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         };
         
         // Insert group into Supabase and get the created group with generated UUID
-        const { data: createdGroup, error: insertError } = await supabase
-          .from('groups')
-          .insert(newGroup)
-          .select()
-          .single();
+        const createGroupResult = await supabase.from('groups').insert(newGroup).select().single();
           
-        if (insertError) throw insertError;
+        if (createGroupResult.error) throw createGroupResult.error;
         
         // Update user's joinedGroups with the Postgres-generated UUID
-        const updatedJoinedGroups = [...user.joinedGroups, createdGroup.id];
+        const updatedJoinedGroups = [...user.joinedGroups, createGroupResult.id];
         
-        const { error: userUpdateError } = await supabase
-          .from('users')
-          .update({ joined_groups: updatedJoinedGroups })
-          .eq('id', user.id);
+        const updateUserResult = await supabase.from('users').update({ joined_groups: updatedJoinedGroups }).eq('id', user.id);
           
-        if (userUpdateError) throw userUpdateError;
+        if (updateUserResult.error) throw updateUserResult.error;
         
         // Log the action
         try {
           await supabase.rpc('log_user_action', {
             user_id: user.id,
             action: 'create_group',
-            details: { group_id: createdGroup.id, group_name: newGroup.name }
+            details: { group_id: createGroupResult.id, group_name: newGroup.name }
           });
           useUsageStore.getState().incrementUsage('create_group');
         } catch (logError) {

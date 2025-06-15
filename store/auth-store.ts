@@ -139,12 +139,9 @@ export const useAuthStore = create<AuthState>()(
           console.log('Login attempt with email:', email);
           await initSupabase();
           
-          if (isSupabaseConfigured() && supabase) {
+          if (isSupabaseConfigured()) {
             console.log('Using Supabase for login');
-            const { data, error } = await supabase.auth.signInWithPassword({
-              email,
-              password,
-            });
+            const { data, error } = await supabase.auth.signInWithPassword(email, password);
 
             if (error) {
               console.error('Supabase login error:', error);
@@ -152,15 +149,11 @@ export const useAuthStore = create<AuthState>()(
             }
 
             console.log('Supabase login successful, fetching profile...');
-            const { data: profileData, error: profileError } = await supabase
-              .from('users')
-              .select('*')
-              .eq('id', data.user.id)
-              .single();
+            const profileData = await supabase.from('users').select('*').eq('id', data.user.id).single();
 
-            if (profileError) {
-              console.error('Profile fetch error:', profileError);
-              if (profileError.code === 'PGRST116') {
+            if (profileData.error) {
+              console.error('Profile fetch error:', profileData.error);
+              if (profileData.error.message.includes('No rows found')) {
                 const newProfile: UserProfile = {
                   id: data.user.id,
                   email: data.user.email || email,
@@ -193,13 +186,11 @@ export const useAuthStore = create<AuthState>()(
                 const profileRecord = convertToSnakeCase(newProfile);
                 
                 console.log('Creating new profile in Supabase...');
-                const { error: insertError } = await supabase
-                  .from('users')
-                  .insert(profileRecord);
+                const insertResult = await supabase.from('users').insert(profileRecord);
                 
-                if (insertError) {
-                  console.error('Profile insert error:', insertError);
-                  throw insertError;
+                if (insertResult.error) {
+                  console.error('Profile insert error:', insertResult.error);
+                  throw insertResult.error;
                 }
                 
                 set({
@@ -211,7 +202,7 @@ export const useAuthStore = create<AuthState>()(
                 await get().fetchTierSettings(data.user.id);
                 await get().fetchUsageData(data.user.id);
               } else {
-                throw profileError;
+                throw profileData.error;
               }
             } else {
               const userProfile = supabaseToUserProfile(profileData);
@@ -243,15 +234,11 @@ export const useAuthStore = create<AuthState>()(
         try {
           await initSupabase();
           
-          if (isSupabaseConfigured() && supabase) {
+          if (isSupabaseConfigured()) {
             try {
               await new Promise(resolve => setTimeout(resolve, 2000));
               
               console.log('Attempting Supabase signup with email:', userData.email);
-              
-              if (!supabase.auth) {
-                throw new Error('Supabase auth is not initialized properly');
-              }
               
               const { data, error } = await supabase.auth.signUp({
                 email: userData.email!,
@@ -302,13 +289,11 @@ export const useAuthStore = create<AuthState>()(
               
               console.log('Creating user profile in Supabase:', profileRecord);
               
-              const { error: profileError } = await supabase
-                .from('users')
-                .insert(profileRecord);
+              const insertResult = await supabase.from('users').insert(profileRecord);
 
-              if (profileError) {
-                console.error('Error creating user profile in Supabase:', getReadableError(profileError));
-                throw profileError;
+              if (insertResult.error) {
+                console.error('Error creating user profile in Supabase:', getReadableError(insertResult.error));
+                throw insertResult.error;
               }
               
               console.log('User profile created successfully in Supabase');
@@ -343,11 +328,8 @@ export const useAuthStore = create<AuthState>()(
         try {
           const { user } = get();
           
-          if (isSupabaseConfigured() && supabase && user) {
-            const { error } = await supabase.auth.signOut();
-            if (error) {
-              console.warn('Supabase signOut error:', getReadableError(error));
-            }
+          if (isSupabaseConfigured() && user) {
+            await supabase.auth.signOut();
           }
           
           await AsyncStorage.removeItem('auth-storage');
@@ -371,15 +353,12 @@ export const useAuthStore = create<AuthState>()(
           
           await initSupabase();
           
-          if (isSupabaseConfigured() && supabase) {
+          if (isSupabaseConfigured()) {
             const profileRecord = convertToSnakeCase(data);
             
-            const { error } = await supabase
-              .from('users')
-              .update(profileRecord)
-              .eq('id', user.id);
+            const updateResult = await supabase.from('users').update(profileRecord).eq('id', user.id);
 
-            if (error) throw error;
+            if (updateResult.error) throw updateResult.error;
 
             set({
               user: { ...user, ...data },
@@ -405,13 +384,10 @@ export const useAuthStore = create<AuthState>()(
           
           await initSupabase();
           
-          if (isSupabaseConfigured() && supabase) {
-            const { error } = await supabase
-              .from('users')
-              .update({ membership_tier: tier })
-              .eq('id', user.id);
+          if (isSupabaseConfigured()) {
+            const updateResult = await supabase.from('users').update({ membership_tier: tier }).eq('id', user.id);
 
-            if (error) throw error;
+            if (updateResult.error) throw updateResult.error;
 
             set({
               user: { ...user, membershipTier: tier },
@@ -433,11 +409,10 @@ export const useAuthStore = create<AuthState>()(
 
       fetchTierSettings: async (userId: string) => {
         // Guard clause to prevent fetching if user ID is invalid
-        if (!userId || userId.trim() === '' || !isSupabaseConfigured() || !supabase) {
+        if (!userId || userId.trim() === '' || !isSupabaseConfigured()) {
           console.log('Skipping tier settings fetch: Invalid user ID or Supabase not configured', { 
             userId, 
             supabaseConfigured: isSupabaseConfigured(),
-            hasSupabase: !!supabase
           });
           set({ tierSettings: defaultTierSettings, isLoading: false });
           return;
@@ -452,11 +427,10 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           console.log('Fetching tier settings for user:', userId);
-          const { data: tierSettings, error: tierError } = await supabase
-            .rpc('get_user_tier_settings', { p_user_id: userId });
+          const tierSettings = await supabase.rpc('get_user_tier_settings', { p_user_id: userId });
             
-          if (tierError) {
-            console.error('Error fetching tier settings:', JSON.stringify(tierError, null, 2));
+          if (tierSettings.error) {
+            console.error('Error fetching tier settings:', JSON.stringify(tierSettings.error, null, 2));
             set({ tierSettings: defaultTierSettings, isLoading: false });
           } else {
             console.log('Tier settings fetched successfully:', tierSettings);
@@ -473,11 +447,10 @@ export const useAuthStore = create<AuthState>()(
       },
 
       fetchUsageData: async (userId: string) => {
-        if (!userId || userId.trim() === '' || !isSupabaseConfigured() || !supabase) {
+        if (!userId || userId.trim() === '' || !isSupabaseConfigured()) {
           console.log('Skipping usage data fetch: Invalid user ID or Supabase not configured', { 
             userId, 
             supabaseConfigured: isSupabaseConfigured(),
-            hasSupabase: !!supabase
           });
           set({ usageCache: defaultUsageCache });
           return;
@@ -486,13 +459,10 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           console.log('Fetching usage data for user:', userId);
-          const { data: usageData, error: usageError } = await supabase
-            .from('usage_tracking')
-            .select('*')
-            .eq('user_id', userId);
+          const usageDataResult = await supabase.from('usage_tracking').select('*').eq('user_id', userId);
 
-          if (usageError) {
-            console.error('Error fetching usage data:', JSON.stringify(usageError, null, 2));
+          if (usageDataResult.error) {
+            console.error('Error fetching usage data:', JSON.stringify(usageDataResult.error, null, 2));
             set({ usageCache: defaultUsageCache, isLoading: false });
           } else {
             const usageCache: UsageCache = {
@@ -508,7 +478,7 @@ export const useAuthStore = create<AuthState>()(
               },
             };
 
-            usageData?.forEach(entry => {
+            usageDataResult?.forEach(entry => {
               usageCache.usageData[entry.action_type] = {
                 currentCount: entry.count,
                 firstActionTimestamp: entry.first_action_timestamp || Date.now(),
@@ -583,7 +553,7 @@ export const useAuthStore = create<AuthState>()(
           } : state.usageCache,
         }));
 
-        if (isSupabaseConfigured() && supabase) {
+        if (isSupabaseConfigured()) {
           try {
             await supabase.rpc('log_user_action', {
               user_id: user.id,
@@ -626,23 +596,19 @@ export const useAuthStore = create<AuthState>()(
         try {
           await initSupabase();
           
-          if (isSupabaseConfigured() && supabase) {
-            const { data, error } = await supabase.auth.getSession();
+          if (isSupabaseConfigured()) {
+            const { session, error } = await supabase.auth.getSession();
             if (error) {
               console.error('Error checking session:', error);
               set({ isReady: true, isLoading: false, isAuthenticated: false });
               return;
             }
 
-            if (data.session && data.session.user) {
-              const { data: profileData, error: profileError } = await supabase
-                .from('users')
-                .select('*')
-                .eq('id', data.session.user.id)
-                .single();
+            if (session && session.user) {
+              const profileData = await supabase.from('users').select('*').eq('id', session.user.id).single();
 
-              if (profileError) {
-                console.error('Error fetching user profile on session check:', profileError);
+              if (profileData.error) {
+                console.error('Error fetching user profile on session check:', profileData.error);
                 set({ isReady: true, isLoading: false, isAuthenticated: false });
                 return;
               }
@@ -655,8 +621,8 @@ export const useAuthStore = create<AuthState>()(
                 isLoading: false,
               });
               // Fetch tier settings only after confirming session and user ID
-              await get().fetchTierSettings(data.session.user.id);
-              await get().fetchUsageData(data.session.user.id);
+              await get().fetchTierSettings(session.user.id);
+              await get().fetchUsageData(session.user.id);
             } else {
               set({ isReady: true, isLoading: false, isAuthenticated: false });
             }

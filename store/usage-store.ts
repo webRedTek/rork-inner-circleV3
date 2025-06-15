@@ -103,7 +103,7 @@ export const useUsageStore = create<UsageState>()(
       lastSyncError: null,
 
       initializeUsage: async (userId: string) => {
-        if (!userId || !isSupabaseConfigured() || !supabase) {
+        if (!userId || !isSupabaseConfigured()) {
           console.log('Skipping usage initialization: Invalid user ID or Supabase not configured');
           set({ usageCache: defaultUsageCache });
           return;
@@ -111,13 +111,10 @@ export const useUsageStore = create<UsageState>()(
 
         try {
           console.log('Initializing usage data for user:', userId);
-          const { data: usageData, error: usageError } = await supabase
-            .from('usage_tracking')
-            .select('*')
-            .eq('user_id', userId);
+          const usageResult = await supabase.from('usage_tracking').select('*').eq('user_id', userId);
 
-          if (usageError) {
-            console.error('Error initializing usage data:', usageError);
+          if (usageResult.error) {
+            console.error('Error initializing usage data:', usageResult.error);
             set({ usageCache: defaultUsageCache });
           } else {
             const usageCache: UsageCache = {
@@ -133,7 +130,7 @@ export const useUsageStore = create<UsageState>()(
               },
             };
 
-            usageData?.forEach(entry => {
+            usageResult?.forEach(entry => {
               usageCache.usageData[entry.action_type] = {
                 currentCount: entry.count,
                 firstActionTimestamp: entry.first_action_timestamp || Date.now(),
@@ -232,16 +229,16 @@ export const useUsageStore = create<UsageState>()(
 
         set({ isSyncing: true, lastSyncError: null });
         try {
-          if (isSupabaseConfigured() && supabase) {
+          if (isSupabaseConfigured()) {
             for (const batch of batchUpdates) {
-              const { error } = await supabase.rpc('batch_update_usage', {
+              const result = await supabase.rpc('batch_update_usage', {
                 p_user_id: batch.user_id,
                 p_updates: batch.updates,
               });
 
-              if (error) {
-                console.error('Error syncing batch update:', error);
-                throw error;
+              if (result.error) {
+                console.error('Error syncing batch update:', result.error);
+                throw result.error;
               }
             }
 

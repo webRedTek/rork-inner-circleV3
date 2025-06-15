@@ -153,7 +153,7 @@ export const useMatchesStore = create<MatchesState>()(
             return;
           }
           
-          if (isSupabaseConfigured() && supabase) {
+          if (isSupabaseConfigured()) {
             // Use cached tier settings for global discovery
             const isGlobalDiscovery = tierSettings?.global_discovery || false;
             // Use user's preferred distance if available
@@ -167,41 +167,32 @@ export const useMatchesStore = create<MatchesState>()(
             
             if (isGlobalDiscovery) {
               // For global discovery, query users directly based on matching criteria
-              const { data, error } = await supabase
-                .from('users')
-                .select('*')
-                .neq('id', user.id);
+              const result = await supabase.from('users').select('*').neq('id', user.id);
                 
-              if (error) {
-                matchError = error;
+              if (result.error) {
+                matchError = result.error;
               } else {
-                potentialUsers = data || [];
+                potentialUsers = result || [];
               }
             } else {
               // Get potential matches based on location
-              const { data, error } = await supabase
-                .from('users')
-                .select('*')
-                .neq('id', user.id);
+              const result = await supabase.from('users').select('*').neq('id', user.id);
                 
-              if (error) {
-                matchError = error;
+              if (result.error) {
+                matchError = result.error;
               } else {
-                potentialUsers = data || [];
+                potentialUsers = result || [];
               }
             }
             
             if (matchError) throw matchError;
             
             // Filter out users that have already been matched or passed
-            const { data: existingLikes, error: likesError } = await supabase
-              .from('likes')
-              .select('liked_id')
-              .eq('liker_id', user.id);
+            const existingLikesResult = await supabase.from('likes').select('liked_id').eq('liker_id', user.id);
               
-            if (likesError) throw likesError;
+            if (existingLikesResult.error) throw existingLikesResult.error;
             
-            const likedIds = existingLikes ? existingLikes.map((like: any) => like.liked_id) : [];
+            const likedIds = existingLikesResult ? existingLikesResult.map((like: any) => like.liked_id) : [];
             
             // Convert to UserProfile type and cache
             const potentialData = potentialUsers as Record<string, any>[] || [];
@@ -271,7 +262,7 @@ export const useMatchesStore = create<MatchesState>()(
           // Use user's preferred distance if available
           const userMaxDistance = user.preferredDistance || maxDistance;
           
-          if (isSupabaseConfigured() && supabase) {
+          if (isSupabaseConfigured()) {
             // Apply rate limiting
             await rateLimitedQuery();
             
@@ -280,41 +271,32 @@ export const useMatchesStore = create<MatchesState>()(
             
             if (isGlobalDiscovery) {
               // For global discovery, query users directly based on matching criteria
-              const { data, error } = await supabase
-                .from('users')
-                .select('*')
-                .neq('id', user.id);
+              const result = await supabase.from('users').select('*').neq('id', user.id);
                 
-              if (error) {
-                matchError = error;
+              if (result.error) {
+                matchError = result.error;
               } else {
-                potentialUsers = data || [];
+                potentialUsers = result || [];
               }
             } else {
               // Get potential matches based on location
-              const { data, error } = await supabase
-                .from('users')
-                .select('*')
-                .neq('id', user.id);
+              const result = await supabase.from('users').select('*').neq('id', user.id);
                 
-              if (error) {
-                matchError = error;
+              if (result.error) {
+                matchError = result.error;
               } else {
-                potentialUsers = data || [];
+                potentialUsers = result || [];
               }
             }
             
             if (matchError) throw matchError;
             
             // Filter out users that have already been matched or passed
-            const { data: existingLikes, error: likesError } = await supabase
-              .from('likes')
-              .select('liked_id')
-              .eq('liker_id', user.id);
+            const existingLikesResult = await supabase.from('likes').select('liked_id').eq('liker_id', user.id);
               
-            if (likesError) throw likesError;
+            if (existingLikesResult.error) throw existingLikesResult.error;
             
-            const likedIds = existingLikes ? existingLikes.map((like: any) => like.liked_id) : [];
+            const likedIds = existingLikesResult ? existingLikesResult.map((like: any) => like.liked_id) : [];
             
             // Convert to UserProfile type and cache
             const potentialData = potentialUsers as Record<string, any>[] || [];
@@ -505,7 +487,7 @@ export const useMatchesStore = create<MatchesState>()(
             return;
           }
           
-          if (isSupabaseConfigured() && supabase) {
+          if (isSupabaseConfigured()) {
             // Apply rate limiting
             await rateLimitedQuery();
             
@@ -515,68 +497,55 @@ export const useMatchesStore = create<MatchesState>()(
 
             for (const swipe of rightSwipes) {
               // Check if the other user also liked this user
-              const { data: existingLike, error: likeError } = await supabase
-                .from('likes')
-                .select('*')
-                .eq('liker_id', swipe.swipee_id)
-                .eq('liked_id', swipe.swiper_id)
-                .single();
+              const existingLikeResult = await supabase.from('likes').select('*').eq('liker_id', swipe.swipee_id).eq('liked_id', swipe.swiper_id).single();
 
-              if (likeError && likeError.code !== 'PGRST116') {
-                console.error('Error checking for existing like:', likeError);
+              if (existingLikeResult.error && !existingLikeResult.error.message.includes('No rows found')) {
+                console.error('Error checking for existing like:', existingLikeResult.error);
                 continue;
               }
 
               // If there's a match
-              if (existingLike) {
+              if (existingLikeResult && existingLikeResult.length > 0) {
                 // Create a match
-                const { data: match, error: matchError } = await supabase
-                  .from('matches')
-                  .insert({
-                    user_id: swipe.swiper_id,
-                    matched_user_id: swipe.swipee_id,
-                    created_at: swipe.swipe_timestamp
-                  })
-                  .select()
-                  .single();
+                const matchResult = await supabase.from('matches').insert({
+                  user_id: swipe.swiper_id,
+                  matched_user_id: swipe.swipee_id,
+                  created_at: swipe.swipe_timestamp
+                }).select().single();
 
-                if (matchError) {
-                  console.error('Error creating match:', matchError);
+                if (matchResult.error) {
+                  console.error('Error creating match:', matchResult.error);
                   continue;
                 }
 
-                if (match) {
-                  newMatches.push(match);
+                if (matchResult) {
+                  newMatches.push(matchResult);
                 }
               }
 
               // Record the swipe
-              const { error: swipeError } = await supabase
-                .from('likes')
-                .insert({
-                  liker_id: swipe.swiper_id,
-                  liked_id: swipe.swipee_id,
-                  timestamp: swipe.swipe_timestamp
-                });
+              const swipeResult = await supabase.from('likes').insert({
+                liker_id: swipe.swiper_id,
+                liked_id: swipe.swipee_id,
+                timestamp: swipe.swipe_timestamp
+              });
 
-              if (swipeError) {
-                console.error('Error recording swipe:', swipeError);
+              if (swipeResult.error) {
+                console.error('Error recording swipe:', swipeResult.error);
               }
             }
 
             // Process left swipes (passes)
             const leftSwipes = swipeQueue.filter(swipe => swipe.direction === 'left');
             for (const swipe of leftSwipes) {
-              const { error: swipeError } = await supabase
-                .from('likes')
-                .insert({
-                  liker_id: swipe.swiper_id,
-                  liked_id: swipe.swipee_id,
-                  timestamp: swipe.swipe_timestamp
-                });
+              const swipeResult = await supabase.from('likes').insert({
+                liker_id: swipe.swiper_id,
+                liked_id: swipe.swipee_id,
+                timestamp: swipe.swipe_timestamp
+              });
 
-              if (swipeError) {
-                console.error('Error recording swipe:', swipeError);
+              if (swipeResult.error) {
+                console.error('Error recording swipe:', swipeResult.error);
               }
             }
 
@@ -622,21 +591,17 @@ export const useMatchesStore = create<MatchesState>()(
         
         set({ isLoading: true, error: null });
         try {
-          if (isSupabaseConfigured() && supabase) {
+          if (isSupabaseConfigured()) {
             // Apply rate limiting
             await rateLimitedQuery();
             
             // Get matches from Supabase
-            const { data: matchesData, error: matchesError } = await supabase
-              .from('matches')
-              .select('*')
-              .or(`user_id.eq.${user.id},matched_user_id.eq.${user.id}`)
-              .order('created_at', { ascending: false });
+            const matchesResult = await supabase.from('matches').select('*').or(`user_id.eq.${user.id},matched_user_id.eq.${user.id}`).order('created_at', { ascending: false });
               
-            if (matchesError) throw matchesError;
+            if (matchesResult.error) throw matchesResult.error;
             
             // Convert to Match type
-            const typedMatches: Match[] = (matchesData || []).map(supabaseToMatch);
+            const typedMatches: Match[] = (matchesResult || []).map(supabaseToMatch);
             
             // Log the action
             try {
@@ -686,22 +651,18 @@ export const useMatchesStore = create<MatchesState>()(
           today.setHours(0, 0, 0, 0);
           const todayTimestamp = today.getTime();
           
-          if (isSupabaseConfigured() && supabase) {
+          if (isSupabaseConfigured()) {
             // Apply rate limiting
             await rateLimitedQuery();
             
-            const { data: likesData, error } = await supabase
-              .from('likes')
-              .select('id, timestamp')
-              .eq('liker_id', user.id)
-              .gte('timestamp', todayTimestamp);
+            const likesResult = await supabase.from('likes').select('id, timestamp').eq('liker_id', user.id).gte('timestamp', todayTimestamp);
               
-            if (error) {
-              console.error('Error checking swipe limits:', error);
+            if (likesResult.error) {
+              console.error('Error checking swipe limits:', likesResult.error);
               return true; // Allow swipe in case of error to not block user
             }
             
-            const todaySwipes = likesData ? likesData.length : 0;
+            const todaySwipes = likesResult ? likesResult.length : 0;
             const canSwipe = todaySwipes < dailySwipeLimit;
             set({ swipeLimitReached: !canSwipe });
             return canSwipe;
@@ -725,36 +686,28 @@ export const useMatchesStore = create<MatchesState>()(
           today.setHours(0, 0, 0, 0);
           const todayTimestamp = today.getTime();
           
-          if (isSupabaseConfigured() && supabase) {
+          if (isSupabaseConfigured()) {
             // Apply rate limiting
             await rateLimitedQuery();
             
             // Sync swipe count
-            const { data: likesData, error: likesError } = await supabase
-              .from('likes')
-              .select('id, timestamp')
-              .eq('liker_id', user.id)
-              .gte('timestamp', todayTimestamp);
+            const likesResult = await supabase.from('likes').select('id, timestamp').eq('liker_id', user.id).gte('timestamp', todayTimestamp);
               
-            if (likesError) {
-              console.error('Error syncing swipe count:', likesError);
+            if (likesResult.error) {
+              console.error('Error syncing swipe count:', likesResult.error);
             } else {
-              const todaySwipes = likesData ? likesData.length : 0;
+              const todaySwipes = likesResult ? likesResult.length : 0;
               const swipeLimitReached = todaySwipes >= tierSettings.daily_swipe_limit;
               set({ swipeLimitReached });
             }
             
             // Sync match count
-            const { data: matchesData, error: matchesError } = await supabase
-              .from('matches')
-              .select('id, created_at')
-              .eq('user_id', user.id)
-              .gte('created_at', todayTimestamp);
+            const matchesResult = await supabase.from('matches').select('id, created_at').eq('user_id', user.id).gte('created_at', todayTimestamp);
               
-            if (matchesError) {
-              console.error('Error syncing match count:', matchesError);
+            if (matchesResult.error) {
+              console.error('Error syncing match count:', matchesResult.error);
             } else {
-              const todayMatches = matchesData ? matchesData.length : 0;
+              const todayMatches = matchesResult ? matchesResult.length : 0;
               const matchLimitReached = todayMatches >= tierSettings.daily_match_limit;
               set({ matchLimitReached });
             }

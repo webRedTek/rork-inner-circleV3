@@ -72,17 +72,13 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         today.setHours(0, 0, 0, 0);
         const todayTimestamp = today.getTime();
         
-        if (isSupabaseConfigured() && supabase) {
-          const { data: messagesData, error } = await supabase
-            .from('messages')
-            .select('id, created_at')
-            .eq('sender_id', user.id)
-            .gte('created_at', todayTimestamp);
+        if (isSupabaseConfigured()) {
+          const messagesResult = await supabase.from('messages').select('id, created_at').eq('sender_id', user.id).gte('created_at', todayTimestamp);
             
-          if (error) {
-            console.error('Error checking message limit:', error);
+          if (messagesResult.error) {
+            console.error('Error checking message limit:', messagesResult.error);
           } else {
-            const todayMessages = messagesData ? messagesData.length : 0;
+            const todayMessages = messagesResult ? messagesResult.length : 0;
             if (todayMessages >= dailyMessageLimit) {
               throw new Error('Daily message limit reached. Upgrade your plan for more messages.');
             }
@@ -92,7 +88,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         }
       }
       
-      if (isSupabaseConfigured() && supabase) {
+      if (isSupabaseConfigured()) {
         // Create message in Supabase
         const newMessage: Message = {
           id: `msg-${Date.now()}`,
@@ -108,21 +104,16 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         const messageRecord = convertToSnakeCase(newMessage);
         messageRecord.conversation_id = conversationId;
         
-        const { error: insertError } = await supabase
-          .from('messages')
-          .insert(messageRecord);
+        const insertResult = await supabase.from('messages').insert(messageRecord);
           
-        if (insertError) throw insertError;
+        if (insertResult.error) throw insertResult.error;
         
         // Update last message timestamp in match if it's a match conversation
         if (conversationId.startsWith('match-')) {
-          const { error: updateMatchError } = await supabase
-            .from('matches')
-            .update({ last_message_at: newMessage.createdAt })
-            .eq('id', conversationId);
+          const updateMatchResult = await supabase.from('matches').update({ last_message_at: newMessage.createdAt }).eq('id', conversationId);
             
-          if (updateMatchError) {
-            console.warn('Failed to update match last_message_at:', getReadableError(updateMatchError));
+          if (updateMatchResult.error) {
+            console.warn('Failed to update match last_message_at:', getReadableError(updateMatchResult.error));
           }
         }
         
@@ -182,17 +173,13 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         today.setHours(0, 0, 0, 0);
         const todayTimestamp = today.getTime();
         
-        if (isSupabaseConfigured() && supabase) {
-          const { data: messagesData, error } = await supabase
-            .from('messages')
-            .select('id, created_at')
-            .eq('sender_id', user.id)
-            .gte('created_at', todayTimestamp);
+        if (isSupabaseConfigured()) {
+          const messagesResult = await supabase.from('messages').select('id, created_at').eq('sender_id', user.id).gte('created_at', todayTimestamp);
             
-          if (error) {
-            console.error('Error checking message limit:', error);
+          if (messagesResult.error) {
+            console.error('Error checking message limit:', messagesResult.error);
           } else {
-            const todayMessages = messagesData ? messagesData.length : 0;
+            const todayMessages = messagesResult ? messagesResult.length : 0;
             if (todayMessages >= dailyMessageLimit) {
               throw new Error('Daily message limit reached. Upgrade your plan for more messages.');
             }
@@ -202,7 +189,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         }
       }
       
-      if (isSupabaseConfigured() && supabase) {
+      if (isSupabaseConfigured()) {
         // Create voice message in Supabase
         const newMessage: Message = {
           id: `msg-${Date.now()}`,
@@ -220,21 +207,16 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         const messageRecord = convertToSnakeCase(newMessage);
         messageRecord.conversation_id = conversationId;
         
-        const { error: insertError } = await supabase
-          .from('messages')
-          .insert(messageRecord);
+        const insertResult = await supabase.from('messages').insert(messageRecord);
           
-        if (insertError) throw insertError;
+        if (insertResult.error) throw insertResult.error;
         
         // Update last message timestamp in match if it's a match conversation
         if (conversationId.startsWith('match-')) {
-          const { error: updateMatchError } = await supabase
-            .from('matches')
-            .update({ last_message_at: newMessage.createdAt })
-            .eq('id', conversationId);
+          const updateMatchResult = await supabase.from('matches').update({ last_message_at: newMessage.createdAt }).eq('id', conversationId);
             
-          if (updateMatchError) {
-            console.warn('Failed to update match last_message_at:', getReadableError(updateMatchError));
+          if (updateMatchResult.error) {
+            console.warn('Failed to update match last_message_at:', getReadableError(updateMatchResult.error));
           }
         }
         
@@ -288,18 +270,14 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     
     set({ isLoading: true, error: null });
     try {
-      if (isSupabaseConfigured() && supabase) {
+      if (isSupabaseConfigured()) {
         // Get messages from Supabase
-        const { data: messagesData, error: messagesError } = await supabase
-          .from('messages')
-          .select('*')
-          .eq('conversation_id', conversationId)
-          .order('created_at', { ascending: true });
+        const messagesResult = await supabase.from('messages').select('*').eq('conversation_id', conversationId).order('created_at', { ascending: true });
           
-        if (messagesError) throw messagesError;
+        if (messagesResult.error) throw messagesResult.error;
         
         // Convert Supabase response to Message objects
-        const conversationMessages = (messagesData || []).map(supabaseToMessage);
+        const conversationMessages = (messagesResult || []).map(supabaseToMessage);
         
         // Log the action
         try {
@@ -365,7 +343,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       
       if (conversationMessages.length === 0) return;
       
-      if (isSupabaseConfigured() && supabase) {
+      if (isSupabaseConfigured()) {
         // Mark messages as read in Supabase
         const unreadMessageIds = conversationMessages
           .filter(msg => msg.receiverId === user.id && !msg.read)
@@ -373,13 +351,10 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           
         if (unreadMessageIds.length === 0) return;
         
-        const { error: updateError } = await supabase
-          .from('messages')
-          .update({ read: true })
-          .in('id', unreadMessageIds);
+        const updateResult = await supabase.from('messages').update({ read: true }).in('id', unreadMessageIds);
           
-        if (updateError) {
-          console.warn('Failed to mark messages as read:', getReadableError(updateError));
+        if (updateResult.error) {
+          console.warn('Failed to mark messages as read:', getReadableError(updateResult.error));
           return;
         }
         
