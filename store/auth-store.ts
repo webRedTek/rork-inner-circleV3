@@ -139,9 +139,12 @@ export const useAuthStore = create<AuthState>()(
           console.log('Login attempt with email:', email);
           await initSupabase();
           
-          if (isSupabaseConfigured()) {
+          if (isSupabaseConfigured() && supabase) {
             console.log('Using Supabase for login');
-            const { data, error } = await supabase.auth.signInWithPassword(email, password);
+            const { data, error } = await supabase.auth.signInWithPassword({
+              email,
+              password,
+            });
 
             if (error) {
               console.error('Supabase login error:', error);
@@ -149,13 +152,15 @@ export const useAuthStore = create<AuthState>()(
             }
 
             console.log('Supabase login successful, fetching profile...');
-            const queryBuilder = supabase.from('users').select('*');
-            queryBuilder.eq('id', data.user.id);
-            const profileData = await queryBuilder.single();
+            const { data: profileData, error: profileError } = await supabase
+              .from('users')
+              .select('*')
+              .eq('id', data.user.id)
+              .single();
 
-            if (profileData.error) {
-              console.error('Profile fetch error:', profileData.error);
-              if (profileData.error.message.includes('No rows found')) {
+            if (profileError) {
+              console.error('Profile fetch error:', profileError);
+              if (profileError.code === 'PGRST116') {
                 const newProfile: UserProfile = {
                   id: data.user.id,
                   email: data.user.email || email,
@@ -188,11 +193,13 @@ export const useAuthStore = create<AuthState>()(
                 const profileRecord = convertToSnakeCase(newProfile);
                 
                 console.log('Creating new profile in Supabase...');
-                const insertResult = await supabase.from('users').insert(profileRecord);
+                const { error: insertError } = await supabase
+                  .from('users')
+                  .insert(profileRecord);
                 
-                if (insertResult.error) {
-                  console.error('Profile insert error:', insertResult.error);
-                  throw insertResult.error;
+                if (insertError) {
+                  console.error('Profile insert error:', insertError);
+                  throw insertError;
                 }
                 
                 set({
@@ -204,7 +211,7 @@ export const useAuthStore = create<AuthState>()(
                 await get().fetchTierSettings(data.user.id);
                 await get().fetchUsageData(data.user.id);
               } else {
-                throw profileData.error;
+                throw profileError;
               }
             } else {
               const userProfile = supabaseToUserProfile(profileData);
@@ -236,11 +243,15 @@ export const useAuthStore = create<AuthState>()(
         try {
           await initSupabase();
           
-          if (isSupabaseConfigured()) {
+          if (isSupabaseConfigured() && supabase) {
             try {
               await new Promise(resolve => setTimeout(resolve, 2000));
               
               console.log('Attempting Supabase signup with email:', userData.email);
+              
+              if (!supabase.auth) {
+                throw new Error('Supabase auth is not initialized properly');
+              }
               
               const { data, error } = await supabase.auth.signUp({
                 email: userData.email!,
@@ -291,11 +302,13 @@ export const useAuthStore = create<AuthState>()(
               
               console.log('Creating user profile in Supabase:', profileRecord);
               
-              const insertResult = await supabase.from('users').insert(profileRecord);
+              const { error: profileError } = await supabase
+                .from('users')
+                .insert(profileRecord);
 
-              if (insertResult.error) {
-                console.error('Error creating user profile in Supabase:', getReadableError(insertResult.error));
-                throw insertResult.error;
+              if (profileError) {
+                console.error('Error creating user profile in Supabase:', getReadableError(profileError));
+                throw profileError;
               }
               
               console.log('User profile created successfully in Supabase');
@@ -330,8 +343,11 @@ export const useAuthStore = create<AuthState>()(
         try {
           const { user } = get();
           
-          if (isSupabaseConfigured() && user) {
-            await supabase.auth.signOut();
+          if (isSupabaseConfigured() && supabase && user) {
+            const { error } = await supabase.auth.signOut();
+            if (error) {
+              console.warn('Supabase signOut error:', getReadableError(error));
+            }
           }
           
           await AsyncStorage.removeItem('auth-storage');
@@ -355,12 +371,15 @@ export const useAuthStore = create<AuthState>()(
           
           await initSupabase();
           
-          if (isSupabaseConfigured()) {
+          if (isSupabaseConfigured() && supabase) {
             const profileRecord = convertToSnakeCase(data);
             
-            const updateResult = await supabase.from('users').update(profileRecord).eq('id', user.id);
+            const { error } = await supabase
+              .from('users')
+              .update(profileRecord)
+              .eq('id', user.id);
 
-            if (updateResult.error) throw updateResult.error;
+            if (error) throw error;
 
             set({
               user: { ...user, ...data },
@@ -386,10 +405,13 @@ export const useAuthStore = create<AuthState>()(
           
           await initSupabase();
           
-          if (isSupabaseConfigured()) {
-            const updateResult = await supabase.from('users').update({ membership_tier: tier }).eq('id', user.id);
+          if (isSupabaseConfigured() && supabase) {
+            const { error } = await supabase
+              .from('users')
+              .update({ membership_tier: tier })
+              .eq('id', user.id);
 
-            if (updateResult.error) throw updateResult.error;
+            if (error) throw error;
 
             set({
               user: { ...user, membershipTier: tier },
@@ -411,10 +433,11 @@ export const useAuthStore = create<AuthState>()(
 
       fetchTierSettings: async (userId: string) => {
         // Guard clause to prevent fetching if user ID is invalid
-        if (!userId || userId.trim() === '' || !isSupabaseConfigured()) {
+        if (!userId || userId.trim() === '' || !isSupabaseConfigured() || !supabase) {
           console.log('Skipping tier settings fetch: Invalid user ID or Supabase not configured', { 
             userId, 
             supabaseConfigured: isSupabaseConfigured(),
+            hasSupabase: !!supabase
           });
           set({ tierSettings: defaultTierSettings, isLoading: false });
           return;
@@ -429,10 +452,11 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           console.log('Fetching tier settings for user:', userId);
-          const tierSettings = await supabase.rpc('get_user_tier_settings', { p_user_id: userId });
+          const { data: tierSettings, error: tierError } = await supabase
+            .rpc('get_user_tier_settings', { p_user_id: userId });
             
-          if (tierSettings.error) {
-            console.error('Error fetching tier settings:', JSON.stringify(tierSettings.error, null, 2));
+          if (tierError) {
+            console.error('Error fetching tier settings:', JSON.stringify(tierError, null, 2));
             set({ tierSettings: defaultTierSettings, isLoading: false });
           } else {
             console.log('Tier settings fetched successfully:', tierSettings);
@@ -449,10 +473,11 @@ export const useAuthStore = create<AuthState>()(
       },
 
       fetchUsageData: async (userId: string) => {
-        if (!userId || userId.trim() === '' || !isSupabaseConfigured()) {
+        if (!userId || userId.trim() === '' || !isSupabaseConfigured() || !supabase) {
           console.log('Skipping usage data fetch: Invalid user ID or Supabase not configured', { 
             userId, 
             supabaseConfigured: isSupabaseConfigured(),
+            hasSupabase: !!supabase
           });
           set({ usageCache: defaultUsageCache });
           return;
@@ -461,12 +486,13 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           console.log('Fetching usage data for user:', userId);
-          const queryBuilder = supabase.from('usage_tracking').select('*');
-          queryBuilder.eq('user_id', userId);
-          const usageDataResult = await queryBuilder.then();
+          const { data: usageData, error: usageError } = await supabase
+            .from('usage_tracking')
+            .select('*')
+            .eq('user_id', userId);
 
-          if (usageDataResult.error) {
-            console.error('Error fetching usage data:', JSON.stringify(usageDataResult.error, null, 2));
+          if (usageError) {
+            console.error('Error fetching usage data:', JSON.stringify(usageError, null, 2));
             set({ usageCache: defaultUsageCache, isLoading: false });
           } else {
             const usageCache: UsageCache = {
@@ -482,7 +508,7 @@ export const useAuthStore = create<AuthState>()(
               },
             };
 
-            usageDataResult?.forEach((entry: Record<string, any>) => {
+            usageData?.forEach(entry => {
               usageCache.usageData[entry.action_type] = {
                 currentCount: entry.count,
                 firstActionTimestamp: entry.first_action_timestamp || Date.now(),
@@ -557,7 +583,7 @@ export const useAuthStore = create<AuthState>()(
           } : state.usageCache,
         }));
 
-        if (isSupabaseConfigured()) {
+        if (isSupabaseConfigured() && supabase) {
           try {
             await supabase.rpc('log_user_action', {
               user_id: user.id,
@@ -600,33 +626,40 @@ export const useAuthStore = create<AuthState>()(
         try {
           await initSupabase();
           
-          if (isSupabaseConfigured()) {
-            const { session } = await supabase.auth.getSession();
-            if (!session || !session.user) {
+          if (isSupabaseConfigured() && supabase) {
+            const { data, error } = await supabase.auth.getSession();
+            if (error) {
+              console.error('Error checking session:', error);
               set({ isReady: true, isLoading: false, isAuthenticated: false });
               return;
             }
 
-            const queryBuilder = supabase.from('users').select('*');
-            queryBuilder.eq('id', session.user.id);
-            const profileData = await queryBuilder.single();
+            if (data.session && data.session.user) {
+              const { data: profileData, error: profileError } = await supabase
+                .from('users')
+                .select('*')
+                .eq('id', data.session.user.id)
+                .single();
 
-            if (profileData.error) {
-              console.error('Error fetching user profile on session check:', profileData.error);
+              if (profileError) {
+                console.error('Error fetching user profile on session check:', profileError);
+                set({ isReady: true, isLoading: false, isAuthenticated: false });
+                return;
+              }
+
+              const userProfile = supabaseToUserProfile(profileData);
+              set({
+                user: userProfile,
+                isAuthenticated: true,
+                isReady: true,
+                isLoading: false,
+              });
+              // Fetch tier settings only after confirming session and user ID
+              await get().fetchTierSettings(data.session.user.id);
+              await get().fetchUsageData(data.session.user.id);
+            } else {
               set({ isReady: true, isLoading: false, isAuthenticated: false });
-              return;
             }
-
-            const userProfile = supabaseToUserProfile(profileData);
-            set({
-              user: userProfile,
-              isAuthenticated: true,
-              isReady: true,
-              isLoading: false,
-            });
-            // Fetch tier settings only after confirming session and user ID
-            await get().fetchTierSettings(session.user.id);
-            await get().fetchUsageData(session.user.id);
           } else {
             set({ isReady: true, isLoading: false, isAuthenticated: false });
           }

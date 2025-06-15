@@ -1,4 +1,6 @@
+import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
@@ -217,30 +219,31 @@ export type SwipeAction = {
   swipe_timestamp: number;
 };
 
-// Supabase configuration
-let supabaseUrl: string = '';
-let supabaseAnonKey: string = '';
-let initialized = false;
+// Initialize supabase client with proper typing
+let supabase: ReturnType<typeof createClient<Database>> | null = null;
 
 /**
  * Checks if Supabase is configured in the environment
  */
 export const isSupabaseConfigured = (): boolean => {
-  supabaseUrl =
-    process.env.EXPO_PUBLIC_SUPABASE_URL || Constants.expoConfig?.extra?.supabaseUrl || '';
-  supabaseAnonKey =
-    process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || Constants.expoConfig?.extra?.supabaseAnonKey || '';
+  const supabaseUrl = 
+    process.env.EXPO_PUBLIC_SUPABASE_URL || 
+    Constants.expoConfig?.extra?.supabaseUrl;
+  
+  const supabaseAnonKey = 
+    process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 
+    Constants.expoConfig?.extra?.supabaseAnonKey;
 
-  console.log('Supabase config check:', {
-    hasUrl: !!supabaseUrl,
-    hasKey: !!supabaseAnonKey,
+  console.log('Supabase config check:', { 
+    hasUrl: !!supabaseUrl, 
+    hasKey: !!supabaseAnonKey
   });
 
   return Boolean(supabaseUrl && supabaseAnonKey);
 };
 
 /**
- * Initializes the Supabase configuration
+ * Initializes the Supabase client
  * @returns boolean indicating if initialization was successful
  */
 export const initSupabase = async (): Promise<boolean> => {
@@ -252,17 +255,61 @@ export const initSupabase = async (): Promise<boolean> => {
       const savedKey = await AsyncStorage.getItem('SUPABASE_KEY');
       if (savedUrl && savedKey) {
         console.log('Using saved Supabase configuration from AsyncStorage');
-        supabaseUrl = savedUrl;
-        supabaseAnonKey = savedKey;
-        initialized = true;
+        supabase = createClient<Database>(savedUrl, savedKey, {
+          auth: {
+            storage: AsyncStorage,
+            autoRefreshToken: true,
+            persistSession: true,
+            detectSessionInUrl: Platform.OS === 'web',
+          },
+          realtime: {
+            params: {
+              eventsPerSecond: 0,
+            }
+          },
+          global: {
+            fetch: undefined
+          }
+        });
         return true;
       }
       console.error('No saved configuration found in AsyncStorage.');
       return false;
     }
 
+    const supabaseUrl = 
+      process.env.EXPO_PUBLIC_SUPABASE_URL || 
+      Constants.expoConfig?.extra?.supabaseUrl;
+    
+    const supabaseAnonKey = 
+      process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 
+      Constants.expoConfig?.extra?.supabaseAnonKey;
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.error('Supabase URL or Anon Key is missing in environment variables.');
+      return false;
+    }
+
     console.log('Initializing Supabase with URL:', supabaseUrl.substring(0, 15) + '...');
-    initialized = true;
+
+    supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        storage: AsyncStorage,
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: Platform.OS === 'web',
+      },
+      realtime: {
+        params: {
+          eventsPerSecond: 0,
+        }
+      },
+      global: {
+        fetch: undefined
+      }
+    });
+
+    console.log('Supabase client initialized successfully.');
     return true;
   } catch (error) {
     console.error('Error initializing Supabase:', error instanceof Error ? error.message : String(error));
@@ -277,28 +324,20 @@ export const initSupabase = async (): Promise<boolean> => {
  */
 export const testSupabaseConnection = async (): Promise<ConnectionTestResult> => {
   try {
-    if (!initialized) {
+    if (!supabase) {
       console.error('Supabase client not initialized during connection test.');
       return { success: false, error: 'Supabase client not initialized' };
     }
 
     console.log('Testing Supabase connection with app_settings query...');
-    const response = await fetch(`${supabaseUrl}/rest/v1/app_settings?select=id&limit=1`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${supabaseAnonKey}`,
-        'apikey': supabaseAnonKey,
-      },
-    });
+    const { data, error } = await supabase.from('app_settings').select('id').limit(1);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Supabase connection test failed:', errorText);
-      return { success: false, error: errorText };
+    if (error) {
+      console.error('Supabase connection test failed:', error instanceof Error ? error.message : String(error));
+      console.error('Error details:', JSON.stringify(error, null, 2));
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
 
-    const data = await response.json();
     console.log('Supabase connection test successful. app_settings query returned data:', data);
     return { success: true };
   } catch (error) {
@@ -313,12 +352,16 @@ export const testSupabaseConnection = async (): Promise<ConnectionTestResult> =>
  */
 export const clearSupabaseConfig = async (): Promise<void> => {
   try {
+    if (supabase?.auth) {
+      await supabase.auth.signOut();
+    }
+    
+    supabase = null;
+    
     // Clear saved configuration
     await AsyncStorage.removeItem('SUPABASE_URL');
     await AsyncStorage.removeItem('SUPABASE_KEY');
-    initialized = false;
-    supabaseUrl = '';
-    supabaseAnonKey = '';
+    
     console.log('Supabase configuration cleared');
   } catch (error) {
     console.error('Error clearing Supabase configuration:', error);
@@ -388,321 +431,22 @@ export const getReadableError = (error: any): string => {
 };
 
 /**
- * Generic fetch wrapper for Supabase REST API
- */
-const fetchSupabase = async (endpoint: string, method: string, body?: any, token?: string) => {
-  if (!initialized) {
-    throw new Error('Supabase not initialized');
-  }
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'apikey': supabaseAnonKey,
-  };
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  try {
-    const response = await fetch(`${supabaseUrl}/rest/v1/${endpoint}`, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(errorText);
-    }
-
-    return response.status === 204 ? null : await response.json();
-  } catch (error) {
-    console.error(`Error in fetchSupabase (${method} ${endpoint}):`, error);
-    throw error;
-  }
-};
-
-/**
- * Auth functions
- */
-export const signInWithPassword = async (email: string, password: string) => {
-  if (!initialized) {
-    throw new Error('Supabase not initialized');
-  }
-
-  const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': supabaseAnonKey,
-    },
-    body: JSON.stringify({ email, password }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText);
-  }
-
-  const data = await response.json();
-  // Store token in AsyncStorage
-  await AsyncStorage.setItem('supabase_access_token', data.access_token);
-  await AsyncStorage.setItem('supabase_refresh_token', data.refresh_token);
-  return data;
-};
-
-export const signUp = async (email: string, password: string, options?: { data?: { name?: string } }) => {
-  if (!initialized) {
-    throw new Error('Supabase not initialized');
-  }
-
-  const response = await fetch(`${supabaseUrl}/auth/v1/signup`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': supabaseAnonKey,
-    },
-    body: JSON.stringify({
-      email,
-      password,
-      options: options || {},
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText);
-  }
-
-  const data = await response.json();
-  // Store token in AsyncStorage
-  if (data.access_token) {
-    await AsyncStorage.setItem('supabase_access_token', data.access_token);
-    await AsyncStorage.setItem('supabase_refresh_token', data.refresh_token);
-  }
-  return data;
-};
-
-export const signOut = async () => {
-  if (!initialized) {
-    throw new Error('Supabase not initialized');
-  }
-
-  const token = await AsyncStorage.getItem('supabase_access_token') || '';
-  if (!token) return;
-
-  const response = await fetch(`${supabaseUrl}/auth/v1/logout`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': supabaseAnonKey,
-      'Authorization': `Bearer ${token}`,
-    },
-  });
-
-  // Clear tokens from AsyncStorage regardless of response
-  await AsyncStorage.removeItem('supabase_access_token');
-  await AsyncStorage.removeItem('supabase_refresh_token');
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.warn('Error during sign out:', errorText);
-  }
-};
-
-export const getSession = async () => {
-  const token = (await AsyncStorage.getItem('supabase_access_token')) || '';
-  const refreshToken = (await AsyncStorage.getItem('supabase_refresh_token')) || '';
-
-  if (!token || !refreshToken) {
-    return { session: null };
-  }
-
-  // Check if token is still valid or refresh it
-  try {
-    const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': supabaseAnonKey,
-        'Authorization': `Bearer ${token}`,
-      },
-    });
-
-    if (response.ok) {
-      const user = await response.json();
-      return { session: { access_token: token, refresh_token: refreshToken, user } };
-    } else {
-      // Attempt to refresh token
-      const refreshResponse = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': supabaseAnonKey,
-        },
-        body: JSON.stringify({ refresh_token: refreshToken }),
-      });
-
-      if (!refreshResponse.ok) {
-        await AsyncStorage.removeItem('supabase_access_token');
-        await AsyncStorage.removeItem('supabase_refresh_token');
-        return { session: null };
-      }
-
-      const refreshedData = await refreshResponse.json();
-      await AsyncStorage.setItem('supabase_access_token', refreshedData.access_token);
-      await AsyncStorage.setItem('supabase_refresh_token', refreshedData.refresh_token);
-      return { session: refreshedData };
-    }
-  } catch (error) {
-    console.error('Error getting session:', error);
-    await AsyncStorage.removeItem('supabase_access_token');
-    await AsyncStorage.removeItem('supabase_refresh_token');
-    return { session: null };
-  }
-};
-
-/**
- * Database operations
- */
-export const from = (table: string) => {
-  return {
-    select: (columns: string) => {
-      const queryBuilder = {
-        query: `${table}?select=${columns}`,
-        filters: [] as string[],
-        limitCount: null as number | null,
-        orderBy: null as string | null,
-        ascending: true,
-        eq: function(column: string, value: any) {
-          this.filters.push(`${column}=eq.${encodeURIComponent(value)}`);
-          return this;
-        },
-        neq: function(column: string, value: any) {
-          this.filters.push(`${column}=neq.${encodeURIComponent(value)}`);
-          return this;
-        },
-        gte: function(column: string, value: any) {
-          this.filters.push(`${column}=gte.${encodeURIComponent(value)}`);
-          return this;
-        },
-        or: function(conditions: string) {
-          this.filters.push(`or=(${conditions})`);
-          return this;
-        },
-        order: function(column: string, options: { ascending: boolean }) {
-          this.orderBy = `${column}.${options.ascending ? 'asc' : 'desc'}`;
-          this.ascending = options.ascending;
-          return this;
-        },
-        limit: function(count: number) {
-          this.limitCount = count;
-          return this;
-        },
-        single: async function() {
-          this.limitCount = 1;
-          const data = await this.then();
-          return data?.[0] || null;
-        },
-        then: async function() {
-          let finalQuery = this.query;
-          if (this.filters.length > 0) {
-            finalQuery += `&${this.filters.join('&')}`;
-          }
-          if (this.limitCount !== null) {
-            finalQuery += `&limit=${this.limitCount}`;
-          }
-          if (this.orderBy) {
-            finalQuery += `&order=${this.orderBy}`;
-          }
-          const token = (await AsyncStorage.getItem('supabase_access_token')) || '';
-          return fetchSupabase(finalQuery, 'GET', undefined, token);
-        }
-      };
-      return queryBuilder;
-    },
-    insert: async (data: any) => {
-      const token = (await AsyncStorage.getItem('supabase_access_token')) || '';
-      return fetchSupabase(table, 'POST', data, token);
-    },
-    update: async (data: any) => {
-      const queryBuilder = {
-        query: table,
-        filters: [] as string[],
-        eq: async function(column: string, value: any) {
-          this.filters.push(`${column}=eq.${encodeURIComponent(value)}`);
-          let finalQuery = this.query;
-          if (this.filters.length > 0) {
-            finalQuery += `?${this.filters.join('&')}`;
-          }
-          const token = (await AsyncStorage.getItem('supabase_access_token')) || '';
-          return fetchSupabase(finalQuery, 'PATCH', data, token);
-        },
-        in: async function(column: string, values: any[]) {
-          const valueList = values.map(v => encodeURIComponent(v)).join(',');
-          this.filters.push(`${column}=in.(${valueList})`);
-          let finalQuery = this.query;
-          if (this.filters.length > 0) {
-            finalQuery += `?${this.filters.join('&')}`;
-          }
-          const token = (await AsyncStorage.getItem('supabase_access_token')) || '';
-          return fetchSupabase(finalQuery, 'PATCH', data, token);
-        }
-      };
-      return queryBuilder;
-    },
-  };
-};
-
-/**
- * RPC (Remote Procedure Call) function
- */
-export const rpc = async (functionName: string, params: Record<string, any>) => {
-  if (!initialized) {
-    throw new Error('Supabase not initialized');
-  }
-
-  const token = (await AsyncStorage.getItem('supabase_access_token')) || '';
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'apikey': supabaseAnonKey,
-  };
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  try {
-    const response = await fetch(`${supabaseUrl}/rest/v1/rpc/${functionName}`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(params),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(errorText);
-    }
-
-    return response.status === 204 ? null : await response.json();
-  } catch (error) {
-    console.error(`Error in RPC (${functionName}):`, error);
-    throw error;
-  }
-};
-
-/**
  * Fetches app settings from Supabase
  * @returns Promise with app settings data or error
  */
 export const getAppSettings = async () => {
-  if (!initialized) {
+  if (!supabase) {
     throw new Error('Supabase client not initialized');
   }
-  const queryBuilder = from('app_settings').select('*');
-  queryBuilder.limit(1);
-  const data = await queryBuilder.then();
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('*')
+    .limit(1);
+  
+  if (error) {
+    throw error;
+  }
+  
   return data?.[0] || null;
 };
 
@@ -712,10 +456,19 @@ export const getAppSettings = async () => {
  * @returns Promise with updated data or error
  */
 export const updateAppSettings = async (settings: Record<string, any>) => {
-  if (!initialized) {
+  if (!supabase) {
     throw new Error('Supabase client not initialized');
   }
-  return await from('app_settings').update(settings).eq('id', settings.id);
+  const { data, error } = await supabase
+    .from('app_settings')
+    .update(settings)
+    .eq('id', settings.id);
+  
+  if (error) {
+    throw error;
+  }
+  
+  return data;
 };
 
 /**
@@ -724,14 +477,24 @@ export const updateAppSettings = async (settings: Record<string, any>) => {
  * @returns Promise with tier settings data or error
  */
 export const getUserTierSettings = async (tier: string) => {
-  if (!initialized) {
+  if (!supabase) {
     throw new Error('Supabase client not initialized');
   }
-  const queryBuilder = from('app_settings').select('*');
-  queryBuilder.eq('tier', tier);
-  queryBuilder.limit(1);
-  const data = await queryBuilder.then();
-  return data?.[0] || null;
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('*')
+    .eq('tier', tier)
+    .limit(1);
+  
+  if (error) {
+    throw error;
+  }
+  
+  if (data && data.length > 0) {
+    return data[0];
+  }
+  
+  return null;
 };
 
 /**
@@ -741,18 +504,24 @@ export const getUserTierSettings = async (tier: string) => {
  * @returns Promise with result or error
  */
 export const batchUpdateUsage = async (userId: string, updates: Array<{ action_type: string; count_change: number; timestamp: number }>) => {
-  if (!initialized) {
+  if (!supabase) {
     throw new Error('Supabase client not initialized');
   }
   
   try {
-    const data = await rpc('batch_update_usage', {
+    const { data, error } = await supabase.rpc('batch_update_usage', {
       p_user_id: userId,
       p_updates: updates,
     });
+    
+    if (error) {
+      console.error('Error in batchUpdateUsage:', error);
+      throw error;
+    }
+    
     return data;
   } catch (error) {
-    console.error('Error in batchUpdateUsage:', error);
+    console.error('Exception in batchUpdateUsage:', error);
     throw error;
   }
 };
@@ -765,29 +534,25 @@ export const batchUpdateUsage = async (userId: string, updates: Array<{ action_t
  * @returns Promise with result or error
  */
 export const logUserAction = async (userId: string, action: string, details: Record<string, any> = {}) => {
-  if (!initialized) {
+  if (!supabase) {
     throw new Error('Supabase client not initialized');
   }
   
   try {
-    await rpc('log_user_action', {
+    const { error } = await supabase.rpc('log_user_action', {
       user_id: userId,
       action,
       details,
     });
+    
+    if (error) {
+      console.warn('Failed to log user action:', error);
+      throw error;
+    }
   } catch (error) {
     console.warn('Exception while logging user action:', error);
   }
 };
 
-// Dummy supabase object for compatibility
-export const supabase = {
-  auth: {
-    signInWithPassword,
-    signUp,
-    signOut,
-    getSession,
-  },
-  from,
-  rpc,
-};
+// Export the supabase client
+export { supabase };

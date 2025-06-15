@@ -103,7 +103,7 @@ export const useUsageStore = create<UsageState>()(
       lastSyncError: null,
 
       initializeUsage: async (userId: string) => {
-        if (!userId || !isSupabaseConfigured()) {
+        if (!userId || !isSupabaseConfigured() || !supabase) {
           console.log('Skipping usage initialization: Invalid user ID or Supabase not configured');
           set({ usageCache: defaultUsageCache });
           return;
@@ -111,12 +111,13 @@ export const useUsageStore = create<UsageState>()(
 
         try {
           console.log('Initializing usage data for user:', userId);
-          const queryBuilder = supabase.from('usage_tracking').select('*');
-          queryBuilder.eq('user_id', userId);
-          const usageResult = await queryBuilder.then();
+          const { data: usageData, error: usageError } = await supabase
+            .from('usage_tracking')
+            .select('*')
+            .eq('user_id', userId);
 
-          if (usageResult.error) {
-            console.error('Error initializing usage data:', usageResult.error);
+          if (usageError) {
+            console.error('Error initializing usage data:', usageError);
             set({ usageCache: defaultUsageCache });
           } else {
             const usageCache: UsageCache = {
@@ -132,7 +133,7 @@ export const useUsageStore = create<UsageState>()(
               },
             };
 
-            usageResult?.forEach((entry: Record<string, any>) => {
+            usageData?.forEach(entry => {
               usageCache.usageData[entry.action_type] = {
                 currentCount: entry.count,
                 firstActionTimestamp: entry.first_action_timestamp || Date.now(),
@@ -231,16 +232,16 @@ export const useUsageStore = create<UsageState>()(
 
         set({ isSyncing: true, lastSyncError: null });
         try {
-          if (isSupabaseConfigured()) {
+          if (isSupabaseConfigured() && supabase) {
             for (const batch of batchUpdates) {
-              const result = await supabase.rpc('batch_update_usage', {
+              const { error } = await supabase.rpc('batch_update_usage', {
                 p_user_id: batch.user_id,
                 p_updates: batch.updates,
               });
 
-              if (result.error) {
-                console.error('Error syncing batch update:', result.error);
-                throw result.error;
+              if (error) {
+                console.error('Error syncing batch update:', error);
+                throw error;
               }
             }
 
