@@ -8,6 +8,7 @@
     "start-web-dev": "DEBUG=expo* expo start --web --tunnel"
   },
   "dependencies": {
+		"expo-build-properties": "^0.10.0",
     "@expo/vector-icons": "^14.1.0",
     "@hono/trpc-server": "^0.3.4",
     "@react-native-async-storage/async-storage": "2.1.2",
