@@ -10,6 +10,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { trpc, trpcClient } from "@/lib/trpc";
 import { isSupabaseConfigured, initSupabase, testSupabaseConnection } from "@/lib/supabase";
 import { useAuthStore } from "@/store/auth-store";
+import 'react-native-url-polyfill/auto';
 
 export const unstable_settings = {
   initialRouteName: "(tabs)",
