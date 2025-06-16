@@ -258,14 +258,12 @@ export default function ProfileScreen() {
           </View>
         )}
         
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Supabase Status</Text>
-          <SupabaseStatus />
-        </View>
         
         {user.role === 'admin' && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>App Data</Text>
+						<Text style={styles.sectionTitle}>Supabase Status</Text>
+            <SupabaseStatus />
             <Button
               title="Configure Supabase"
               onPress={handleSupabaseSetup}
