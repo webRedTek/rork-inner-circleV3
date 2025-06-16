@@ -152,10 +152,7 @@ export default function GroupsScreen() {
           
           <Button
             title={isJoined ? "Leave Group" : "Join Group"}
-            onPress={(e) => {
-              e.stopPropagation();
-              isJoined ? handleLeaveGroup(item.id) : handleJoinGroup(item.id);
-            }}
+            onPress={() => isJoined ? handleLeaveGroup(item.id) : handleJoinGroup(item.id)}
             variant={isJoined ? "outline" : "primary"}
             size="small"
             style={styles.groupButton}
