@@ -397,7 +397,6 @@ export default function GroupDetailsScreen() {
                 <DateTimePicker
                   value={eventStartTime}
                   mode="datetime"
-                  is24Hour={false}
                   display="default"
                   onChange={onStartTimeChange}
                 />
@@ -416,7 +415,6 @@ export default function GroupDetailsScreen() {
                 <DateTimePicker
                   value={eventEndTime}
                   mode="datetime"
-                  is24Hour={false}
                   display="default"
                   onChange={onEndTimeChange}
                 />
