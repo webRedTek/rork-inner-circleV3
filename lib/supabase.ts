@@ -294,11 +294,6 @@ export const initSupabase = async (): Promise<boolean> => {
         persistSession: true,
         detectSessionInUrl: Platform.OS === 'web',
       },
-      realtime: {
-        params: {
-          eventsPerSecond: 0,
-        }
-      },
       global: {
         fetch: undefined
       }
