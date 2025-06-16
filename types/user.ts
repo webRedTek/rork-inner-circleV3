@@ -146,6 +146,37 @@ export interface Group {
   [key: string]: any; // Add index signature to allow any string key
 }
 
+export interface GroupMessage {
+  id: string;
+  groupId: string;
+  senderId: string;
+  content: string;
+  type: 'text' | 'image';
+  imageUrl?: string;
+  createdAt: number;
+}
+
+export interface GroupEvent {
+  id: string;
+  groupId: string;
+  createdBy: string;
+  title: string;
+  description: string;
+  location?: string;
+  startTime: number;
+  endTime?: number;
+  reminder?: number;
+  createdAt: number;
+}
+
+export interface GroupEventRSVP {
+  id: string;
+  eventId: string;
+  userId: string;
+  response: 'yes' | 'no' | 'maybe';
+  createdAt: number;
+}
+
 export interface AppSettings {
   id: string;
   tier: MembershipTier;

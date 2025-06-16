@@ -117,10 +117,17 @@ export default function GroupsScreen() {
       setCreateLoading(false);
     }
   };
+
+  const handleGroupPress = (groupId: string) => {
+    router.push(`/group/${groupId}`);
+  };
   
   const renderGroupItem = ({ item, isJoined }: { item: Group, isJoined: boolean }) => {
     return (
-      <View style={styles.groupCard}>
+      <TouchableOpacity 
+        style={styles.groupCard}
+        onPress={() => handleGroupPress(item.id)}
+      >
         <Image
           source={{ uri: item.imageUrl || 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=2942&auto=format&fit=crop' }}
           style={styles.groupImage}
@@ -145,13 +152,16 @@ export default function GroupsScreen() {
           
           <Button
             title={isJoined ? "Leave Group" : "Join Group"}
-            onPress={() => isJoined ? handleLeaveGroup(item.id) : handleJoinGroup(item.id)}
+            onPress={(e) => {
+              e.stopPropagation();
+              isJoined ? handleLeaveGroup(item.id) : handleJoinGroup(item.id);
+            }}
             variant={isJoined ? "outline" : "primary"}
             size="small"
             style={styles.groupButton}
           />
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
   

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Group } from '@/types/user';
+import { Group, GroupMessage, GroupEvent, GroupEventRSVP } from '@/types/user';
 import { isSupabaseConfigured, supabase, convertToCamelCase, convertToSnakeCase } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
 import { useUsageStore } from './usage-store';
@@ -43,16 +43,72 @@ const supabaseToGroup = (data: Record<string, any>): Group => {
   };
 };
 
+// Helper function to convert Supabase response to GroupMessage type
+const supabaseToGroupMessage = (data: Record<string, any>): GroupMessage => {
+  const camelCaseData = convertToCamelCase(data);
+  
+  return {
+    id: String(camelCaseData.id || ''),
+    groupId: String(camelCaseData.groupId || ''),
+    senderId: String(camelCaseData.senderId || ''),
+    content: String(camelCaseData.content || ''),
+    type: String(camelCaseData.type || 'text') as 'text' | 'image',
+    imageUrl: camelCaseData.imageUrl || undefined,
+    createdAt: Number(camelCaseData.createdAt || Date.now()),
+  };
+};
+
+// Helper function to convert Supabase response to GroupEvent type
+const supabaseToGroupEvent = (data: Record<string, any>): GroupEvent => {
+  const camelCaseData = convertToCamelCase(data);
+  
+  return {
+    id: String(camelCaseData.id || ''),
+    groupId: String(camelCaseData.groupId || ''),
+    createdBy: String(camelCaseData.createdBy || ''),
+    title: String(camelCaseData.title || ''),
+    description: String(camelCaseData.description || ''),
+    location: camelCaseData.location || undefined,
+    startTime: Number(camelCaseData.startTime || Date.now()),
+    endTime: camelCaseData.endTime ? Number(camelCaseData.endTime) : undefined,
+    reminder: camelCaseData.reminder ? Number(camelCaseData.reminder) : undefined,
+    createdAt: Number(camelCaseData.createdAt || Date.now()),
+  };
+};
+
+// Helper function to convert Supabase response to GroupEventRSVP type
+const supabaseToGroupEventRSVP = (data: Record<string, any>): GroupEventRSVP => {
+  const camelCaseData = convertToCamelCase(data);
+  
+  return {
+    id: String(camelCaseData.id || ''),
+    eventId: String(camelCaseData.eventId || ''),
+    userId: String(camelCaseData.userId || ''),
+    response: String(camelCaseData.response || 'maybe') as 'yes' | 'no' | 'maybe',
+    createdAt: Number(camelCaseData.createdAt || Date.now()),
+  };
+};
+
 interface GroupsState {
   groups: Group[];
   userGroups: Group[];
   availableGroups: Group[];
+  currentGroup: Group | null;
+  groupMessages: GroupMessage[];
+  groupEvents: GroupEvent[];
+  userRSVPs: GroupEventRSVP[];
   isLoading: boolean;
   error: string | null;
   fetchGroups: () => Promise<void>;
   joinGroup: (groupId: string) => Promise<void>;
   leaveGroup: (groupId: string) => Promise<void>;
   createGroup: (groupData: Partial<Group>) => Promise<void>;
+  fetchGroupDetails: (groupId: string) => Promise<void>;
+  sendGroupMessage: (groupId: string, content: string, type?: 'text' | 'image', imageUrl?: string) => Promise<void>;
+  fetchGroupMessages: (groupId: string) => Promise<void>;
+  createGroupEvent: (eventData: Partial<GroupEvent>) => Promise<void>;
+  fetchGroupEvents: (groupId: string) => Promise<void>;
+  rsvpToEvent: (eventId: string, response: 'yes' | 'no' | 'maybe') => Promise<void>;
   clearError: () => void;
 }
 
@@ -60,6 +116,10 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
   groups: [],
   userGroups: [],
   availableGroups: [],
+  currentGroup: null,
+  groupMessages: [],
+  groupEvents: [],
+  userRSVPs: [],
   isLoading: false,
   error: null,
 
@@ -370,6 +430,292 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
       set({ isLoading: false });
     } catch (error) {
       console.error('Error creating group:', getReadableError(error));
+      set({ 
+        error: getReadableError(error), 
+        isLoading: false 
+      });
+    }
+  },
+
+  fetchGroupDetails: async (groupId: string) => {
+    const { user, isReady } = useAuthStore.getState();
+    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    
+    set({ isLoading: true, error: null });
+    try {
+      if (isSupabaseConfigured() && supabase) {
+        // Fetch group details
+        const { data: groupData, error: groupError } = await supabase
+          .from('groups')
+          .select('*')
+          .eq('id', groupId)
+          .single();
+          
+        if (groupError) throw groupError;
+        
+        const group = supabaseToGroup(groupData || {});
+        set({ currentGroup: group, isLoading: false });
+        
+        // Fetch messages and events for this group
+        await Promise.all([
+          get().fetchGroupMessages(groupId),
+          get().fetchGroupEvents(groupId)
+        ]);
+      } else {
+        throw new Error('Supabase is not configured');
+      }
+    } catch (error) {
+      console.error('Error fetching group details:', getReadableError(error));
+      set({ 
+        error: getReadableError(error), 
+        isLoading: false 
+      });
+    }
+  },
+
+  sendGroupMessage: async (groupId: string, content: string, type: 'text' | 'image' = 'text', imageUrl?: string) => {
+    const { user, isReady } = useAuthStore.getState();
+    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    
+    set({ isLoading: true, error: null });
+    try {
+      if (isSupabaseConfigured() && supabase) {
+        const newMessage = {
+          group_id: groupId,
+          sender_id: user.id,
+          content,
+          type,
+          image_url: imageUrl,
+          created_at: Date.now()
+        };
+        
+        const { data: insertedMessage, error: insertError } = await supabase
+          .from('group_messages')
+          .insert(newMessage)
+          .select()
+          .single();
+          
+        if (insertError) throw insertError;
+        
+        // Log the action
+        try {
+          await supabase.rpc('log_user_action', {
+            user_id: user.id,
+            action: 'send_group_message',
+            details: { group_id: groupId, message_type: type }
+          });
+        } catch (logError) {
+          console.warn('Failed to log send_group_message action:', getReadableError(logError));
+        }
+        
+        // Refresh messages
+        await get().fetchGroupMessages(groupId);
+      } else {
+        throw new Error('Supabase is not configured');
+      }
+      
+      set({ isLoading: false });
+    } catch (error) {
+      console.error('Error sending group message:', getReadableError(error));
+      set({ 
+        error: getReadableError(error), 
+        isLoading: false 
+      });
+    }
+  },
+
+  fetchGroupMessages: async (groupId: string) => {
+    const { user, isReady } = useAuthStore.getState();
+    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    
+    set({ isLoading: true, error: null });
+    try {
+      if (isSupabaseConfigured() && supabase) {
+        const { data: messagesData, error: messagesError } = await supabase
+          .from('group_messages')
+          .select('*')
+          .eq('group_id', groupId)
+          .order('created_at', { ascending: true });
+          
+        if (messagesError) throw messagesError;
+        
+        const typedMessages: GroupMessage[] = (messagesData || []).map(supabaseToGroupMessage);
+        set({ groupMessages: typedMessages, isLoading: false });
+      } else {
+        throw new Error('Supabase is not configured');
+      }
+    } catch (error) {
+      console.error('Error fetching group messages:', getReadableError(error));
+      set({ 
+        error: getReadableError(error), 
+        isLoading: false 
+      });
+    }
+  },
+
+  createGroupEvent: async (eventData: Partial<GroupEvent>) => {
+    const { user, isReady } = useAuthStore.getState();
+    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    
+    set({ isLoading: true, error: null });
+    try {
+      if (isSupabaseConfigured() && supabase) {
+        const newEvent = {
+          group_id: eventData.groupId,
+          created_by: user.id,
+          title: eventData.title || 'New Event',
+          description: eventData.description || '',
+          location: eventData.location,
+          start_time: eventData.startTime || Date.now(),
+          end_time: eventData.endTime,
+          reminder: eventData.reminder,
+          created_at: Date.now()
+        };
+        
+        const { data: insertedEvent, error: insertError } = await supabase
+          .from('group_events')
+          .insert(newEvent)
+          .select()
+          .single();
+          
+        if (insertError) throw insertError;
+        
+        // Log the action
+        try {
+          await supabase.rpc('log_user_action', {
+            user_id: user.id,
+            action: 'create_group_event',
+            details: { group_id: eventData.groupId, event_title: newEvent.title }
+          });
+          useUsageStore.getState().incrementUsage('event_create');
+        } catch (logError) {
+          console.warn('Failed to log create_group_event action:', getReadableError(logError));
+        }
+        
+        // Refresh events
+        if (eventData.groupId) {
+          await get().fetchGroupEvents(eventData.groupId);
+        }
+      } else {
+        throw new Error('Supabase is not configured');
+      }
+      
+      set({ isLoading: false });
+    } catch (error) {
+      console.error('Error creating group event:', getReadableError(error));
+      set({ 
+        error: getReadableError(error), 
+        isLoading: false 
+      });
+    }
+  },
+
+  fetchGroupEvents: async (groupId: string) => {
+    const { user, isReady } = useAuthStore.getState();
+    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    
+    set({ isLoading: true, error: null });
+    try {
+      if (isSupabaseConfigured() && supabase) {
+        // Fetch events for the group
+        const { data: eventsData, error: eventsError } = await supabase
+          .from('group_events')
+          .select('*')
+          .eq('group_id', groupId)
+          .order('start_time', { ascending: true });
+          
+        if (eventsError) throw eventsError;
+        
+        const typedEvents: GroupEvent[] = (eventsData || []).map(supabaseToGroupEvent);
+        
+        // Fetch user's RSVPs for these events
+        const eventIds = typedEvents.map(event => event.id);
+        const { data: rsvpData, error: rsvpError } = await supabase
+          .from('group_event_rsvps')
+          .select('*')
+          .eq('user_id', user.id)
+          .in('event_id', eventIds);
+          
+        if (rsvpError) throw rsvpError;
+        
+        const typedRSVPs: GroupEventRSVP[] = (rsvpData || []).map(supabaseToGroupEventRSVP);
+        set({ groupEvents: typedEvents, userRSVPs: typedRSVPs, isLoading: false });
+      } else {
+        throw new Error('Supabase is not configured');
+      }
+    } catch (error) {
+      console.error('Error fetching group events:', getReadableError(error));
+      set({ 
+        error: getReadableError(error), 
+        isLoading: false 
+      });
+    }
+  },
+
+  rsvpToEvent: async (eventId: string, response: 'yes' | 'no' | 'maybe') => {
+    const { user, isReady } = useAuthStore.getState();
+    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    
+    set({ isLoading: true, error: null });
+    try {
+      if (isSupabaseConfigured() && supabase) {
+        // Check if user already has an RSVP for this event
+        const { data: existingRSVP, error: checkError } = await supabase
+          .from('group_event_rsvps')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('event_id', eventId)
+          .single();
+          
+        if (checkError && checkError.code !== 'PGRST116') throw checkError;
+        
+        if (existingRSVP) {
+          // Update existing RSVP
+          const { error: updateError } = await supabase
+            .from('group_event_rsvps')
+            .update({ response, created_at: Date.now() })
+            .eq('id', existingRSVP.id);
+            
+          if (updateError) throw updateError;
+        } else {
+          // Create new RSVP
+          const newRSVP = {
+            event_id: eventId,
+            user_id: user.id,
+            response,
+            created_at: Date.now()
+          };
+          
+          const { error: insertError } = await supabase
+            .from('group_event_rsvps')
+            .insert(newRSVP);
+            
+          if (insertError) throw insertError;
+        }
+        
+        // Log the action
+        try {
+          await supabase.rpc('log_user_action', {
+            user_id: user.id,
+            action: 'rsvp_event',
+            details: { event_id: eventId, response }
+          });
+        } catch (logError) {
+          console.warn('Failed to log rsvp_event action:', getReadableError(logError));
+        }
+        
+        // Refresh RSVPs (assuming groupId is available from current context)
+        const groupId = get().groupEvents.find(event => event.id === eventId)?.groupId;
+        if (groupId) {
+          await get().fetchGroupEvents(groupId);
+        }
+      } else {
+        throw new Error('Supabase is not configured');
+      }
+      
+      set({ isLoading: false });
+    } catch (error) {
+      console.error('Error RSVPing to event:', getReadableError(error));
       set({ 
         error: getReadableError(error), 
         isLoading: false 

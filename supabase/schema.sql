@@ -72,6 +72,41 @@ create table public.groups (
   industry text
 );
 
+-- Create group_messages table
+create table public.group_messages (
+  id uuid primary key default uuid_generate_v4(),
+  group_id uuid not null references public.groups(id) on delete cascade,
+  sender_id uuid not null references public.users(id) on delete cascade,
+  content text not null,
+  type text not null default 'text',
+  image_url text,
+  created_at bigint not null default extract(epoch from now()) * 1000
+);
+
+-- Create group_events table
+create table public.group_events (
+  id uuid primary key default uuid_generate_v4(),
+  group_id uuid not null references public.groups(id) on delete cascade,
+  created_by uuid not null references public.users(id) on delete cascade,
+  title text not null,
+  description text not null,
+  location text,
+  start_time bigint not null,
+  end_time bigint,
+  reminder bigint,
+  created_at bigint not null default extract(epoch from now()) * 1000
+);
+
+-- Create group_event_rsvps table
+create table public.group_event_rsvps (
+  id uuid primary key default uuid_generate_v4(),
+  event_id uuid not null references public.group_events(id) on delete cascade,
+  user_id uuid not null references public.users(id) on delete cascade,
+  response text not null default 'maybe', -- 'yes', 'no', 'maybe'
+  created_at bigint not null default extract(epoch from now()) * 1000,
+  unique(event_id, user_id)
+);
+
 -- Create likes table
 create table public.likes (
   id uuid primary key default uuid_generate_v4(),
@@ -273,6 +308,11 @@ alter table public.affiliate_links enable row level security;
 alter table public.affiliate_referrals enable row level security;
 alter table public.affiliate_payouts enable row level security;
 alter table public.affiliate_clicks enable row level security;
+
+-- Enable RLS on group related tables
+alter table public.group_messages enable row level security;
+alter table public.group_events enable row level security;
+alter table public.group_event_rsvps enable row level security;
 
 -- Create function to log user actions
 create or replace function log_user_action(user_id uuid, action text, details jsonb default null)
@@ -539,6 +579,78 @@ create policy "Users can create groups"
 create policy "Group creators can update their groups"
   on public.groups for update
   using (auth.uid() = created_by);
+
+-- Group messages policies
+create policy "Group members can view messages"
+  on public.group_messages for select
+  using (
+    exists (
+      select 1 from public.groups
+      where groups.id = group_messages.group_id
+      and auth.uid() = ANY(groups.member_ids)
+    )
+  );
+
+create policy "Only group creators can send messages"
+  on public.group_messages for insert
+  with check (
+    exists (
+      select 1 from public.groups
+      where groups.id = group_messages.group_id
+      and groups.created_by = auth.uid()
+    )
+  );
+
+-- Group events policies
+create policy "Group members can view events"
+  on public.group_events for select
+  using (
+    exists (
+      select 1 from public.groups
+      where groups.id = group_events.group_id
+      and auth.uid() = ANY(groups.member_ids)
+    )
+  );
+
+create policy "Only group creators can create events"
+  on public.group_events for insert
+  with check (
+    exists (
+      select 1 from public.groups
+      where groups.id = group_events.group_id
+      and groups.created_by = auth.uid()
+    )
+  );
+
+create policy "Only group creators can update events"
+  on public.group_events for update
+  using (
+    exists (
+      select 1 from public.groups
+      where groups.id = group_events.group_id
+      and groups.created_by = auth.uid()
+    )
+  );
+
+-- Group event RSVPs policies
+create policy "Users can view their own RSVPs"
+  on public.group_event_rsvps for select
+  using (auth.uid() = user_id);
+
+create policy "Group members can RSVP to events"
+  on public.group_event_rsvps for insert
+  with check (
+    exists (
+      select 1 from public.group_events
+      join public.groups on group_events.group_id = groups.id
+      where group_events.id = group_event_rsvps.event_id
+      and auth.uid() = ANY(groups.member_ids)
+    )
+  );
+
+create policy "Users can update their own RSVPs"
+  on public.group_event_rsvps for update
+  using (auth.uid() = user_id);
 
 -- Likes table policies
 create policy "Users can view likes they've given or received"
