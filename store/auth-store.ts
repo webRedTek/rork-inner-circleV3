@@ -175,7 +175,7 @@ export const useAuthStore = create<AuthState>()(
                   businessField: 'Technology',
                   entrepreneurStatus: 'upcoming',
                   photoUrl: '',
-                  membershipTier: 'bronze',
+                  membershipTier: 'basic',
                   businessVerified: false,
                   joinedGroups: [],
                   createdAt: Date.now(),
