@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -56,16 +56,7 @@ export default function SignupScreen() {
   const businessStageOptions: BusinessStage[] = ['Idea Phase', 'Pre-Seed/Startup', 'Growth Stage', 'Established/Scaling', 'Exited'];
   const skillOptions: Skill[] = ['Marketing', 'Sales', 'Development', 'UI/UX', 'Fundraising', 'Product Management', 'Operations', 'Finance', 'Legal', 'HR', 'Customer Service', 'Content Creation', 'Data Analysis', 'Strategy'];
   const availabilityOptions: AvailabilityLevel[] = ['Quick chats', 'Regular virtual coffee', 'Local meetups', 'Long-term mentorship/partnership'];
-  const scrollViewRef = useRef<ScrollView>(null);
-	const scrollViewRef = useRef<ScrollView>(null);
-  const nameInputRef = useRef(null);
-  const emailInputRef = useRef(null);
-  const passwordInputRef = useRef(null);
-  const confirmPasswordInputRef = useRef(null);
-  const bioInputRef = useRef(null);
-  const zipCodeInputRef = useRef(null);
-  const referralCodeInputRef = useRef(null);
-	
+  
   useEffect(() => {
     if (isAuthenticated) {
       router.replace('/(tabs)');
@@ -119,23 +110,7 @@ export default function SignupScreen() {
       clearError();
     }
   }, [error, clearError]);
-
-	const scrollToError = () => {
-  if (nameError) {
-    scrollViewRef.current?.scrollTo({ y: 0, animated: true });
-  } else if (emailError) {
-    scrollViewRef.current?.scrollTo({ y: 100, animated: true });
-  } else if (passwordError || confirmPasswordError) {
-    scrollViewRef.current?.scrollTo({ y: 200, animated: true });
-  } else if (bioError) {
-    scrollViewRef.current?.scrollTo({ y: 300, animated: true });
-  } else if (zipCodeError) {
-    scrollViewRef.current?.scrollTo({ y: 400, animated: true });
-  } else if (referralCodeError) {
-    scrollViewRef.current?.scrollTo({ y: 500, animated: true });
-  }
-};
-	
+  
   const validateForm = () => {
     let isValid = true;
     setSignupError('');
@@ -195,9 +170,7 @@ export default function SignupScreen() {
     if (referralCode.trim()) {
       // We'll validate referral code asynchronously in handleSignup
     }
-    if (!isValid) {
-      scrollToError();
-    }
+    
     return isValid;
   };
   
