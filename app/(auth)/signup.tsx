@@ -64,6 +64,7 @@ export default function SignupScreen() {
   const confirmPasswordInputRef = useRef(null);
   const bioInputRef = useRef(null);
   const zipCodeInputRef = useRef(null);
+  const referralCodeInputRef = useRef(null);
 	
   useEffect(() => {
     if (isAuthenticated) {
@@ -136,98 +137,69 @@ export default function SignupScreen() {
 };
 	
   const validateForm = () => {
-  let isValid = true;
-  setSignupError('');
-  setReferralCodeError('');
-  
-  if (!name.trim()) {
-    setNameError('Name is required');
-    isValid = false;
-  } else {
-    setNameError('');
-  }
-  
-  if (!email.trim()) {
-    setEmailError('Email is required');
-    isValid = false;
-  } else if (!/\S+@\S+\.\S+/.test(email)) {
-    setEmailError('Please enter a valid email');
-    isValid = false;
-  } else {
-    setEmailError('');
-  }
-  
-  if (!password) {
-    setPasswordError('Password is required');
-    isValid = false;
-  } else if (password.length < 6) {
-    setPasswordError('Password must be at least 6 characters');
-    isValid = false;
-  } else {
-    setPasswordError('');
-  }
-  
-  if (password !== confirmPassword) {
-    setConfirmPasswordError('Passwords do not match');
-    isValid = false;
-  } else {
-    setConfirmPasswordError('');
-  }
-  
-  if (!bio.trim()) {
-    setBioError('Please provide a brief introduction');
-    isValid = false;
-  } else {
-    setBioError('');
-  }
-  
-  if (!zipCode.trim()) {
-    setZipCodeError('ZIP code is required for location-based matching');
-    isValid = false;
-  } else if (!/^\d{5}(-\d{4})?$/.test(zipCode)) {
-    setZipCodeError('Please enter a valid ZIP code (e.g., 12345 or 12345-6789)');
-    isValid = false;
-  } else {
-    setZipCodeError('');
-  }
-  
-  if (referralCode.trim()) {
-    // We'll validate referral code asynchronously in handleSignup
-  }
-
-  if (!isValid) {
-    // Use setTimeout to ensure state updates have completed
-    setTimeout(() => {
-      if (nameError) {
-        nameInputRef.current?.measure((x, y, width, height, pageX, pageY) => {
-          scrollViewRef.current?.scrollTo({ y: pageY, animated: true });
-        });
-      } else if (emailError) {
-        emailInputRef.current?.measure((x, y, width, height, pageX, pageY) => {
-          scrollViewRef.current?.scrollTo({ y: pageY, animated: true });
-        });
-      } else if (passwordError || confirmPasswordError) {
-        passwordInputRef.current?.measure((x, y, width, height, pageX, pageY) => {
-          scrollViewRef.current?.scrollTo({ y: pageY, animated: true });
-        });
-      } else if (bioError) {
-        bioInputRef.current?.measure((x, y, width, height, pageX, pageY) => {
-          scrollViewRef.current?.scrollTo({ y: pageY, animated: true });
-        });
-      } else if (zipCodeError) {
-        zipCodeInputRef.current?.measure((x, y, width, height, pageX, pageY) => {
-          scrollViewRef.current?.scrollTo({ y: pageY, animated: true });
-        });
-      } else if (referralCodeError) {
-        referralCodeInputRef.current?.measure((x, y, width, height, pageX, pageY) => {
-          scrollViewRef.current?.scrollTo({ y: pageY, animated: true });
-        });
-      }
-    }, 100);
-  }
-  
-  return isValid;
-};
+    let isValid = true;
+    setSignupError('');
+    setReferralCodeError('');
+    
+    if (!name.trim()) {
+      setNameError('Name is required');
+      isValid = false;
+    } else {
+      setNameError('');
+    }
+    
+    if (!email.trim()) {
+      setEmailError('Email is required');
+      isValid = false;
+    } else if (!/\S+@\S+\.\S+/.test(email)) {
+      setEmailError('Please enter a valid email');
+      isValid = false;
+    } else {
+      setEmailError('');
+    }
+    
+    if (!password) {
+      setPasswordError('Password is required');
+      isValid = false;
+    } else if (password.length < 6) {
+      setPasswordError('Password must be at least 6 characters');
+      isValid = false;
+    } else {
+      setPasswordError('');
+    }
+    
+    if (password !== confirmPassword) {
+      setConfirmPasswordError('Passwords do not match');
+      isValid = false;
+    } else {
+      setConfirmPasswordError('');
+    }
+    
+    if (!bio.trim()) {
+      setBioError('Please provide a brief introduction');
+      isValid = false;
+    } else {
+      setBioError('');
+    }
+    
+    if (!zipCode.trim()) {
+      setZipCodeError('ZIP code is required for location-based matching');
+      isValid = false;
+    } else if (!/^\d{5}(-\d{4})?$/.test(zipCode)) {
+      setZipCodeError('Please enter a valid ZIP code (e.g., 12345 or 12345-6789)');
+      isValid = false;
+    } else {
+      setZipCodeError('');
+    }
+    
+    if (referralCode.trim()) {
+      // We'll validate referral code asynchronously in handleSignup
+    }
+    if (!isValid) {
+      scrollToError();
+    }
+    return isValid;
+  };
   
   const handleSupabaseSetup = () => {
     router.push('/supabase-setup');
@@ -374,61 +346,57 @@ export default function SignupScreen() {
           />
           
           <Input
-  ref={nameInputRef}
-  label="Full Name"
-  value={name}
-  onChangeText={(text) => {
-    setName(text);
-    setNameError('');
-  }}
-  placeholder="Enter your full name"
-  error={nameError}
-  autoCapitalize="words"
-  editable={!isLoading && !localLoading && !rateLimitCooldown}
-/>
-
-<Input
-  ref={emailInputRef}
-  label="Email"
-  value={email}
-  onChangeText={(text) => {
-    setEmail(text);
-    setEmailError('');
-  }}
-  placeholder="Enter your email"
-  keyboardType="email-address"
-  error={emailError}
-  autoCapitalize="none"
-  editable={!isLoading && !localLoading && !rateLimitCooldown}
-/>
-
-<Input
-  ref={passwordInputRef}
-  label="Password"
-  value={password}
-  onChangeText={(text) => {
-    setPassword(text);
-    setPasswordError('');
-  }}
-  placeholder="Create a password"
-  secureTextEntry
-  error={passwordError}
-  editable={!isLoading && !localLoading && !rateLimitCooldown}
-/>
-
-<Input
-  ref={confirmPasswordInputRef}
-  label="Confirm Password"
-  value={confirmPassword}
-  onChangeText={(text) => {
-    setConfirmPassword(text);
-    setConfirmPasswordError('');
-  }}
-  placeholder="Confirm your password"
-  secureTextEntry
-  error={confirmPasswordError}
-  editable={!isLoading && !localLoading && !rateLimitCooldown}
-/>
+            label="Full Name"
+            value={name}
+            onChangeText={(text) => {
+              setName(text);
+              setNameError('');
+            }}
+            placeholder="Enter your full name"
+            error={nameError}
+            autoCapitalize="words"
+            editable={!isLoading && !localLoading && !rateLimitCooldown}
+          />
+          
+          <Input
+            label="Email"
+            value={email}
+            onChangeText={(text) => {
+              setEmail(text);
+              setEmailError('');
+            }}
+            placeholder="Enter your email"
+            keyboardType="email-address"
+            error={emailError}
+            autoCapitalize="none"
+            editable={!isLoading && !localLoading && !rateLimitCooldown}
+          />
+          
+          <Input
+            label="Password"
+            value={password}
+            onChangeText={(text) => {
+              setPassword(text);
+              setPasswordError('');
+            }}
+            placeholder="Create a password"
+            secureTextEntry
+            error={passwordError}
+            editable={!isLoading && !localLoading && !rateLimitCooldown}
+          />
+          
+          <Input
+            label="Confirm Password"
+            value={confirmPassword}
+            onChangeText={(text) => {
+              setConfirmPassword(text);
+              setConfirmPasswordError('');
+            }}
+            placeholder="Confirm your password"
+            secureTextEntry
+            error={confirmPasswordError}
+            editable={!isLoading && !localLoading && !rateLimitCooldown}
+          />
           
           <Input
             label="Business Field"
@@ -461,20 +429,19 @@ export default function SignupScreen() {
           </View>
           
           <Input
-  ref={bioInputRef}
-  label="Brief Introduction"
-  value={bio}
-  onChangeText={(text) => {
-    setBio(text);
-    setBioError('');
-  }}
-  placeholder="Tell us about yourself or your business"
-  multiline
-  numberOfLines={4}
-  error={bioError}
-  autoCapitalize="sentences"
-  editable={!isLoading && !localLoading && !rateLimitCooldown}
-/>
+            label="Brief Introduction"
+            value={bio}
+            onChangeText={(text) => {
+              setBio(text);
+              setBioError('');
+            }}
+            placeholder="Tell us about yourself or your business"
+            multiline
+            numberOfLines={4}
+            error={bioError}
+            autoCapitalize="sentences"
+            editable={!isLoading && !localLoading && !rateLimitCooldown}
+          />
           
           <Text style={styles.sectionTitle}>Enhanced Profile</Text>
           
@@ -551,7 +518,6 @@ export default function SignupScreen() {
           />
           
           <Input
-						ref={zipCodeInputRef}
             label="ZIP Code"
             value={zipCode}
             onChangeText={(text) => {
