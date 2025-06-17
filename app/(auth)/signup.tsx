@@ -187,7 +187,9 @@ export default function SignupScreen() {
     if (referralCode.trim()) {
       // We'll validate referral code asynchronously in handleSignup
     }
-    
+    if (!isValid) {
+      scrollToError();
+    }
     return isValid;
   };
   
