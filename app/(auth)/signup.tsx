@@ -226,8 +226,7 @@ export default function SignupScreen() {
             membershipTier: 'basic',
             businessVerified: false,
             joinedGroups: [],
-            createdAt: Date.now(),
-            referralCode: referralCode || ''
+            createdAt: Date.now()
           },
           password
         );
