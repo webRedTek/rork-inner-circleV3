@@ -282,7 +282,7 @@ export const useAuthStore = create<AuthState>()(
                 businessField: userData.businessField || 'Technology',
                 entrepreneurStatus: userData.entrepreneurStatus || 'upcoming',
                 photoUrl: userData.photoUrl || '',
-                membershipTier: 'bronze',
+                membershipTier: 'basic',
                 businessVerified: false,
                 joinedGroups: [],
                 createdAt: Date.now(),
