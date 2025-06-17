@@ -223,7 +223,7 @@ export default function SignupScreen() {
             zipCode,
             timezone,
             successHighlight,
-            membershipTier: 'basic',
+            membershipTier: 'bronze',
             businessVerified: false,
             joinedGroups: [],
             createdAt: Date.now()
