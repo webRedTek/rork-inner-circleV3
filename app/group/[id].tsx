@@ -1,77 +1,206 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { 
   View, 
   Text, 
   StyleSheet, 
-  TouchableOpacity, 
-  Image, 
-  ActivityIndicator, 
-  Alert, 
-  Modal, 
-  TextInput, 
   ScrollView, 
-  Platform
+  TouchableOpacity, 
+  TextInput,
+  Image,
+  ActivityIndicator,
+  Modal,
+  Platform,
+  KeyboardAvoidingView
 } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useLocalSearchParams } from 'expo-router';
 import Colors from '@/constants/colors';
-import { useAuthStore } from '@/store/auth-store';
 import { useGroupsStore } from '@/store/groups-store';
+import { useAuthStore } from '@/store/auth-store';
+import { Group, GroupEvent, GroupEventRSVP, GroupMessage } from '@/types/user';
 import { Button } from '@/components/Button';
-import { ArrowLeft, Edit, Send, Calendar, Plus, X } from 'lucide-react-native';
+import { 
+  Users, 
+  Calendar, 
+  MessageCircle, 
+  Info, 
+  Edit, 
+  Plus, 
+  X, 
+  Check, 
+  Clock, 
+  MapPin,
+  Send
+} from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { format } from 'date-fns';
+import { notify } from '@/store/notification-store';
+import * as Calendar from 'expo-calendar';
 
-export default function GroupDetailsScreen() {
+export default function GroupDetailScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { id } = useLocalSearchParams();
   const { user } = useAuthStore();
   const { 
     currentGroup, 
     groupMessages, 
-    groupEvents, 
-    userRSVPs, 
+    groupEvents,
+    userRSVPs,
     fetchGroupDetails, 
-    sendGroupMessage, 
-    createGroupEvent, 
-    updateGroupEvent, 
-    rsvpToEvent, 
+    sendGroupMessage,
+    createGroupEvent,
+    updateGroupEvent,
+    rsvpToEvent,
     isLoading, 
     error 
   } = useGroupsStore();
   
   const [activeTab, setActiveTab] = useState<'info' | 'messages' | 'events'>('info');
-  const [messageText, setMessageText] = useState('');
-  const [showEventModal, setShowEventModal] = useState(false);
+  const [message, setMessage] = useState('');
+  const [showCreateEventModal, setShowCreateEventModal] = useState(false);
   const [showEditEventModal, setShowEditEventModal] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<GroupEvent | null>(null);
+  
+  // Event form state
   const [eventTitle, setEventTitle] = useState('');
   const [eventDescription, setEventDescription] = useState('');
   const [eventLocation, setEventLocation] = useState('');
-  const [eventStartTime, setEventStartTime] = useState(new Date());
-  const [eventEndTime, setEventEndTime] = useState(new Date());
-  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
-  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
-  const [createEventLoading, setCreateEventLoading] = useState(false);
-  const [editEventLoading, setEditEventLoading] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState<any>(null);
+  const [eventDate, setEventDate] = useState('');
+  const [eventTime, setEventTime] = useState('');
+  const [eventEndTime, setEventEndTime] = useState('');
+  const [eventReminder, setEventReminder] = useState('30'); // minutes before
+  
+  const scrollViewRef = useRef<ScrollView>(null);
   
   useEffect(() => {
-    if (id && typeof id === 'string') {
+    if (id) {
       fetchGroupDetails(id);
     }
   }, [id]);
   
+  useEffect(() => {
+    if (error) {
+      notify.error(error);
+    }
+  }, [error]);
+  
+  const isGroupAdmin = currentGroup?.createdBy === user?.id;
+  
   const handleSendMessage = async () => {
-    if (!messageText.trim()) return;
+    if (!message.trim() || !currentGroup || !isGroupAdmin) return;
     
     try {
       if (Platform.OS !== 'web') {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
-      await sendGroupMessage(id as string, messageText);
-      setMessageText('');
-    } catch (err) {
-      Alert.alert('Error', 'Failed to send message');
+      
+      await sendGroupMessage(currentGroup.id, message);
+      setMessage('');
+      
+      // Scroll to bottom after sending
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+      
+      notify.success('Message sent');
+    } catch (error) {
+      notify.error('Failed to send message');
+      console.error('Error sending message:', error);
+    }
+  };
+  
+  const handleCreateEvent = async () => {
+    if (!eventTitle.trim() || !eventDate.trim() || !eventTime.trim() || !currentGroup) {
+      notify.warning('Please fill in all required fields');
+      return;
+    }
+    
+    try {
+      // Parse date and time
+      const dateTimeString = `${eventDate}T${eventTime}:00`;
+      const startTime = new Date(dateTimeString).getTime();
+      
+      let endTime: number | undefined;
+      if (eventEndTime) {
+        const endTimeString = `${eventDate}T${eventEndTime}:00`;
+        endTime = new Date(endTimeString).getTime();
+      }
+      
+      let reminder: number | undefined;
+      if (eventReminder) {
+        const reminderMinutes = parseInt(eventReminder);
+        if (!isNaN(reminderMinutes)) {
+          reminder = reminderMinutes * 60 * 1000; // Convert to milliseconds
+        }
+      }
+      
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      
+      await createGroupEvent({
+        groupId: currentGroup.id,
+        title: eventTitle,
+        description: eventDescription,
+        location: eventLocation,
+        startTime,
+        endTime,
+        reminder
+      });
+      
+      // Reset form
+      setEventTitle('');
+      setEventDescription('');
+      setEventLocation('');
+      setEventDate('');
+      setEventTime('');
+      setEventEndTime('');
+      setEventReminder('30');
+      
+      setShowCreateEventModal(false);
+      notify.success('Event created successfully');
+    } catch (error) {
+      notify.error('Failed to create event');
+      console.error('Error creating event:', error);
+    }
+  };
+  
+  const handleEditEvent = async () => {
+    if (!selectedEvent || !eventTitle.trim() || !eventDate.trim() || !eventTime.trim() || !currentGroup) {
+      notify.warning('Please fill in all required fields');
+      return;
+    }
+    
+    try {
+      // Parse date and time
+      const dateTimeString = `${eventDate}T${eventTime}:00`;
+      const startTime = new Date(dateTimeString).getTime();
+      
+      let endTime: number | undefined;
+      if (eventEndTime) {
+        const endTimeString = `${eventDate}T${eventEndTime}:00`;
+        endTime = new Date(endTimeString).getTime();
+      }
+      
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      
+      await updateGroupEvent({
+        id: selectedEvent.id,
+        groupId: currentGroup.id,
+        title: eventTitle,
+        description: eventDescription,
+        location: eventLocation,
+        startTime,
+        endTime
+      });
+      
+      setShowEditEventModal(false);
+      notify.success('Event updated successfully');
+    } catch (error) {
+      notify.error('Failed to update event');
+      console.error('Error updating event:', error);
     }
   };
   
@@ -80,132 +209,85 @@ export default function GroupDetailsScreen() {
       if (Platform.OS !== 'web') {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
+      
       await rsvpToEvent(eventId, response);
-    } catch (err) {
-      Alert.alert('Error', 'Failed to RSVP');
+      notify.success(`RSVP updated to ${response}`);
+    } catch (error) {
+      notify.error('Failed to update RSVP');
+      console.error('Error updating RSVP:', error);
     }
   };
   
-  const handleAddToCalendar = (event: any) => {
+  const handleAddToCalendar = async (event: GroupEvent) => {
     if (Platform.OS === 'web') {
-      Alert.alert('Calendar Integration', 'Calendar integration is not available on web. Please add the event manually to your calendar.');
+      notify.info('Calendar integration is not available on web');
       return;
     }
-    
-    // For native platforms, we would use expo-calendar, but it's not available in this setup
-    // As a fallback, show event details for manual addition
-    Alert.alert(
-      'Add to Calendar',
-      `Event: ${event.title}
-Date: ${new Date(event.startTime).toLocaleString()}
-Location: ${event.location || 'Not specified'}`,
-      [
-        { text: 'OK', style: 'cancel' }
-      ]
-    );
-  };
-  
-  const handleCreateEvent = async () => {
-    if (!eventTitle.trim()) {
-      Alert.alert('Error', 'Please enter an event title');
-      return;
-    }
-    
-    setCreateEventLoading(true);
     
     try {
-      if (Platform.OS !== 'web') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const { status } = await Calendar.requestCalendarPermissionsAsync();
+      
+      if (status !== 'granted') {
+        notify.warning('Calendar permission not granted');
+        return;
       }
       
-      await createGroupEvent({
-        groupId: id as string,
-        title: eventTitle,
-        description: eventDescription,
-        location: eventLocation,
-        startTime: eventStartTime.getTime(),
-        endTime: eventEndTime.getTime()
-      });
+      const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
+      const defaultCalendar = calendars.find(cal => cal.isPrimary) || calendars[0];
       
-      setShowEventModal(false);
-      setEventTitle('');
-      setEventDescription('');
-      setEventLocation('');
-      setEventStartTime(new Date());
-      setEventEndTime(new Date());
-    } catch (err) {
-      Alert.alert('Error', 'Failed to create event');
-    } finally {
-      setCreateEventLoading(false);
+      if (!defaultCalendar) {
+        notify.error('No calendar found');
+        return;
+      }
+      
+      const eventDetails = {
+        title: event.title,
+        startDate: new Date(event.startTime),
+        endDate: event.endTime ? new Date(event.endTime) : new Date(event.startTime + 60 * 60 * 1000), // Default 1 hour
+        notes: event.description,
+        location: event.location,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        alarms: event.reminder ? [{ relativeOffset: -event.reminder / (60 * 1000) }] : []
+      };
+      
+      await Calendar.createEventAsync(defaultCalendar.id, eventDetails);
+      notify.success('Event added to calendar');
+    } catch (error) {
+      notify.error('Failed to add event to calendar');
+      console.error('Error adding to calendar:', error);
     }
   };
   
-  const handleEditEvent = async () => {
-    if (!eventTitle.trim()) {
-      Alert.alert('Error', 'Please enter an event title');
-      return;
-    }
-    
-    if (!selectedEvent) return;
-    
-    setEditEventLoading(true);
-    
-    try {
-      if (Platform.OS !== 'web') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
-      
-      await updateGroupEvent({
-        id: selectedEvent.id,
-        groupId: id as string,
-        title: eventTitle,
-        description: eventDescription,
-        location: eventLocation,
-        startTime: eventStartTime.getTime(),
-        endTime: eventEndTime.getTime()
-      });
-      
-      setShowEditEventModal(false);
-      setEventTitle('');
-      setEventDescription('');
-      setEventLocation('');
-      setEventStartTime(new Date());
-      setEventEndTime(new Date());
-      setSelectedEvent(null);
-    } catch (err) {
-      Alert.alert('Error', 'Failed to update event');
-    } finally {
-      setEditEventLoading(false);
-    }
-  };
-  
-  const openEditEventModal = (event: any) => {
+  const openEditEventModal = (event: GroupEvent) => {
     setSelectedEvent(event);
+    
+    // Format date and time for the form
+    const eventDate = new Date(event.startTime);
+    const formattedDate = eventDate.toISOString().split('T')[0];
+    const formattedTime = eventDate.toTimeString().substring(0, 5);
+    
+    let formattedEndTime = '';
+    if (event.endTime) {
+      const endDate = new Date(event.endTime);
+      formattedEndTime = endDate.toTimeString().substring(0, 5);
+    }
+    
     setEventTitle(event.title);
     setEventDescription(event.description);
     setEventLocation(event.location || '');
-    setEventStartTime(new Date(event.startTime));
-    setEventEndTime(event.endTime ? new Date(event.endTime) : new Date(event.startTime));
+    setEventDate(formattedDate);
+    setEventTime(formattedTime);
+    setEventEndTime(formattedEndTime);
+    
     setShowEditEventModal(true);
   };
   
-  const onStartTimeChange = (event: any, selectedDate?: Date) => {
-    setShowStartTimePicker(Platform.OS === 'ios');
-    if (selectedDate) {
-      setEventStartTime(selectedDate);
-    }
+  const getUserRSVPStatus = (eventId: string): 'yes' | 'no' | 'maybe' | null => {
+    const rsvp = userRSVPs.find(r => r.eventId === eventId);
+    return rsvp ? rsvp.response : null;
   };
   
-  const onEndTimeChange = (event: any, selectedDate?: Date) => {
-    setShowEndTimePicker(Platform.OS === 'ios');
-    if (selectedDate) {
-      setEventEndTime(selectedDate);
-    }
-  };
-  
-  const isAdmin = user && currentGroup && user.id === currentGroup.createdBy;
-  
-  if (isLoading || !currentGroup) {
+  if (isLoading && !currentGroup) {
     return (
       <SafeAreaView style={styles.loadingContainer} edges={['bottom']}>
         <ActivityIndicator size="large" color={Colors.dark.accent} />
@@ -214,15 +296,15 @@ Location: ${event.location || 'Not specified'}`,
     );
   }
   
-  if (error || !currentGroup) {
+  if (!currentGroup) {
     return (
       <SafeAreaView style={styles.errorContainer} edges={['bottom']}>
-        <Text style={styles.errorText}>Failed to load group details. Please try again.</Text>
+        <Text style={styles.errorText}>Group not found</Text>
         <Button
           title="Go Back"
           onPress={() => router.back()}
           variant="primary"
-          style={styles.errorButton}
+          style={styles.backButton}
         />
       </SafeAreaView>
     );
@@ -230,208 +312,320 @@ Location: ${event.location || 'Not specified'}`,
   
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <ArrowLeft size={24} color={Colors.dark.text} />
-        </TouchableOpacity>
-        <Text style={styles.title}>{currentGroup.name}</Text>
-        {isAdmin && (
-          <TouchableOpacity 
-            style={styles.editButton}
-            onPress={() => Alert.alert('Edit Group', 'Editing group functionality coming soon')}
-          >
-            <Edit size={20} color={Colors.dark.text} />
-          </TouchableOpacity>
-        )}
-      </View>
-      
-      <View style={styles.tabContainer}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'info' && styles.activeTab]}
-          onPress={() => setActiveTab('info')}
-        >
-          <Text style={[styles.tabText, activeTab === 'info' && styles.activeTabText]}>Info</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'messages' && styles.activeTab]}
-          onPress={() => setActiveTab('messages')}
-        >
-          <Text style={[styles.tabText, activeTab === 'messages' && styles.activeTabText]}>Messages</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'events' && styles.activeTab]}
-          onPress={() => setActiveTab('events')}
-        >
-          <Text style={[styles.tabText, activeTab === 'events' && styles.activeTabText]}>Events</Text>
-        </TouchableOpacity>
-      </View>
-      
-      <ScrollView style={styles.contentContainer} contentContainerStyle={styles.content}>
-        {activeTab === 'info' && (
-          <View style={styles.infoContainer}>
-            <Image
-              source={{ uri: currentGroup.imageUrl || 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=2942&auto=format&fit=crop' }}
-              style={styles.groupImage}
-            />
-            <Text style={styles.groupDescription}>{currentGroup.description}</Text>
+      <KeyboardAvoidingView 
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={100}
+      >
+        <View style={styles.header}>
+          <Image
+            source={{ uri: currentGroup.imageUrl || 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=2942&auto=format&fit=crop' }}
+            style={styles.headerImage}
+          />
+          
+          <View style={styles.headerOverlay}>
+            <Text style={styles.groupName}>{currentGroup.name}</Text>
+            
             <View style={styles.groupMeta}>
               <View style={styles.memberCount}>
-                <Calendar size={16} color={Colors.dark.textSecondary} style={styles.memberIcon} />
+                <Users size={14} color={Colors.dark.text} style={styles.memberIcon} />
                 <Text style={styles.memberText}>{currentGroup.memberIds.length} members</Text>
               </View>
+              
               {currentGroup.category && (
                 <View style={styles.categoryTag}>
                   <Text style={styles.categoryText}>{currentGroup.category}</Text>
                 </View>
               )}
             </View>
+            
+            {isGroupAdmin && (
+              <TouchableOpacity style={styles.editButton}>
+                <Edit size={16} color={Colors.dark.text} />
+                <Text style={styles.editButtonText}>Edit Group</Text>
+              </TouchableOpacity>
+            )}
           </View>
+        </View>
+        
+        <View style={styles.tabBar}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'info' && styles.activeTab]}
+            onPress={() => setActiveTab('info')}
+          >
+            <Info size={20} color={activeTab === 'info' ? Colors.dark.accent : Colors.dark.textSecondary} />
+            <Text style={[styles.tabText, activeTab === 'info' && styles.activeTabText]}>Info</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'messages' && styles.activeTab]}
+            onPress={() => setActiveTab('messages')}
+          >
+            <MessageCircle size={20} color={activeTab === 'messages' ? Colors.dark.accent : Colors.dark.textSecondary} />
+            <Text style={[styles.tabText, activeTab === 'messages' && styles.activeTabText]}>Messages</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'events' && styles.activeTab]}
+            onPress={() => setActiveTab('events')}
+          >
+            <Calendar size={20} color={activeTab === 'events' ? Colors.dark.accent : Colors.dark.textSecondary} />
+            <Text style={[styles.tabText, activeTab === 'events' && styles.activeTabText]}>Events</Text>
+          </TouchableOpacity>
+        </View>
+        
+        {activeTab === 'info' && (
+          <ScrollView style={styles.content}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>About</Text>
+              <Text style={styles.description}>{currentGroup.description}</Text>
+            </View>
+            
+            {currentGroup.industry && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Industry</Text>
+                <Text style={styles.sectionText}>{currentGroup.industry}</Text>
+              </View>
+            )}
+            
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Created By</Text>
+              <Text style={styles.sectionText}>
+                {user?.id === currentGroup.createdBy ? 'You' : 'Another member'}
+              </Text>
+            </View>
+          </ScrollView>
         )}
         
         {activeTab === 'messages' && (
-          <View style={styles.messagesContainer}>
-            {groupMessages.length > 0 ? (
-              groupMessages.map((message) => (
-                <View key={message.id} style={styles.messageBubble}>
-                  <Text style={styles.messageSender}>Admin</Text>
-                  <Text style={styles.messageContent}>{message.content}</Text>
-                  <Text style={styles.messageTime}>
-                    {new Date(message.createdAt).toLocaleTimeString()}
-                  </Text>
+          <>
+            <ScrollView 
+              style={styles.content}
+              ref={scrollViewRef}
+              onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: false })}
+            >
+              {groupMessages.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <MessageCircle size={40} color={Colors.dark.textSecondary} />
+                  <Text style={styles.emptyStateText}>No messages yet</Text>
+                  {isGroupAdmin && (
+                    <Text style={styles.emptyStateSubtext}>
+                      As the group admin, you can send the first message to get the conversation started.
+                    </Text>
+                  )}
+                  {!isGroupAdmin && (
+                    <Text style={styles.emptyStateSubtext}>
+                      Only group admins can send messages to the entire group.
+                    </Text>
+                  )}
                 </View>
-              ))
-            ) : (
-              <Text style={styles.noMessagesText}>No messages yet.</Text>
-            )}
+              ) : (
+                <View style={styles.messagesList}>
+                  {groupMessages.map((message) => (
+                    <View key={message.id} style={styles.messageItem}>
+                      <View style={styles.messageHeader}>
+                        <Text style={styles.messageSender}>
+                          {message.senderId === user?.id ? 'You' : 'Admin'}
+                        </Text>
+                        <Text style={styles.messageTime}>
+                          {format(new Date(message.createdAt), 'MMM d, h:mm a')}
+                        </Text>
+                      </View>
+                      <Text style={styles.messageContent}>{message.content}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </ScrollView>
             
-            {isAdmin && (
-              <View style={styles.messageInputContainer}>
+            {isGroupAdmin && (
+              <View style={styles.inputContainer}>
                 <TextInput
-                  style={styles.messageInput}
+                  style={styles.input}
                   placeholder="Type a message..."
                   placeholderTextColor={Colors.dark.textSecondary}
-                  value={messageText}
-                  onChangeText={setMessageText}
+                  value={message}
+                  onChangeText={setMessage}
+                  multiline
                 />
                 <TouchableOpacity 
-                  style={styles.sendButton}
+                  style={[styles.sendButton, !message.trim() && styles.sendButtonDisabled]}
                   onPress={handleSendMessage}
+                  disabled={!message.trim()}
                 >
-                  <Send size={20} color={Colors.dark.accent} />
+                  <Send size={20} color={message.trim() ? Colors.dark.text : Colors.dark.textSecondary} />
                 </TouchableOpacity>
               </View>
             )}
-          </View>
+          </>
         )}
         
         {activeTab === 'events' && (
-          <View style={styles.eventsContainer}>
-            {isAdmin && (
-              <Button
-                title="Create Event"
-                onPress={() => setShowEventModal(true)}
-                variant="primary"
-                size="small"
-                style={styles.createEventButton}
-              />
-            )}
-            
-            {groupEvents.length > 0 ? (
-              groupEvents.map((event) => {
-                const userRSVP = userRSVPs.find(rsvp => rsvp.eventId === event.id);
-                return (
-                  <View key={event.id} style={styles.eventCard}>
-                    <Text style={styles.eventTitle}>{event.title}</Text>
-                    <Text style={styles.eventTime}>
-                      {new Date(event.startTime).toLocaleString()}
+          <>
+            <ScrollView style={styles.content}>
+              {isGroupAdmin && (
+                <TouchableOpacity 
+                  style={styles.createEventButton}
+                  onPress={() => setShowCreateEventModal(true)}
+                >
+                  <Plus size={20} color={Colors.dark.text} />
+                  <Text style={styles.createEventText}>Create New Event</Text>
+                </TouchableOpacity>
+              )}
+              
+              {groupEvents.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Calendar size={40} color={Colors.dark.textSecondary} />
+                  <Text style={styles.emptyStateText}>No events scheduled</Text>
+                  {isGroupAdmin && (
+                    <Text style={styles.emptyStateSubtext}>
+                      Create an event to bring group members together.
                     </Text>
-                    {event.location && (
-                      <Text style={styles.eventLocation}>{event.location}</Text>
-                    )}
-                    <Text style={styles.eventDescription} numberOfLines={2}>
-                      {event.description}
+                  )}
+                  {!isGroupAdmin && (
+                    <Text style={styles.emptyStateSubtext}>
+                      There are no upcoming events for this group.
                     </Text>
-                    <View style={styles.rsvpContainer}>
-                      <Button
-                        title="Yes"
-                        onPress={() => handleRSVP(event.id, 'yes')}
-                        variant={userRSVP?.response === 'yes' ? 'primary' : 'outline'}
-                        size="small"
-                        style={styles.rsvpButton}
-                      />
-                      <Button
-                        title="No"
-                        onPress={() => handleRSVP(event.id, 'no')}
-                        variant={userRSVP?.response === 'no' ? 'primary' : 'outline'}
-                        size="small"
-                        style={styles.rsvpButton}
-                      />
-                      <Button
-                        title="Maybe"
-                        onPress={() => handleRSVP(event.id, 'maybe')}
-                        variant={userRSVP?.response === 'maybe' ? 'primary' : 'outline'}
-                        size="small"
-                        style={styles.rsvpButton}
-                      />
-                    </View>
-                    <Button
-                      title="Add to Calendar"
-                      onPress={() => handleAddToCalendar(event)}
-                      variant="outline"
-                      size="small"
-                      style={styles.calendarButton}
-                    />
-                    {isAdmin && (
-                      <Button
-                        title="Edit Event"
-                        onPress={() => openEditEventModal(event)}
-                        variant="outline"
-                        size="small"
-                        style={styles.editEventButton}
-                      />
-                    )}
-                  </View>
-                );
-              })
-            ) : (
-              <Text style={styles.noEventsText}>No upcoming events.</Text>
-            )}
-          </View>
+                  )}
+                </View>
+              ) : (
+                <View style={styles.eventsList}>
+                  {groupEvents
+                    .sort((a, b) => a.startTime - b.startTime)
+                    .map((event) => {
+                      const eventDate = new Date(event.startTime);
+                      const isUpcoming = eventDate > new Date();
+                      const userRSVP = getUserRSVPStatus(event.id);
+                      
+                      return (
+                        <View key={event.id} style={[styles.eventItem, !isUpcoming && styles.pastEvent]}>
+                          <View style={styles.eventHeader}>
+                            <Text style={styles.eventTitle}>{event.title}</Text>
+                            {isGroupAdmin && isUpcoming && (
+                              <TouchableOpacity 
+                                style={styles.editEventButton}
+                                onPress={() => openEditEventModal(event)}
+                              >
+                                <Edit size={16} color={Colors.dark.textSecondary} />
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                          
+                          <View style={styles.eventDetails}>
+                            <View style={styles.eventDetailItem}>
+                              <Clock size={16} color={Colors.dark.textSecondary} style={styles.eventDetailIcon} />
+                              <Text style={styles.eventDetailText}>
+                                {format(eventDate, 'EEEE, MMMM d, yyyy')} at {format(eventDate, 'h:mm a')}
+                              </Text>
+                            </View>
+                            
+                            {event.location && (
+                              <View style={styles.eventDetailItem}>
+                                <MapPin size={16} color={Colors.dark.textSecondary} style={styles.eventDetailIcon} />
+                                <Text style={styles.eventDetailText}>{event.location}</Text>
+                              </View>
+                            )}
+                          </View>
+                          
+                          {event.description && (
+                            <Text style={styles.eventDescription}>{event.description}</Text>
+                          )}
+                          
+                          {isUpcoming && (
+                            <View style={styles.eventActions}>
+                              <View style={styles.rsvpButtons}>
+                                <TouchableOpacity 
+                                  style={[
+                                    styles.rsvpButton, 
+                                    userRSVP === 'yes' && styles.rsvpButtonActive,
+                                    styles.rsvpYesButton
+                                  ]}
+                                  onPress={() => handleRSVP(event.id, 'yes')}
+                                >
+                                  <Text style={[
+                                    styles.rsvpButtonText,
+                                    userRSVP === 'yes' && styles.rsvpButtonTextActive
+                                  ]}>Going</Text>
+                                </TouchableOpacity>
+                                
+                                <TouchableOpacity 
+                                  style={[
+                                    styles.rsvpButton, 
+                                    userRSVP === 'maybe' && styles.rsvpButtonActive,
+                                    styles.rsvpMaybeButton
+                                  ]}
+                                  onPress={() => handleRSVP(event.id, 'maybe')}
+                                >
+                                  <Text style={[
+                                    styles.rsvpButtonText,
+                                    userRSVP === 'maybe' && styles.rsvpButtonTextActive
+                                  ]}>Maybe</Text>
+                                </TouchableOpacity>
+                                
+                                <TouchableOpacity 
+                                  style={[
+                                    styles.rsvpButton, 
+                                    userRSVP === 'no' && styles.rsvpButtonActive,
+                                    styles.rsvpNoButton
+                                  ]}
+                                  onPress={() => handleRSVP(event.id, 'no')}
+                                >
+                                  <Text style={[
+                                    styles.rsvpButtonText,
+                                    userRSVP === 'no' && styles.rsvpButtonTextActive
+                                  ]}>Can't Go</Text>
+                                </TouchableOpacity>
+                              </View>
+                              
+                              <TouchableOpacity 
+                                style={styles.calendarButton}
+                                onPress={() => handleAddToCalendar(event)}
+                              >
+                                <Calendar size={16} color={Colors.dark.accent} />
+                                <Text style={styles.calendarButtonText}>Add to Calendar</Text>
+                              </TouchableOpacity>
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })}
+                </View>
+              )}
+            </ScrollView>
+          </>
         )}
-      </ScrollView>
+      </KeyboardAvoidingView>
       
+      {/* Create Event Modal */}
       <Modal
-        visible={showEventModal}
+        visible={showCreateEventModal}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setShowEventModal(false)}
+        onRequestClose={() => setShowCreateEventModal(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Create Group Event</Text>
+              <Text style={styles.modalTitle}>Create Event</Text>
               <TouchableOpacity 
-                onPress={() => setShowEventModal(false)}
+                onPress={() => setShowCreateEventModal(false)}
                 style={styles.closeButton}
               >
                 <X size={24} color={Colors.dark.text} />
               </TouchableOpacity>
             </View>
             
-            <View style={styles.modalContent}>
+            <ScrollView style={styles.modalContent}>
               <TextInput
-                style={styles.input}
-                placeholder="Event Title"
+                style={styles.modalInput}
+                placeholder="Event Title *"
                 placeholderTextColor={Colors.dark.textSecondary}
                 value={eventTitle}
                 onChangeText={setEventTitle}
               />
               
               <TextInput
-                style={[styles.input, styles.textArea]}
+                style={[styles.modalInput, styles.textArea]}
                 placeholder="Event Description"
                 placeholderTextColor={Colors.dark.textSecondary}
                 value={eventDescription}
@@ -441,62 +635,63 @@ Location: ${event.location || 'Not specified'}`,
               />
               
               <TextInput
-                style={styles.input}
-                placeholder="Location (optional)"
+                style={styles.modalInput}
+                placeholder="Location"
                 placeholderTextColor={Colors.dark.textSecondary}
                 value={eventLocation}
                 onChangeText={setEventLocation}
               />
               
-              <TouchableOpacity
-                style={styles.dateButton}
-                onPress={() => setShowStartTimePicker(true)}
-              >
-                <Text style={styles.dateButtonText}>
-                  Start Time: {eventStartTime.toLocaleString()}
-                </Text>
-              </TouchableOpacity>
+              <Text style={styles.inputLabel}>Date *</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={Colors.dark.textSecondary}
+                value={eventDate}
+                onChangeText={setEventDate}
+              />
               
-              {showStartTimePicker && (
-                <DateTimePicker
-                  value={eventStartTime}
-                  mode="datetime"
-                  display="default"
-                  onChange={onStartTimeChange}
-                />
-              )}
+              <Text style={styles.inputLabel}>Start Time *</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="HH:MM (24-hour format)"
+                placeholderTextColor={Colors.dark.textSecondary}
+                value={eventTime}
+                onChangeText={setEventTime}
+              />
               
-              <TouchableOpacity
-                style={styles.dateButton}
-                onPress={() => setShowEndTimePicker(true)}
-              >
-                <Text style={styles.dateButtonText}>
-                  End Time: {eventEndTime.toLocaleString()}
-                </Text>
-              </TouchableOpacity>
+              <Text style={styles.inputLabel}>End Time (optional)</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="HH:MM (24-hour format)"
+                placeholderTextColor={Colors.dark.textSecondary}
+                value={eventEndTime}
+                onChangeText={setEventEndTime}
+              />
               
-              {showEndTimePicker && (
-                <DateTimePicker
-                  value={eventEndTime}
-                  mode="datetime"
-                  display="default"
-                  onChange={onEndTimeChange}
-                />
-              )}
+              <Text style={styles.inputLabel}>Reminder (minutes before)</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="30"
+                placeholderTextColor={Colors.dark.textSecondary}
+                value={eventReminder}
+                onChangeText={setEventReminder}
+                keyboardType="numeric"
+              />
               
               <Button
                 title="Create Event"
                 onPress={handleCreateEvent}
                 variant="primary"
                 size="large"
-                loading={createEventLoading}
-                style={styles.createEventModalButton}
+                style={styles.modalButton}
               />
-            </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
       
+      {/* Edit Event Modal */}
       <Modal
         visible={showEditEventModal}
         animationType="slide"
@@ -506,7 +701,7 @@ Location: ${event.location || 'Not specified'}`,
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Edit Group Event</Text>
+              <Text style={styles.modalTitle}>Edit Event</Text>
               <TouchableOpacity 
                 onPress={() => setShowEditEventModal(false)}
                 style={styles.closeButton}
@@ -515,17 +710,17 @@ Location: ${event.location || 'Not specified'}`,
               </TouchableOpacity>
             </View>
             
-            <View style={styles.modalContent}>
+            <ScrollView style={styles.modalContent}>
               <TextInput
-                style={styles.input}
-                placeholder="Event Title"
+                style={styles.modalInput}
+                placeholder="Event Title *"
                 placeholderTextColor={Colors.dark.textSecondary}
                 value={eventTitle}
                 onChangeText={setEventTitle}
               />
               
               <TextInput
-                style={[styles.input, styles.textArea]}
+                style={[styles.modalInput, styles.textArea]}
                 placeholder="Event Description"
                 placeholderTextColor={Colors.dark.textSecondary}
                 value={eventDescription}
@@ -535,58 +730,48 @@ Location: ${event.location || 'Not specified'}`,
               />
               
               <TextInput
-                style={styles.input}
-                placeholder="Location (optional)"
+                style={styles.modalInput}
+                placeholder="Location"
                 placeholderTextColor={Colors.dark.textSecondary}
                 value={eventLocation}
                 onChangeText={setEventLocation}
               />
               
-              <TouchableOpacity
-                style={styles.dateButton}
-                onPress={() => setShowStartTimePicker(true)}
-              >
-                <Text style={styles.dateButtonText}>
-                  Start Time: {eventStartTime.toLocaleString()}
-                </Text>
-              </TouchableOpacity>
+              <Text style={styles.inputLabel}>Date *</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={Colors.dark.textSecondary}
+                value={eventDate}
+                onChangeText={setEventDate}
+              />
               
-              {showStartTimePicker && (
-                <DateTimePicker
-                  value={eventStartTime}
-                  mode="datetime"
-                  display="default"
-                  onChange={onStartTimeChange}
-                />
-              )}
+              <Text style={styles.inputLabel}>Start Time *</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="HH:MM (24-hour format)"
+                placeholderTextColor={Colors.dark.textSecondary}
+                value={eventTime}
+                onChangeText={setEventTime}
+              />
               
-              <TouchableOpacity
-                style={styles.dateButton}
-                onPress={() => setShowEndTimePicker(true)}
-              >
-                <Text style={styles.dateButtonText}>
-                  End Time: {eventEndTime.toLocaleString()}
-                </Text>
-              </TouchableOpacity>
-              
-              {showEndTimePicker && (
-                <DateTimePicker
-                  value={eventEndTime}
-                  mode="datetime"
-                  display="default"
-                  onChange={onEndTimeChange}
-                />
-              )}
+              <Text style={styles.inputLabel}>End Time (optional)</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="HH:MM (24-hour format)"
+                placeholderTextColor={Colors.dark.textSecondary}
+                value={eventEndTime}
+                onChangeText={setEventEndTime}
+              />
               
               <Button
                 title="Update Event"
                 onPress={handleEditEvent}
                 variant="primary"
                 size="large"
-                loading={editEventLoading}
-                style={styles.createEventModalButton}
+                style={styles.modalButton}
               />
-            </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -598,6 +783,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.dark.background,
+  },
+  keyboardAvoidingView: {
+    flex: 1,
   },
   loadingContainer: {
     flex: 1,
@@ -615,220 +803,319 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: Colors.dark.background,
-    padding: 20,
+    padding: 24,
   },
   errorText: {
-    fontSize: 16,
-    color: Colors.dark.text,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  errorButton: {
-    width: 200,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.dark.border,
+    fontSize: 18,
+    color: Colors.dark.error,
+    marginBottom: 16,
   },
   backButton: {
-    padding: 8,
-    marginRight: 8,
+    minWidth: 120,
   },
-  title: {
-    flex: 1,
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: Colors.dark.text,
+  header: {
+    position: 'relative',
+    height: 180,
   },
-  editButton: {
-    padding: 8,
+  headerImage: {
+    width: '100%',
+    height: '100%',
   },
-  tabContainer: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.dark.border,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  activeTab: {
-    borderBottomWidth: 2,
-    borderBottomColor: Colors.dark.accent,
-  },
-  tabText: {
-    fontSize: 16,
-    color: Colors.dark.textSecondary,
-  },
-  activeTabText: {
-    color: Colors.dark.accent,
-    fontWeight: 'bold',
-  },
-  contentContainer: {
-    flex: 1,
-  },
-  content: {
-    paddingBottom: 100,
-  },
-  infoContainer: {
+  headerOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     padding: 16,
   },
-  groupImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 12,
-    marginBottom: 16,
-  },
-  groupDescription: {
-    fontSize: 16,
+  groupName: {
+    fontSize: 24,
+    fontWeight: 'bold',
     color: Colors.dark.text,
-    marginBottom: 16,
-    lineHeight: 22,
+    marginBottom: 8,
   },
   groupMeta: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 8,
   },
   memberCount: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: 12,
   },
   memberIcon: {
-    marginRight: 6,
+    marginRight: 4,
   },
   memberText: {
     fontSize: 14,
-    color: Colors.dark.textSecondary,
+    color: Colors.dark.text,
   },
   categoryTag: {
     backgroundColor: Colors.dark.primary,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
     borderRadius: 12,
   },
   categoryText: {
     fontSize: 12,
     color: Colors.dark.text,
   },
-  messagesContainer: {
-    flex: 1,
-    padding: 16,
-  },
-  messageBubble: {
-    backgroundColor: Colors.dark.card,
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 12,
-    maxWidth: '80%',
-  },
-  messageSender: {
-    fontSize: 12,
-    color: Colors.dark.accent,
-    marginBottom: 4,
-    fontWeight: 'bold',
-  },
-  messageContent: {
-    fontSize: 16,
-    color: Colors.dark.text,
-  },
-  messageTime: {
-    fontSize: 12,
-    color: Colors.dark.textSecondary,
-    marginTop: 4,
-    alignSelf: 'flex-end',
-  },
-  noMessagesText: {
-    fontSize: 16,
-    color: Colors.dark.textSecondary,
-    textAlign: 'center',
-    marginTop: 40,
-  },
-  messageInputContainer: {
+  editButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: Colors.dark.border,
-    paddingTop: 8,
-  },
-  messageInput: {
-    flex: 1,
-    backgroundColor: Colors.dark.card,
-    borderRadius: 20,
-    padding: 10,
-    color: Colors.dark.text,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-  },
-  sendButton: {
-    marginLeft: 10,
-    padding: 10,
-    backgroundColor: Colors.dark.background,
-    borderRadius: 20,
-  },
-  eventsContainer: {
-    padding: 16,
-  },
-  createEventButton: {
-    marginBottom: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
     alignSelf: 'flex-start',
   },
-  eventCard: {
-    backgroundColor: Colors.dark.card,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+  editButtonText: {
+    fontSize: 12,
+    color: Colors.dark.text,
+    marginLeft: 4,
   },
-  eventTitle: {
+  tabBar: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.dark.border,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+  },
+  activeTab: {
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.dark.accent,
+  },
+  tabText: {
+    fontSize: 14,
+    color: Colors.dark.textSecondary,
+    marginLeft: 4,
+  },
+  activeTabText: {
+    color: Colors.dark.accent,
+    fontWeight: '500',
+  },
+  content: {
+    flex: 1,
+  },
+  section: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.dark.border,
+  },
+  sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: Colors.dark.text,
     marginBottom: 8,
   },
-  eventTime: {
-    fontSize: 14,
-    color: Colors.dark.accent,
+  description: {
+    fontSize: 16,
+    color: Colors.dark.text,
+    lineHeight: 24,
+  },
+  sectionText: {
+    fontSize: 16,
+    color: Colors.dark.text,
+  },
+  emptyState: {
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: Colors.dark.text,
+    marginTop: 16,
     marginBottom: 8,
   },
-  eventLocation: {
+  emptyStateSubtext: {
     fontSize: 14,
     color: Colors.dark.textSecondary,
-    marginBottom: 8,
+    textAlign: 'center',
   },
-  eventDescription: {
-    fontSize: 14,
-    color: Colors.dark.text,
+  messagesList: {
+    padding: 16,
+  },
+  messageItem: {
+    backgroundColor: Colors.dark.card,
+    borderRadius: 12,
+    padding: 16,
     marginBottom: 16,
   },
-  rsvpContainer: {
+  messageHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 8,
   },
-  rsvpButton: {
-    flex: 1,
-    marginHorizontal: 4,
+  messageSender: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.dark.text,
   },
-  calendarButton: {
-    width: '100%',
-    marginTop: 8,
+  messageTime: {
+    fontSize: 12,
+    color: Colors.dark.textSecondary,
+  },
+  messageContent: {
+    fontSize: 16,
+    color: Colors.dark.text,
+    lineHeight: 24,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderTopWidth: 1,
+    borderTopColor: Colors.dark.border,
+    backgroundColor: Colors.dark.background,
+  },
+  input: {
+    flex: 1,
+    backgroundColor: Colors.dark.card,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    color: Colors.dark.text,
+    maxHeight: 100,
+  },
+  sendButton: {
+    marginLeft: 12,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.dark.accent,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sendButtonDisabled: {
+    backgroundColor: Colors.dark.border,
+  },
+  createEventButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.dark.card,
+    margin: 16,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    borderStyle: 'dashed',
+  },
+  createEventText: {
+    fontSize: 16,
+    color: Colors.dark.text,
+    marginLeft: 8,
+  },
+  eventsList: {
+    padding: 16,
+  },
+  eventItem: {
+    backgroundColor: Colors.dark.card,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.dark.accent,
+  },
+  pastEvent: {
+    opacity: 0.7,
+    borderLeftColor: Colors.dark.border,
+  },
+  eventHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  eventTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: Colors.dark.text,
+    flex: 1,
   },
   editEventButton: {
-    width: '100%',
-    marginTop: 8,
+    padding: 4,
   },
-  noEventsText: {
-    fontSize: 16,
+  eventDetails: {
+    marginBottom: 12,
+  },
+  eventDetailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  eventDetailIcon: {
+    marginRight: 8,
+  },
+  eventDetailText: {
+    fontSize: 14,
     color: Colors.dark.textSecondary,
-    textAlign: 'center',
-    marginTop: 40,
+  },
+  eventDescription: {
+    fontSize: 16,
+    color: Colors.dark.text,
+    marginBottom: 16,
+  },
+  eventActions: {
+    borderTopWidth: 1,
+    borderTopColor: Colors.dark.border,
+    paddingTop: 12,
+  },
+  rsvpButtons: {
+    flexDirection: 'row',
+    marginBottom: 12,
+  },
+  rsvpButton: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    borderRadius: 4,
+    alignItems: 'center',
+    marginHorizontal: 4,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  rsvpButtonActive: {
+    borderWidth: 0,
+  },
+  rsvpYesButton: {
+    backgroundColor: 'rgba(75, 181, 67, 0.1)',
+  },
+  rsvpMaybeButton: {
+    backgroundColor: 'rgba(255, 187, 0, 0.1)',
+  },
+  rsvpNoButton: {
+    backgroundColor: 'rgba(255, 69, 58, 0.1)',
+  },
+  rsvpButtonText: {
+    fontSize: 14,
+    color: Colors.dark.textSecondary,
+  },
+  rsvpButtonTextActive: {
+    fontWeight: 'bold',
+    color: Colors.dark.text,
+  },
+  calendarButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(10, 132, 255, 0.1)',
+  },
+  calendarButtonText: {
+    fontSize: 14,
+    color: Colors.dark.accent,
+    marginLeft: 8,
   },
   modalOverlay: {
     flex: 1,
@@ -841,6 +1128,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     width: '90%',
     maxHeight: '80%',
+    maxWidth: 500,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -861,7 +1149,7 @@ const styles = StyleSheet.create({
   modalContent: {
     padding: 16,
   },
-  input: {
+  modalInput: {
     backgroundColor: Colors.dark.card,
     borderRadius: 8,
     padding: 12,
@@ -874,20 +1162,13 @@ const styles = StyleSheet.create({
     height: 100,
     textAlignVertical: 'top',
   },
-  dateButton: {
-    backgroundColor: Colors.dark.card,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-    justifyContent: 'center',
-  },
-  dateButtonText: {
+  inputLabel: {
+    fontSize: 14,
     color: Colors.dark.text,
-    fontSize: 16,
+    marginBottom: 8,
   },
-  createEventModalButton: {
+  modalButton: {
     marginTop: 8,
+    marginBottom: 24,
   },
 });

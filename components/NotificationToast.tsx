@@ -1,148 +1,133 @@
 import React, { useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, Animated, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Platform } from 'react-native';
+import { X } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { Notification } from '@/types/notifications';
 
 interface NotificationToastProps {
   notification: Notification;
-  onDismiss: (id: string) => void;
+  onClose: () => void;
 }
 
-export const NotificationToast: React.FC<NotificationToastProps> = ({ notification, onDismiss }) => {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(50)).current;
-
+export default function NotificationToast({ notification, onClose }: NotificationToastProps) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(-20)).current;
+  
   useEffect(() => {
     // Animate in
     Animated.parallel([
-      Animated.timing(fadeAnim, {
+      Animated.timing(opacity, {
         toValue: 1,
         duration: 300,
         useNativeDriver: true,
       }),
-      Animated.timing(slideAnim, {
+      Animated.timing(translateY, {
         toValue: 0,
         duration: 300,
         useNativeDriver: true,
       }),
     ]).start();
-
+    
     // Auto-dismiss if duration is set
-    if (notification.duration && !notification.persistent) {
+    if (notification.duration) {
       const timer = setTimeout(() => {
-        handleDismiss();
+        animateOut();
       }, notification.duration);
+      
       return () => clearTimeout(timer);
     }
-  }, [notification.duration, notification.persistent]);
-
-  const handleDismiss = () => {
+  }, []);
+  
+  const animateOut = () => {
     Animated.parallel([
-      Animated.timing(fadeAnim, {
+      Animated.timing(opacity, {
         toValue: 0,
-        duration: 300,
+        duration: 200,
         useNativeDriver: true,
       }),
-      Animated.timing(slideAnim, {
-        toValue: 50,
-        duration: 300,
+      Animated.timing(translateY, {
+        toValue: -20,
+        duration: 200,
         useNativeDriver: true,
       }),
     ]).start(() => {
-      onDismiss(notification.id);
-      if (notification.onClose) {
-        notification.onClose();
-      }
+      onClose();
     });
   };
-
+  
   const getBackgroundColor = () => {
     switch (notification.type) {
       case 'success':
         return Colors.dark.success;
-      case 'error':
-        return Colors.dark.error;
+      case 'info':
+        return Colors.dark.info;
       case 'warning':
         return Colors.dark.warning;
+      case 'error':
+        return Colors.dark.error;
       default:
-        return Colors.dark.primary;
+        return Colors.dark.card;
     }
   };
-
-  const positionStyle = () => {
-    const position = notification.position || 'top-right';
-    switch (position) {
-      case 'top-left':
-        return { top: 20, left: 20 };
-      case 'top-right':
-        return { top: 20, right: 20 };
-      case 'bottom-left':
-        return { bottom: 20, left: 20 };
-      case 'bottom-right':
-        return { bottom: 20, right: 20 };
-      default:
-        return { top: 20, right: 20 };
-    }
-  };
-
+  
   return (
     <Animated.View
       style={[
         styles.container,
-        { backgroundColor: getBackgroundColor(), opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
-        positionStyle(),
+        {
+          backgroundColor: getBackgroundColor(),
+          opacity,
+          transform: [{ translateY }],
+        },
       ]}
-      accessible={true}
-      accessibilityLabel={notification.title ? `${notification.title}: ${notification.message}` : notification.message}
+      accessibilityLiveRegion="polite"
+      accessibilityRole="alert"
     >
-      <View style={styles.content}>
-        {notification.title && <Text style={styles.title}>{notification.title}</Text>}
-        <Text style={styles.message}>{notification.message}</Text>
-      </View>
-      <TouchableOpacity onPress={handleDismiss} style={styles.closeButton} accessibilityLabel="Dismiss notification">
-        <Text style={styles.closeText}>×</Text>
+      {notification.title && (
+        <Text style={styles.title}>{notification.title}</Text>
+      )}
+      <Text style={styles.message}>{notification.message}</Text>
+      
+      <TouchableOpacity style={styles.closeButton} onPress={animateOut}>
+        <X size={18} color={Colors.dark.text} />
       </TouchableOpacity>
     </Animated.View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
-    position: 'absolute',
+    minWidth: 280,
+    maxWidth: 400,
     padding: 16,
+    marginBottom: 8,
     borderRadius: 8,
-    maxWidth: 300,
-    minWidth: 200,
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 5,
-    zIndex: 1000,
-  },
-  content: {
-    flex: 1,
-    marginRight: 10,
+    elevation: 3,
+    ...Platform.select({
+      web: {
+        maxWidth: '90vw',
+      },
+    }),
   },
   title: {
-    color: Colors.dark.text,
     fontSize: 16,
     fontWeight: 'bold',
+    color: Colors.dark.text,
     marginBottom: 4,
   },
   message: {
-    color: Colors.dark.text,
     fontSize: 14,
+    color: Colors.dark.text,
+    flex: 1,
   },
   closeButton: {
-    padding: 5,
-  },
-  closeText: {
-    color: Colors.dark.text,
-    fontSize: 18,
-    fontWeight: 'bold',
+    marginLeft: 12,
+    padding: 4,
   },
 });

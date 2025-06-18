@@ -1,132 +1,122 @@
 import React, { useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, Animated, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Platform } from 'react-native';
+import { X } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { Notification } from '@/types/notifications';
 
 interface NotificationBannerProps {
   notification: Notification;
-  onDismiss: (id: string) => void;
+  onClose: () => void;
 }
 
-export const NotificationBanner: React.FC<NotificationBannerProps> = ({ notification, onDismiss }) => {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(-50)).current;
-
+export default function NotificationBanner({ notification, onClose }: NotificationBannerProps) {
+  const translateY = useRef(new Animated.Value(-100)).current;
+  
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start();
-
+    // Animate in
+    Animated.timing(translateY, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+    
+    // Auto-dismiss if duration is set and not persistent
     if (notification.duration && !notification.persistent) {
       const timer = setTimeout(() => {
-        handleDismiss();
+        animateOut();
       }, notification.duration);
+      
       return () => clearTimeout(timer);
     }
-  }, [notification.duration, notification.persistent]);
-
-  const handleDismiss = () => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: -50,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      onDismiss(notification.id);
-      if (notification.onClose) {
-        notification.onClose();
-      }
+  }, []);
+  
+  const animateOut = () => {
+    Animated.timing(translateY, {
+      toValue: -100,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      onClose();
     });
   };
-
+  
   const getBackgroundColor = () => {
     switch (notification.type) {
       case 'success':
         return Colors.dark.success;
-      case 'error':
-        return Colors.dark.error;
+      case 'info':
+        return Colors.dark.info;
       case 'warning':
         return Colors.dark.warning;
+      case 'error':
+        return Colors.dark.error;
       default:
-        return Colors.dark.primary;
+        return Colors.dark.accent;
     }
   };
-
+  
   return (
     <Animated.View
       style={[
         styles.container,
-        { backgroundColor: getBackgroundColor(), opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
+        {
+          backgroundColor: getBackgroundColor(),
+          transform: [{ translateY }],
+        },
       ]}
-      accessible={true}
-      accessibilityLabel={notification.title ? `${notification.title}: ${notification.message}` : notification.message}
+      accessibilityRole="alert"
     >
       <View style={styles.content}>
-        {notification.title && <Text style={styles.title}>{notification.title}</Text>}
+        {notification.title && (
+          <Text style={styles.title}>{notification.title}</Text>
+        )}
         <Text style={styles.message}>{notification.message}</Text>
       </View>
-      {!notification.persistent && (
-        <TouchableOpacity onPress={handleDismiss} style={styles.closeButton} accessibilityLabel="Dismiss notification">
-          <Text style={styles.closeText}>×</Text>
-        </TouchableOpacity>
-      )}
+      
+      <TouchableOpacity style={styles.closeButton} onPress={animateOut}>
+        <X size={20} color={Colors.dark.text} />
+      </TouchableOpacity>
     </Animated.View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
+    width: '100%',
     padding: 16,
-    paddingTop: Platform.OS === 'ios' ? 40 : 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    zIndex: 1000,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 5,
+    elevation: 3,
+    ...Platform.select({
+      web: {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 1000,
+      },
+    }),
   },
   content: {
     flex: 1,
-    marginRight: 10,
   },
   title: {
-    color: Colors.dark.text,
     fontSize: 16,
     fontWeight: 'bold',
+    color: Colors.dark.text,
     marginBottom: 4,
   },
   message: {
-    color: Colors.dark.text,
     fontSize: 14,
+    color: Colors.dark.text,
   },
   closeButton: {
-    padding: 5,
-  },
-  closeText: {
-    color: Colors.dark.text,
-    fontSize: 18,
-    fontWeight: 'bold',
+    padding: 4,
+    marginLeft: 16,
   },
 });

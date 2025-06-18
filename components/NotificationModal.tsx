@@ -1,128 +1,124 @@
-import React, { useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, Animated, TouchableOpacity, Modal, Platform } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, Platform } from 'react-native';
+import { X } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { Notification } from '@/types/notifications';
 import { Button } from '@/components/Button';
 
 interface NotificationModalProps {
   notification: Notification;
-  onDismiss: (id: string) => void;
+  onClose: () => void;
 }
 
-export const NotificationModal: React.FC<NotificationModalProps> = ({ notification, onDismiss }) => {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
-
-    if (notification.duration && !notification.persistent) {
-      const timer = setTimeout(() => {
-        handleDismiss();
-      }, notification.duration);
-      return () => clearTimeout(timer);
-    }
-  }, [notification.duration, notification.persistent]);
-
-  const handleDismiss = () => {
-    Animated.timing(fadeAnim, {
-      toValue: 0,
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => {
-      onDismiss(notification.id);
-      if (notification.onClose) {
-        notification.onClose();
-      }
-    });
-  };
-
-  const getBackgroundColor = () => {
+export default function NotificationModal({ notification, onClose }: NotificationModalProps) {
+  const getIconColor = () => {
     switch (notification.type) {
       case 'success':
         return Colors.dark.success;
-      case 'error':
-        return Colors.dark.error;
+      case 'info':
+        return Colors.dark.info;
       case 'warning':
         return Colors.dark.warning;
+      case 'error':
+        return Colors.dark.error;
       default:
-        return Colors.dark.primary;
+        return Colors.dark.accent;
     }
   };
-
+  
   return (
     <Modal
-      animationType="fade"
-      transparent={true}
       visible={true}
-      onRequestClose={handleDismiss}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={onClose}
     >
       <View style={styles.overlay}>
-        <Animated.View
-          style={[
-            styles.container,
-            { backgroundColor: getBackgroundColor(), opacity: fadeAnim },
-          ]}
-          accessible={true}
-          accessibilityLabel={notification.title ? `${notification.title}: ${notification.message}` : notification.message}
-        >
-          <View style={styles.content}>
-            {notification.title && <Text style={styles.title}>{notification.title}</Text>}
-            <Text style={styles.message}>{notification.message}</Text>
+        <View style={styles.container} accessibilityRole="alert">
+          <View style={styles.header}>
+            <Text style={[styles.title, { color: getIconColor() }]}>
+              {notification.title || getDefaultTitle(notification.type)}
+            </Text>
+            
+            <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+              <X size={24} color={Colors.dark.text} />
+            </TouchableOpacity>
           </View>
-          <Button
-            title="Dismiss"
-            onPress={handleDismiss}
-            variant="secondary"
-            size="medium"
-            style={styles.dismissButton}
-          />
-        </Animated.View>
+          
+          <Text style={styles.message}>{notification.message}</Text>
+          
+          <View style={styles.buttonContainer}>
+            <Button
+              title="OK"
+              onPress={onClose}
+              variant="primary"
+              size="medium"
+              style={styles.button}
+            />
+          </View>
+        </View>
       </View>
     </Modal>
   );
-};
+}
+
+function getDefaultTitle(type: Notification['type']): string {
+  switch (type) {
+    case 'success':
+      return 'Success';
+    case 'info':
+      return 'Information';
+    case 'warning':
+      return 'Warning';
+    case 'error':
+      return 'Error';
+    default:
+      return 'Notification';
+  }
+}
 
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.dark.overlay,
   },
   container: {
-    padding: 20,
+    backgroundColor: Colors.dark.background,
     borderRadius: 12,
+    padding: 24,
     width: '80%',
     maxWidth: 400,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
+    ...Platform.select({
+      web: {
+        maxWidth: '90vw',
+      },
+    }),
   },
-  content: {
-    marginBottom: 20,
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 16,
   },
   title: {
-    color: Colors.dark.text,
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 8,
-    textAlign: 'center',
+  },
+  closeButton: {
+    padding: 4,
   },
   message: {
-    color: Colors.dark.text,
     fontSize: 16,
-    textAlign: 'center',
+    color: Colors.dark.text,
+    marginBottom: 24,
   },
-  dismissButton: {
-    width: '100%',
-    maxWidth: 200,
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  button: {
+    minWidth: 100,
   },
 });
