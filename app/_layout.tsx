@@ -10,6 +10,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { trpc, trpcClient } from "@/lib/trpc";
 import { isSupabaseConfigured, initSupabase, testSupabaseConnection } from "@/lib/supabase";
 import { useAuthStore } from "@/store/auth-store";
+import { NotificationProvider } from "@/components/NotificationProvider";
 import 'react-native-url-polyfill/auto';
 
 export const unstable_settings = {
@@ -132,8 +133,10 @@ export default function RootLayout() {
     <ErrorBoundary>
       <trpc.Provider client={trpcClient} queryClient={queryClient}>
         <QueryClientProvider client={queryClient}>
-          <StatusBar barStyle="light-content" backgroundColor={Colors.dark.background} />
-          <RootLayoutNav supabaseStatus={supabaseStatus} />
+          <NotificationProvider>
+            <StatusBar barStyle="light-content" backgroundColor={Colors.dark.background} />
+            <RootLayoutNav supabaseStatus={supabaseStatus} />
+          </NotificationProvider>
         </QueryClientProvider>
       </trpc.Provider>
     </ErrorBoundary>
