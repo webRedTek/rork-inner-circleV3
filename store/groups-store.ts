@@ -107,6 +107,7 @@ interface GroupsState {
   sendGroupMessage: (groupId: string, content: string, type?: 'text' | 'image', imageUrl?: string) => Promise<void>;
   fetchGroupMessages: (groupId: string) => Promise<void>;
   createGroupEvent: (eventData: Partial<GroupEvent>) => Promise<void>;
+  updateGroupEvent: (eventData: Partial<GroupEvent>) => Promise<void>;
   fetchGroupEvents: (groupId: string) => Promise<void>;
   rsvpToEvent: (eventId: string, response: 'yes' | 'no' | 'maybe') => Promise<void>;
   clearError: () => void;
@@ -603,6 +604,59 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
       set({ isLoading: false });
     } catch (error) {
       console.error('Error creating group event:', getReadableError(error));
+      set({ 
+        error: getReadableError(error), 
+        isLoading: false 
+      });
+    }
+  },
+
+  updateGroupEvent: async (eventData: Partial<GroupEvent>) => {
+    const { user, isReady } = useAuthStore.getState();
+    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    
+    set({ isLoading: true, error: null });
+    try {
+      if (isSupabaseConfigured() && supabase) {
+        const updatedEvent = {
+          title: eventData.title || 'Updated Event',
+          description: eventData.description || '',
+          location: eventData.location,
+          start_time: eventData.startTime || Date.now(),
+          end_time: eventData.endTime,
+        };
+        
+        const { data: updatedEventData, error: updateError } = await supabase
+          .from('group_events')
+          .update(updatedEvent)
+          .eq('id', eventData.id)
+          .select()
+          .single();
+          
+        if (updateError) throw updateError;
+        
+        // Log the action
+        try {
+          await supabase.rpc('log_user_action', {
+            user_id: user.id,
+            action: 'update_group_event',
+            details: { group_id: eventData.groupId, event_id: eventData.id, event_title: updatedEvent.title }
+          });
+        } catch (logError) {
+          console.warn('Failed to log update_group_event action:', getReadableError(logError));
+        }
+        
+        // Refresh events
+        if (eventData.groupId) {
+          await get().fetchGroupEvents(eventData.groupId);
+        }
+      } else {
+        throw new Error('Supabase is not configured');
+      }
+      
+      set({ isLoading: false });
+    } catch (error) {
+      console.error('Error updating group event:', getReadableError(error));
       set({ 
         error: getReadableError(error), 
         isLoading: false 

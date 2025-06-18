@@ -53,6 +53,8 @@ export default function GroupsScreen() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
       await joinGroup(groupId);
+      // Refresh the groups list after joining
+      await fetchGroups();
     } catch (error) {
       Alert.alert('Error', error instanceof Error ? error.message : 'Failed to join group');
     }
@@ -75,6 +77,8 @@ export default function GroupsScreen() {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
               }
               await leaveGroup(groupId);
+              // Refresh the groups list after leaving
+              await fetchGroups();
             } catch (error) {
               Alert.alert('Error', error instanceof Error ? error.message : 'Failed to leave group');
             }
@@ -111,6 +115,8 @@ export default function GroupsScreen() {
       setGroupDescription('');
       setGroupCategory('');
       setGroupIndustry('');
+      // Refresh the groups list after creating a new group
+      await fetchGroups();
     } catch (error) {
       Alert.alert('Error', error instanceof Error ? error.message : 'Failed to create group');
     } finally {

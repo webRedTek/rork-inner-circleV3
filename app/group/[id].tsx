@@ -34,6 +34,7 @@ export default function GroupDetailsScreen() {
     fetchGroupDetails, 
     sendGroupMessage, 
     createGroupEvent, 
+    updateGroupEvent, 
     rsvpToEvent, 
     isLoading, 
     error 
@@ -42,6 +43,7 @@ export default function GroupDetailsScreen() {
   const [activeTab, setActiveTab] = useState<'info' | 'messages' | 'events'>('info');
   const [messageText, setMessageText] = useState('');
   const [showEventModal, setShowEventModal] = useState(false);
+  const [showEditEventModal, setShowEditEventModal] = useState(false);
   const [eventTitle, setEventTitle] = useState('');
   const [eventDescription, setEventDescription] = useState('');
   const [eventLocation, setEventLocation] = useState('');
@@ -50,6 +52,8 @@ export default function GroupDetailsScreen() {
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
   const [createEventLoading, setCreateEventLoading] = useState(false);
+  const [editEventLoading, setEditEventLoading] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<any>(null);
   
   useEffect(() => {
     if (id && typeof id === 'string') {
@@ -92,7 +96,9 @@ export default function GroupDetailsScreen() {
     // As a fallback, show event details for manual addition
     Alert.alert(
       'Add to Calendar',
-      `Event: ${event.title}\nDate: ${new Date(event.startTime).toLocaleString()}\nLocation: ${event.location || 'Not specified'}`,
+      `Event: ${event.title}
+Date: ${new Date(event.startTime).toLocaleString()}
+Location: ${event.location || 'Not specified'}`,
       [
         { text: 'OK', style: 'cancel' }
       ]
@@ -132,6 +138,55 @@ export default function GroupDetailsScreen() {
     } finally {
       setCreateEventLoading(false);
     }
+  };
+  
+  const handleEditEvent = async () => {
+    if (!eventTitle.trim()) {
+      Alert.alert('Error', 'Please enter an event title');
+      return;
+    }
+    
+    if (!selectedEvent) return;
+    
+    setEditEventLoading(true);
+    
+    try {
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      
+      await updateGroupEvent({
+        id: selectedEvent.id,
+        groupId: id as string,
+        title: eventTitle,
+        description: eventDescription,
+        location: eventLocation,
+        startTime: eventStartTime.getTime(),
+        endTime: eventEndTime.getTime()
+      });
+      
+      setShowEditEventModal(false);
+      setEventTitle('');
+      setEventDescription('');
+      setEventLocation('');
+      setEventStartTime(new Date());
+      setEventEndTime(new Date());
+      setSelectedEvent(null);
+    } catch (err) {
+      Alert.alert('Error', 'Failed to update event');
+    } finally {
+      setEditEventLoading(false);
+    }
+  };
+  
+  const openEditEventModal = (event: any) => {
+    setSelectedEvent(event);
+    setEventTitle(event.title);
+    setEventDescription(event.description);
+    setEventLocation(event.location || '');
+    setEventStartTime(new Date(event.startTime));
+    setEventEndTime(event.endTime ? new Date(event.endTime) : new Date(event.startTime));
+    setShowEditEventModal(true);
   };
   
   const onStartTimeChange = (event: any, selectedDate?: Date) => {
@@ -329,6 +384,15 @@ export default function GroupDetailsScreen() {
                       size="small"
                       style={styles.calendarButton}
                     />
+                    {isAdmin && (
+                      <Button
+                        title="Edit Event"
+                        onPress={() => openEditEventModal(event)}
+                        variant="outline"
+                        size="small"
+                        style={styles.editEventButton}
+                      />
+                    )}
                   </View>
                 );
               })
@@ -426,6 +490,100 @@ export default function GroupDetailsScreen() {
                 variant="primary"
                 size="large"
                 loading={createEventLoading}
+                style={styles.createEventModalButton}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+      
+      <Modal
+        visible={showEditEventModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowEditEventModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Edit Group Event</Text>
+              <TouchableOpacity 
+                onPress={() => setShowEditEventModal(false)}
+                style={styles.closeButton}
+              >
+                <X size={24} color={Colors.dark.text} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.modalContent}>
+              <TextInput
+                style={styles.input}
+                placeholder="Event Title"
+                placeholderTextColor={Colors.dark.textSecondary}
+                value={eventTitle}
+                onChangeText={setEventTitle}
+              />
+              
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                placeholder="Event Description"
+                placeholderTextColor={Colors.dark.textSecondary}
+                value={eventDescription}
+                onChangeText={setEventDescription}
+                multiline
+                numberOfLines={4}
+              />
+              
+              <TextInput
+                style={styles.input}
+                placeholder="Location (optional)"
+                placeholderTextColor={Colors.dark.textSecondary}
+                value={eventLocation}
+                onChangeText={setEventLocation}
+              />
+              
+              <TouchableOpacity
+                style={styles.dateButton}
+                onPress={() => setShowStartTimePicker(true)}
+              >
+                <Text style={styles.dateButtonText}>
+                  Start Time: {eventStartTime.toLocaleString()}
+                </Text>
+              </TouchableOpacity>
+              
+              {showStartTimePicker && (
+                <DateTimePicker
+                  value={eventStartTime}
+                  mode="datetime"
+                  display="default"
+                  onChange={onStartTimeChange}
+                />
+              )}
+              
+              <TouchableOpacity
+                style={styles.dateButton}
+                onPress={() => setShowEndTimePicker(true)}
+              >
+                <Text style={styles.dateButtonText}>
+                  End Time: {eventEndTime.toLocaleString()}
+                </Text>
+              </TouchableOpacity>
+              
+              {showEndTimePicker && (
+                <DateTimePicker
+                  value={eventEndTime}
+                  mode="datetime"
+                  display="default"
+                  onChange={onEndTimeChange}
+                />
+              )}
+              
+              <Button
+                title="Update Event"
+                onPress={handleEditEvent}
+                variant="primary"
+                size="large"
+                loading={editEventLoading}
                 style={styles.createEventModalButton}
               />
             </View>
@@ -659,6 +817,10 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
   },
   calendarButton: {
+    width: '100%',
+    marginTop: 8,
+  },
+  editEventButton: {
     width: '100%',
     marginTop: 8,
   },
