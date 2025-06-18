@@ -145,6 +145,7 @@ export const useMatchesStore = create<MatchesState>()(
             const { cachedMatches } = get();
             const batchToShow = cachedMatches.slice(0, get().batchSize);
             const remainingCache = cachedMatches.slice(get().batchSize);
+            console.log('[MatchesStore] Using cached matches', { batchToShow: batchToShow.length, remainingCache: remainingCache.length });
             set({ 
               potentialMatches: batchToShow, 
               cachedMatches: remainingCache, 
@@ -235,9 +236,10 @@ export const useMatchesStore = create<MatchesState>()(
                 }
               });
             } catch (logError) {
-              console.warn('Failed to log fetch_potential_matches action:', getReadableError(logError));
+              console.warn('[MatchesStore] Failed to log fetch_potential_matches action:', getReadableError(logError));
             }
             
+            console.log('[MatchesStore] Fetched potential matches', { total: sortedMatches.length, batchToShow: batchToShow.length, cached: remainingCache.length });
             set({ 
               potentialMatches: batchToShow, 
               cachedMatches: remainingCache, 
@@ -247,7 +249,7 @@ export const useMatchesStore = create<MatchesState>()(
             throw new Error('Supabase is not configured');
           }
         } catch (error) {
-          console.error('Error fetching potential matches:', getReadableError(error));
+          console.error('[MatchesStore] Error fetching potential matches:', getReadableError(error));
           set({ 
             error: tierSettings?.global_discovery ? "No global matches found. Try adjusting your preferences." : "No matches found in your area. Try increasing your distance.",
             isLoading: false 
@@ -334,9 +336,10 @@ export const useMatchesStore = create<MatchesState>()(
                 }
               });
             } catch (logError) {
-              console.warn('Failed to log prefetch_potential_matches action:', getReadableError(logError));
+              console.warn('[MatchesStore] Failed to log prefetch_potential_matches action:', getReadableError(logError));
             }
             
+            console.log('[MatchesStore] Prefetched additional matches', { count: sortedMatches.length });
             set({ 
               cachedMatches: [...get().cachedMatches, ...sortedMatches].slice(0, 50), 
               isPrefetching: false 
@@ -345,7 +348,7 @@ export const useMatchesStore = create<MatchesState>()(
             throw new Error('Supabase is not configured');
           }
         } catch (error) {
-          console.error('Error prefetching potential matches:', getReadableError(error));
+          console.error('[MatchesStore] Error prefetching potential matches:', getReadableError(error));
           set({ 
             error: tierSettings?.global_discovery ? "No additional global matches found." : "No additional matches found in your area.",
             isPrefetching: false 
@@ -391,6 +394,7 @@ export const useMatchesStore = create<MatchesState>()(
             newCachedMatches = newCachedMatches.slice(additionalMatches.length);
           }
           
+          console.log('[MatchesStore] Liked user', { userId, remainingMatches: updatedPotentialMatches.length });
           set({ 
             potentialMatches: updatedPotentialMatches, 
             cachedMatches: newCachedMatches, 
@@ -400,7 +404,7 @@ export const useMatchesStore = create<MatchesState>()(
           // Return null for now - match will be processed in batch
           return null;
         } catch (error) {
-          console.error('Error liking user:', getReadableError(error));
+          console.error('[MatchesStore] Error liking user:', getReadableError(error));
           set({ 
             error: getReadableError(error), 
             isLoading: false 
@@ -439,13 +443,14 @@ export const useMatchesStore = create<MatchesState>()(
             newCachedMatches = newCachedMatches.slice(additionalMatches.length);
           }
           
+          console.log('[MatchesStore] Passed user', { userId, remainingMatches: updatedPotentialMatches.length });
           set({ 
             potentialMatches: updatedPotentialMatches, 
             cachedMatches: newCachedMatches, 
             isLoading: false 
           });
         } catch (error) {
-          console.error('Error passing user:', getReadableError(error));
+          console.error('[MatchesStore] Error passing user:', getReadableError(error));
           set({ 
             error: getReadableError(error), 
             isLoading: false 
@@ -469,12 +474,14 @@ export const useMatchesStore = create<MatchesState>()(
             swipeQueue: [...state.swipeQueue, swipeAction]
           }));
           
+          console.log('[MatchesStore] Queued swipe', { userId, direction, queueLength: get().swipeQueue.length });
+          
           // If the queue is long enough, process it immediately
           if (get().swipeQueue.length >= 5) {
             await get().processSwipeBatch();
           }
         } catch (error) {
-          console.error('Error queuing swipe:', getReadableError(error));
+          console.error('[MatchesStore] Error queuing swipe:', getReadableError(error));
           throw error;
         }
       },
@@ -491,6 +498,8 @@ export const useMatchesStore = create<MatchesState>()(
             set({ isLoading: false });
             return;
           }
+          
+          console.log('[MatchesStore] Processing swipe batch', { queueLength: swipeQueue.length });
           
           if (isSupabaseConfigured() && supabase) {
             // Apply rate limiting
@@ -510,7 +519,7 @@ export const useMatchesStore = create<MatchesState>()(
                 .single();
 
               if (likeError && likeError.code !== 'PGRST116') {
-                console.error('Error checking for existing like:', likeError);
+                console.error('[MatchesStore] Error checking for existing like:', likeError);
                 continue;
               }
 
@@ -528,7 +537,7 @@ export const useMatchesStore = create<MatchesState>()(
                   .single();
 
                 if (matchError) {
-                  console.error('Error creating match:', matchError);
+                  console.error('[MatchesStore] Error creating match:', matchError);
                   continue;
                 }
 
@@ -547,7 +556,7 @@ export const useMatchesStore = create<MatchesState>()(
                 });
 
               if (swipeError) {
-                console.error('Error recording swipe:', swipeError);
+                console.error('[MatchesStore] Error recording swipe:', swipeError);
               }
             }
 
@@ -563,7 +572,7 @@ export const useMatchesStore = create<MatchesState>()(
                 });
 
               if (swipeError) {
-                console.error('Error recording swipe:', swipeError);
+                console.error('[MatchesStore] Error recording swipe:', swipeError);
               }
             }
 
@@ -586,7 +595,7 @@ export const useMatchesStore = create<MatchesState>()(
                 set({ matchLimitReached: true });
               }
               
-              console.log(`Batch processing created ${typedMatches.length} new matches`);
+              console.log(`[MatchesStore] Batch processing created ${typedMatches.length} new matches`);
             }
             
             // Clear the swipe queue
@@ -595,7 +604,7 @@ export const useMatchesStore = create<MatchesState>()(
             throw new Error('Supabase is not configured');
           }
         } catch (error) {
-          console.error('Error processing swipe batch:', getReadableError(error));
+          console.error('[MatchesStore] Error processing swipe batch:', getReadableError(error));
           set({ 
             error: getReadableError(error), 
             isLoading: false 
@@ -633,15 +642,16 @@ export const useMatchesStore = create<MatchesState>()(
                 details: { count: typedMatches.length }
               });
             } catch (logError) {
-              console.warn('Failed to log view_matches action:', getReadableError(logError));
+              console.warn('[MatchesStore] Failed to log view_matches action:', getReadableError(logError));
             }
             
+            console.log('[MatchesStore] Fetched user matches', { count: typedMatches.length });
             set({ matches: typedMatches, isLoading: false });
           } else {
             throw new Error('Supabase is not configured');
           }
         } catch (error) {
-          console.error('Error getting matches:', getReadableError(error));
+          console.error('[MatchesStore] Error getting matches:', getReadableError(error));
           set({ 
             error: getReadableError(error), 
             isLoading: false 
@@ -653,6 +663,7 @@ export const useMatchesStore = create<MatchesState>()(
         const { user, isReady } = useAuthStore.getState();
         if (!isReady || !user) return; // Silent fail if not ready or not authenticated
         
+        console.log('[MatchesStore] Refreshing candidates - clearing current matches');
         set({ potentialMatches: [], cachedMatches: [] });
         await get().fetchPotentialMatches(50, true);
       },
@@ -684,19 +695,20 @@ export const useMatchesStore = create<MatchesState>()(
               .gte('timestamp', todayTimestamp);
               
             if (error) {
-              console.error('Error checking swipe limits:', error);
+              console.error('[MatchesStore] Error checking swipe limits:', error);
               return true; // Allow swipe in case of error to not block user
             }
             
             const todaySwipes = likesData ? likesData.length : 0;
             const canSwipe = todaySwipes < dailySwipeLimit;
             set({ swipeLimitReached: !canSwipe });
+            console.log('[MatchesStore] Checked swipe limits', { todaySwipes, dailyLimit: dailySwipeLimit, canSwipe });
             return canSwipe;
           } else {
             throw new Error('Supabase is not configured');
           }
         } catch (error) {
-          console.error('Error checking swipe limits:', error);
+          console.error('[MatchesStore] Error checking swipe limits:', error);
           return true; // Allow swipe in case of error to not block user
         }
       },
@@ -724,11 +736,12 @@ export const useMatchesStore = create<MatchesState>()(
               .gte('timestamp', todayTimestamp);
               
             if (likesError) {
-              console.error('Error syncing swipe count:', likesError);
+              console.error('[MatchesStore] Error syncing swipe count:', likesError);
             } else {
               const todaySwipes = likesData ? likesData.length : 0;
               const swipeLimitReached = todaySwipes >= tierSettings.daily_swipe_limit;
               set({ swipeLimitReached });
+              console.log('[MatchesStore] Synced swipe count', { todaySwipes, limit: tierSettings.daily_swipe_limit });
             }
             
             // Sync match count
@@ -739,17 +752,18 @@ export const useMatchesStore = create<MatchesState>()(
               .gte('created_at', todayTimestamp);
               
             if (matchesError) {
-              console.error('Error syncing match count:', matchesError);
+              console.error('[MatchesStore] Error syncing match count:', matchesError);
             } else {
               const todayMatches = matchesData ? matchesData.length : 0;
               const matchLimitReached = todayMatches >= tierSettings.daily_match_limit;
               set({ matchLimitReached });
+              console.log('[MatchesStore] Synced match count', { todayMatches, limit: tierSettings.daily_match_limit });
             }
           } else {
             throw new Error('Supabase is not configured');
           }
         } catch (error) {
-          console.error('Error syncing usage counters:', error);
+          console.error('[MatchesStore] Error syncing usage counters:', error);
         }
       }
     }),
@@ -784,7 +798,7 @@ let isBatchProcessingActive = false;
 
 export const startBatchProcessing = () => {
   if (isBatchProcessingActive || batchProcessingIntervalId !== null) {
-    console.log('Batch processing already active');
+    console.log('[MatchesStore] Batch processing already active');
     return;
   }
   
@@ -795,23 +809,23 @@ export const startBatchProcessing = () => {
     
     const { swipeQueue } = useMatchesStore.getState();
     if (swipeQueue.length >= 5) {
-      console.log(`Periodic batch processing: ${swipeQueue.length} swipes in queue`);
+      console.log(`[MatchesStore] Periodic batch processing: ${swipeQueue.length} swipes in queue`);
       await useMatchesStore.getState().processSwipeBatch();
     }
   }, intervalMs) as unknown as number;
   
   isBatchProcessingActive = true;
-  console.log('Batch swipe processing started');
+  console.log('[MatchesStore] Batch swipe processing started');
 };
 
 export const stopBatchProcessing = () => {
   if (!isBatchProcessingActive || batchProcessingIntervalId === null) {
-    console.log('Batch processing not active');
+    console.log('[MatchesStore] Batch processing not active');
     return;
   }
   
   clearInterval(batchProcessingIntervalId);
   batchProcessingIntervalId = null;
   isBatchProcessingActive = false;
-  console.log('Batch swipe processing stopped');
+  console.log('[MatchesStore] Batch swipe processing stopped');
 };

@@ -10,7 +10,7 @@ import {
   Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import Colors from '@/constants/colors';
 import { SwipeCards } from '@/components/SwipeCards';
 import { useMatchesStore, startBatchProcessing, stopBatchProcessing } from '@/store/matches-store';
@@ -60,6 +60,7 @@ export default function DiscoverScreen() {
 
   useEffect(() => {
     if (isReady && user) {
+      console.log('[Discover] Initial load - fetching potential matches', { userId: user.id });
       fetchPotentialMatches();
       startBatchProcessing();
       syncUsageCounters();
@@ -75,9 +76,21 @@ export default function DiscoverScreen() {
     };
   }, [isReady, user, fetchPotentialMatches, syncUsageCounters]);
   
+  // Add focus effect to refresh data when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      if (isReady && user) {
+        console.log('[Discover] Screen focused - refreshing potential matches', { userId: user.id, matchesCount: potentialMatches.length });
+        fetchPotentialMatches();
+        syncUsageCounters();
+      }
+    }, [isReady, user, fetchPotentialMatches, syncUsageCounters])
+  );
+  
   useEffect(() => {
     // Prefetch more profiles if we're running low
     if (potentialMatches.length <= 3 && !isPrefetching && !isLoading && user) {
+      console.log('[Discover] Running low on matches, prefetching more', { currentMatches: potentialMatches.length });
       prefetchNextBatch();
     }
   }, [potentialMatches.length, isPrefetching, isLoading, user, prefetchNextBatch]);
@@ -97,7 +110,7 @@ export default function DiscoverScreen() {
               .single();
             
             if (error) {
-              console.error('Error fetching matched user profile:', error);
+              console.error('[Discover] Error fetching matched user profile:', error);
               return;
             }
             
@@ -112,7 +125,7 @@ export default function DiscoverScreen() {
             }
           }
         } catch (err) {
-          console.error('Error fetching matched user profile:', err);
+          console.error('[Discover] Error fetching matched user profile:', err);
         } finally {
           clearNewMatch(); // Clear the new match after processing
         }
@@ -128,6 +141,10 @@ export default function DiscoverScreen() {
       setShowLimitModal(true);
     }
   }, [swipeLimitReached, matchLimitReached]);
+  
+  useEffect(() => {
+    console.log('[Discover] Potential matches updated', { count: potentialMatches.length, isLoading, isPrefetching, error: error || 'none' });
+  }, [potentialMatches, isLoading, isPrefetching, error]);
   
   const handleSwipeRight = async (profile: UserProfile) => {
     if (Platform.OS !== 'web') {
@@ -184,6 +201,7 @@ export default function DiscoverScreen() {
   };
   
   const handleRefresh = () => {
+    console.log('[Discover] Manual refresh triggered');
     refreshCandidates();
   };
   

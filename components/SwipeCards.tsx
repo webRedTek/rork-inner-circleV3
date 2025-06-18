@@ -69,6 +69,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   useEffect(() => {
     // Reset current index when profiles array changes significantly
     if (profiles.length > 0 && currentIndex >= profiles.length) {
+      console.log('[SwipeCards] Resetting currentIndex due to profiles change', { oldIndex: currentIndex, profilesCount: profiles.length });
       setCurrentIndex(0);
     }
   }, [profiles.length]);
@@ -76,9 +77,14 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   useEffect(() => {
     // Trigger prefetch if we're running low on profiles
     if (profiles.length - currentIndex <= prefetchThreshold) {
+      console.log('[SwipeCards] Triggering prefetch due to low profiles', { currentIndex, profilesCount: profiles.length, threshold: prefetchThreshold });
       prefetchNextBatch();
     }
   }, [currentIndex, profiles.length]);
+  
+  useEffect(() => {
+    console.log('[SwipeCards] Profiles or index updated', { currentIndex, profilesCount: profiles.length });
+  }, [profiles, currentIndex]);
   
   const panResponder = useRef(
     PanResponder.create({
@@ -118,6 +124,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     setCurrentIndex(prevIndex => {
       const nextIndex = prevIndex + 1;
       if (nextIndex >= profiles.length && onEmpty) {
+        console.log('[SwipeCards] Reached end of profiles, triggering onEmpty', { nextIndex, profilesCount: profiles.length });
         onEmpty();
       }
       return nextIndex;
@@ -139,7 +146,10 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   };
   
   const renderCards = () => {
+    console.log('[SwipeCards] Rendering cards', { currentIndex, profilesCount: profiles.length });
+    
     if (currentIndex >= profiles.length) {
+      console.log('[SwipeCards] Showing empty state');
       return (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No more entrepreneurs to show</Text>
@@ -149,9 +159,13 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     }
     
     return profiles.map((item, index) => {
-      if (index < currentIndex) return null;
+      if (index < currentIndex) {
+        console.log('[SwipeCards] Skipping rendered profile', { index, id: item.id });
+        return null;
+      }
       
       if (index === currentIndex) {
+        console.log('[SwipeCards] Rendering current card', { index, id: item.id, name: item.name });
         return (
           <Animated.View
             key={item.id}
@@ -184,6 +198,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       
       // Next card in stack
       if (index === currentIndex + 1) {
+        console.log('[SwipeCards] Rendering next card', { index, id: item.id, name: item.name });
         return (
           <Animated.View
             key={item.id}
@@ -203,6 +218,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       
       // Other cards in stack (show max 3)
       if (index < currentIndex + 3) {
+        console.log('[SwipeCards] Rendering background card', { index, id: item.id, name: item.name });
         return (
           <Animated.View
             key={item.id}
@@ -220,6 +236,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
         );
       }
       
+      console.log('[SwipeCards] Skipping non-visible card', { index, id: item.id });
       return null;
     }).reverse();
   };

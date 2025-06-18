@@ -14,6 +14,8 @@ const { width } = Dimensions.get('window');
 const CARD_WIDTH = width * 0.9;
 
 export const EntrepreneurCard: React.FC<EntrepreneurCardProps> = ({ profile, onProfilePress }) => {
+  console.log('[EntrepreneurCard] Rendering card for', { id: profile.id, name: profile.name });
+  
   return (
     <View style={styles.cardContainer}>
       <Image
