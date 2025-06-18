@@ -19,6 +19,7 @@ export default {
     success: '#2DCE89',
     warning: '#FB6340',
     error: '#F5365C',
+    info: '#11CDEF', // Added missing info color
     overlay: 'rgba(0, 0, 0, 0.7)',
   },
   dark: {
@@ -38,6 +39,7 @@ export default {
     success: '#2DCE89',
     warning: '#FB6340',
     error: '#F5365C',
+    info: '#11CDEF', // Added missing info color
     overlay: 'rgba(0, 0, 0, 0.7)',
   },
 };

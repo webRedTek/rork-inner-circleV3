@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
     elevation: 3,
     ...Platform.select({
       web: {
-        maxWidth: '90vw',
+        maxWidth: 400, // Fixed value instead of '90vw'
       },
     }),
   },

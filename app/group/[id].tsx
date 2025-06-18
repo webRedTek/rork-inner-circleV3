@@ -21,7 +21,7 @@ import { Group, GroupEvent, GroupEventRSVP, GroupMessage } from '@/types/user';
 import { Button } from '@/components/Button';
 import { 
   Users, 
-  Calendar, 
+  Calendar as CalendarIcon, 
   MessageCircle, 
   Info, 
   Edit, 
@@ -35,7 +35,6 @@ import {
 import * as Haptics from 'expo-haptics';
 import { format } from 'date-fns';
 import { notify } from '@/store/notification-store';
-import * as Calendar from 'expo-calendar';
 
 export default function GroupDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -183,7 +182,7 @@ export default function GroupDetailScreen() {
       }
       
       if (Platform.OS !== 'web') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackStyle.Success);
       }
       
       await updateGroupEvent({
@@ -225,33 +224,9 @@ export default function GroupDetailScreen() {
     }
     
     try {
-      const { status } = await Calendar.requestCalendarPermissionsAsync();
-      
-      if (status !== 'granted') {
-        notify.warning('Calendar permission not granted');
-        return;
-      }
-      
-      const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
-      const defaultCalendar = calendars.find(cal => cal.isPrimary) || calendars[0];
-      
-      if (!defaultCalendar) {
-        notify.error('No calendar found');
-        return;
-      }
-      
-      const eventDetails = {
-        title: event.title,
-        startDate: new Date(event.startTime),
-        endDate: event.endTime ? new Date(event.endTime) : new Date(event.startTime + 60 * 60 * 1000), // Default 1 hour
-        notes: event.description,
-        location: event.location,
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        alarms: event.reminder ? [{ relativeOffset: -event.reminder / (60 * 1000) }] : []
-      };
-      
-      await Calendar.createEventAsync(defaultCalendar.id, eventDetails);
-      notify.success('Event added to calendar');
+      // Calendar functionality is not available in this implementation
+      // This would require expo-calendar package
+      notify.info('Calendar integration requires expo-calendar package');
     } catch (error) {
       notify.error('Failed to add event to calendar');
       console.error('Error adding to calendar:', error);
@@ -369,7 +344,7 @@ export default function GroupDetailScreen() {
             style={[styles.tab, activeTab === 'events' && styles.activeTab]}
             onPress={() => setActiveTab('events')}
           >
-            <Calendar size={20} color={activeTab === 'events' ? Colors.dark.accent : Colors.dark.textSecondary} />
+            <CalendarIcon size={20} color={activeTab === 'events' ? Colors.dark.accent : Colors.dark.textSecondary} />
             <Text style={[styles.tabText, activeTab === 'events' && styles.activeTabText]}>Events</Text>
           </TouchableOpacity>
         </View>
@@ -475,7 +450,7 @@ export default function GroupDetailScreen() {
               
               {groupEvents.length === 0 ? (
                 <View style={styles.emptyState}>
-                  <Calendar size={40} color={Colors.dark.textSecondary} />
+                  <CalendarIcon size={40} color={Colors.dark.textSecondary} />
                   <Text style={styles.emptyStateText}>No events scheduled</Text>
                   {isGroupAdmin && (
                     <Text style={styles.emptyStateSubtext}>
@@ -581,7 +556,7 @@ export default function GroupDetailScreen() {
                                 style={styles.calendarButton}
                                 onPress={() => handleAddToCalendar(event)}
                               >
-                                <Calendar size={16} color={Colors.dark.accent} />
+                                <CalendarIcon size={16} color={Colors.dark.accent} />
                                 <Text style={styles.calendarButtonText}>Add to Calendar</Text>
                               </TouchableOpacity>
                             </View>

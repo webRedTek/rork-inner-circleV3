@@ -1,4 +1,4 @@
-import { Notification, NotificationType } from '@/types/notifications';
+import { Notification } from '@/types/notifications';
 
 // Simple utility to log notifications for analytics (placeholder for future implementation)
 export const logNotification = (notification: Omit<Notification, 'id' | 'timestamp'>) => {

@@ -92,7 +92,7 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     ...Platform.select({
       web: {
-        maxWidth: '90vw',
+        maxWidth: 400, // Fixed value instead of '90vw'
       },
     }),
   },

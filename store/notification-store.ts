@@ -90,7 +90,7 @@ export const notify = {
   },
   
   // For system-wide announcements
-  banner: (message: string, options: Partial<Omit<Notification, 'id' | 'timestamp' | 'type' | 'message'>> = {}) => {
+  banner: (message: string, options: Partial<Omit<Notification, 'id' | 'timestamp' | 'message'>> = {}) => {
     useNotificationStore.getState().addNotification({
       type: options.type || 'info',
       message,
