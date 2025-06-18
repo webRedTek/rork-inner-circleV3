@@ -4,6 +4,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { Match, UserProfile, MembershipTier } from '@/types/user';
 import { isSupabaseConfigured, supabase, convertToCamelCase, convertToSnakeCase, SwipeAction } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
+import { notifyError } from '@/utils/notify';
 
 // Helper function to extract readable error message from Supabase error
 const getReadableError = (error: any): string => {
@@ -237,6 +238,7 @@ export const useMatchesStore = create<MatchesState>()(
               });
             } catch (logError) {
               console.warn('[MatchesStore] Failed to log fetch_potential_matches action:', getReadableError(logError));
+              notifyError('Failed to log fetch action: ' + getReadableError(logError));
             }
             
             console.log('[MatchesStore] Fetched potential matches', { total: sortedMatches.length, batchToShow: batchToShow.length, cached: remainingCache.length });
@@ -250,6 +252,7 @@ export const useMatchesStore = create<MatchesState>()(
           }
         } catch (error) {
           console.error('[MatchesStore] Error fetching potential matches:', getReadableError(error));
+          notifyError('Error fetching matches: ' + getReadableError(error));
           set({ 
             error: tierSettings?.global_discovery ? "No global matches found. Try adjusting your preferences." : "No matches found in your area. Try increasing your distance.",
             isLoading: false 
@@ -337,6 +340,7 @@ export const useMatchesStore = create<MatchesState>()(
               });
             } catch (logError) {
               console.warn('[MatchesStore] Failed to log prefetch_potential_matches action:', getReadableError(logError));
+              notifyError('Failed to log prefetch action: ' + getReadableError(logError));
             }
             
             console.log('[MatchesStore] Prefetched additional matches', { count: sortedMatches.length });
@@ -349,6 +353,7 @@ export const useMatchesStore = create<MatchesState>()(
           }
         } catch (error) {
           console.error('[MatchesStore] Error prefetching potential matches:', getReadableError(error));
+          notifyError('Error prefetching matches: ' + getReadableError(error));
           set({ 
             error: tierSettings?.global_discovery ? "No additional global matches found." : "No additional matches found in your area.",
             isPrefetching: false 
@@ -368,12 +373,14 @@ export const useMatchesStore = create<MatchesState>()(
           const canSwipe = await get().checkSwipeLimits();
           if (!canSwipe) {
             set({ swipeLimitReached: true, isLoading: false });
+            notifyError('Daily swipe limit reached');
             throw new Error('Daily swipe limit reached');
           }
 
           // Check match limits
           if (get().matchLimitReached) {
             set({ isLoading: false });
+            notifyError('Daily match limit reached');
             throw new Error('Daily match limit reached');
           }
           
@@ -405,6 +412,7 @@ export const useMatchesStore = create<MatchesState>()(
           return null;
         } catch (error) {
           console.error('[MatchesStore] Error liking user:', getReadableError(error));
+          notifyError('Error liking user: ' + getReadableError(error));
           set({ 
             error: getReadableError(error), 
             isLoading: false 
@@ -423,6 +431,7 @@ export const useMatchesStore = create<MatchesState>()(
           const canSwipe = await get().checkSwipeLimits();
           if (!canSwipe) {
             set({ swipeLimitReached: true, isLoading: false });
+            notifyError('Daily swipe limit reached');
             throw new Error('Daily swipe limit reached');
           }
           
@@ -451,6 +460,7 @@ export const useMatchesStore = create<MatchesState>()(
           });
         } catch (error) {
           console.error('[MatchesStore] Error passing user:', getReadableError(error));
+          notifyError('Error passing user: ' + getReadableError(error));
           set({ 
             error: getReadableError(error), 
             isLoading: false 
@@ -482,6 +492,7 @@ export const useMatchesStore = create<MatchesState>()(
           }
         } catch (error) {
           console.error('[MatchesStore] Error queuing swipe:', getReadableError(error));
+          notifyError('Error queuing swipe: ' + getReadableError(error));
           throw error;
         }
       },
@@ -519,7 +530,8 @@ export const useMatchesStore = create<MatchesState>()(
                 .single();
 
               if (likeError && likeError.code !== 'PGRST116') {
-                console.error('[MatchesStore] Error checking for existing like:', likeError);
+                console.error('[MatchesStore] Error checking for existing like:', getReadableError(likeError));
+                notifyError('Error checking for existing like: ' + getReadableError(likeError));
                 continue;
               }
 
@@ -537,7 +549,8 @@ export const useMatchesStore = create<MatchesState>()(
                   .single();
 
                 if (matchError) {
-                  console.error('[MatchesStore] Error creating match:', matchError);
+                  console.error('[MatchesStore] Error creating match:', getReadableError(matchError));
+                  notifyError('Error creating match: ' + getReadableError(matchError));
                   continue;
                 }
 
@@ -556,7 +569,8 @@ export const useMatchesStore = create<MatchesState>()(
                 });
 
               if (swipeError) {
-                console.error('[MatchesStore] Error recording swipe:', swipeError);
+                console.error('[MatchesStore] Error recording swipe:', getReadableError(swipeError));
+                notifyError('Error recording swipe: ' + getReadableError(swipeError));
               }
             }
 
@@ -572,7 +586,8 @@ export const useMatchesStore = create<MatchesState>()(
                 });
 
               if (swipeError) {
-                console.error('[MatchesStore] Error recording swipe:', swipeError);
+                console.error('[MatchesStore] Error recording swipe:', getReadableError(swipeError));
+                notifyError('Error recording swipe: ' + getReadableError(swipeError));
               }
             }
 
@@ -605,6 +620,7 @@ export const useMatchesStore = create<MatchesState>()(
           }
         } catch (error) {
           console.error('[MatchesStore] Error processing swipe batch:', getReadableError(error));
+          notifyError('Error processing swipe batch: ' + getReadableError(error));
           set({ 
             error: getReadableError(error), 
             isLoading: false 
@@ -643,6 +659,7 @@ export const useMatchesStore = create<MatchesState>()(
               });
             } catch (logError) {
               console.warn('[MatchesStore] Failed to log view_matches action:', getReadableError(logError));
+              notifyError('Failed to log view matches action: ' + getReadableError(logError));
             }
             
             console.log('[MatchesStore] Fetched user matches', { count: typedMatches.length });
@@ -652,6 +669,7 @@ export const useMatchesStore = create<MatchesState>()(
           }
         } catch (error) {
           console.error('[MatchesStore] Error getting matches:', getReadableError(error));
+          notifyError('Error getting matches: ' + getReadableError(error));
           set({ 
             error: getReadableError(error), 
             isLoading: false 
@@ -695,7 +713,8 @@ export const useMatchesStore = create<MatchesState>()(
               .gte('timestamp', todayTimestamp);
               
             if (error) {
-              console.error('[MatchesStore] Error checking swipe limits:', error);
+              console.error('[MatchesStore] Error checking swipe limits:', getReadableError(error));
+              notifyError('Error checking swipe limits: ' + getReadableError(error));
               return true; // Allow swipe in case of error to not block user
             }
             
@@ -708,7 +727,8 @@ export const useMatchesStore = create<MatchesState>()(
             throw new Error('Supabase is not configured');
           }
         } catch (error) {
-          console.error('[MatchesStore] Error checking swipe limits:', error);
+          console.error('[MatchesStore] Error checking swipe limits:', getReadableError(error));
+          notifyError('Error checking swipe limits: ' + getReadableError(error));
           return true; // Allow swipe in case of error to not block user
         }
       },
@@ -736,7 +756,8 @@ export const useMatchesStore = create<MatchesState>()(
               .gte('timestamp', todayTimestamp);
               
             if (likesError) {
-              console.error('[MatchesStore] Error syncing swipe count:', likesError);
+              console.error('[MatchesStore] Error syncing swipe count:', getReadableError(likesError));
+              notifyError('Error syncing swipe count: ' + getReadableError(likesError));
             } else {
               const todaySwipes = likesData ? likesData.length : 0;
               const swipeLimitReached = todaySwipes >= tierSettings.daily_swipe_limit;
@@ -752,7 +773,8 @@ export const useMatchesStore = create<MatchesState>()(
               .gte('created_at', todayTimestamp);
               
             if (matchesError) {
-              console.error('[MatchesStore] Error syncing match count:', matchesError);
+              console.error('[MatchesStore] Error syncing match count:', getReadableError(matchesError));
+              notifyError('Error syncing match count: ' + getReadableError(matchesError));
             } else {
               const todayMatches = matchesData ? matchesData.length : 0;
               const matchLimitReached = todayMatches >= tierSettings.daily_match_limit;
@@ -763,7 +785,8 @@ export const useMatchesStore = create<MatchesState>()(
             throw new Error('Supabase is not configured');
           }
         } catch (error) {
-          console.error('[MatchesStore] Error syncing usage counters:', error);
+          console.error('[MatchesStore] Error syncing usage counters:', getReadableError(error));
+          notifyError('Error syncing usage counters: ' + getReadableError(error));
         }
       }
     }),
