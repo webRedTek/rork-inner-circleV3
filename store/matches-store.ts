@@ -165,30 +165,16 @@ export const useMatchesStore = create<MatchesState>()(
             // Apply rate limiting
             await rateLimitedQuery();
             
-            if (isGlobalDiscovery) {
-              // For global discovery, query users directly based on matching criteria
-              const { data, error } = await supabase
-                .from('users')
-                .select('*')
-                .neq('id', user.id);
-                
-              if (error) {
-                matchError = error;
-              } else {
-                potentialUsers = data || [];
-              }
+            // Get potential matches - don't filter by any criteria initially to ensure we get all users
+            const { data, error } = await supabase
+              .from('users')
+              .select('*')
+              .neq('id', user.id);
+              
+            if (error) {
+              matchError = error;
             } else {
-              // Get potential matches based on location
-              const { data, error } = await supabase
-                .from('users')
-                .select('*')
-                .neq('id', user.id);
-                
-              if (error) {
-                matchError = error;
-              } else {
-                potentialUsers = data || [];
-              }
+              potentialUsers = data || [];
             }
             
             if (matchError) throw matchError;
@@ -217,9 +203,20 @@ export const useMatchesStore = create<MatchesState>()(
             const sortedMatches = isGlobalDiscovery 
               ? filteredMatches.sort(() => Math.random() - 0.5) // Randomize for global
               : filteredMatches.sort((a, b) => {
-                  const aDist = (a as any).distance || 0;
-                  const bDist = (b as any).distance || 0;
-                  return aDist - bDist;
+                  // If we have location data, sort by distance
+                  if (a.latitude && a.longitude && b.latitude && b.longitude && user.latitude && user.longitude) {
+                    const distA = calculateDistance(
+                      user.latitude, user.longitude, 
+                      a.latitude, a.longitude
+                    );
+                    const distB = calculateDistance(
+                      user.latitude, user.longitude, 
+                      b.latitude, b.longitude
+                    );
+                    return distA - distB;
+                  }
+                  // Otherwise sort by creation date (newest first)
+                  return (b.createdAt || 0) - (a.createdAt || 0);
                 });
             
             // Split into potential and cached
@@ -275,36 +272,15 @@ export const useMatchesStore = create<MatchesState>()(
             // Apply rate limiting
             await rateLimitedQuery();
             
-            let potentialUsers: any[] = [];
-            let matchError: any = null;
+            // Get potential matches - don't filter by any criteria initially to ensure we get all users
+            const { data, error } = await supabase
+              .from('users')
+              .select('*')
+              .neq('id', user.id);
+              
+            if (error) throw error;
             
-            if (isGlobalDiscovery) {
-              // For global discovery, query users directly based on matching criteria
-              const { data, error } = await supabase
-                .from('users')
-                .select('*')
-                .neq('id', user.id);
-                
-              if (error) {
-                matchError = error;
-              } else {
-                potentialUsers = data || [];
-              }
-            } else {
-              // Get potential matches based on location
-              const { data, error } = await supabase
-                .from('users')
-                .select('*')
-                .neq('id', user.id);
-                
-              if (error) {
-                matchError = error;
-              } else {
-                potentialUsers = data || [];
-              }
-            }
-            
-            if (matchError) throw matchError;
+            const potentialUsers = data || [];
             
             // Filter out users that have already been matched or passed
             const { data: existingLikes, error: likesError } = await supabase
@@ -330,9 +306,20 @@ export const useMatchesStore = create<MatchesState>()(
             const sortedMatches = isGlobalDiscovery 
               ? filteredMatches.sort(() => Math.random() - 0.5) // Randomize for global
               : filteredMatches.sort((a, b) => {
-                  const aDist = (a as any).distance || 0;
-                  const bDist = (b as any).distance || 0;
-                  return aDist - bDist;
+                  // If we have location data, sort by distance
+                  if (a.latitude && a.longitude && b.latitude && b.longitude && user.latitude && user.longitude) {
+                    const distA = calculateDistance(
+                      user.latitude, user.longitude, 
+                      a.latitude, a.longitude
+                    );
+                    const distB = calculateDistance(
+                      user.latitude, user.longitude, 
+                      b.latitude, b.longitude
+                    );
+                    return distA - distB;
+                  }
+                  // Otherwise sort by creation date (newest first)
+                  return (b.createdAt || 0) - (a.createdAt || 0);
                 });
             
             // Log the action
@@ -772,6 +759,24 @@ export const useMatchesStore = create<MatchesState>()(
     }
   )
 );
+
+// Helper function to calculate distance between two points using Haversine formula
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Radius of the earth in km
+  const dLat = deg2rad(lat2 - lat1);
+  const dLon = deg2rad(lon2 - lon1);
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2); 
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+  const distance = R * c; // Distance in km
+  return distance;
+}
+
+function deg2rad(deg: number): number {
+  return deg * (Math.PI/180);
+}
 
 // Set up interval for processing swipe batches periodically
 let batchProcessingIntervalId: number | null = null;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -57,6 +57,16 @@ export default function SignupScreen() {
   const skillOptions: Skill[] = ['Marketing', 'Sales', 'Development', 'UI/UX', 'Fundraising', 'Product Management', 'Operations', 'Finance', 'Legal', 'HR', 'Customer Service', 'Content Creation', 'Data Analysis', 'Strategy'];
   const availabilityOptions: AvailabilityLevel[] = ['Quick chats', 'Regular virtual coffee', 'Local meetups', 'Long-term mentorship/partnership'];
   
+  // Refs for scrolling to errors
+  const scrollViewRef = useRef<ScrollView>(null);
+  const nameInputRef = useRef<View>(null);
+  const emailInputRef = useRef<View>(null);
+  const passwordInputRef = useRef<View>(null);
+  const confirmPasswordInputRef = useRef<View>(null);
+  const bioInputRef = useRef<View>(null);
+  const zipCodeInputRef = useRef<View>(null);
+  const referralCodeInputRef = useRef<View>(null);
+  
   useEffect(() => {
     if (isAuthenticated) {
       router.replace('/(tabs)');
@@ -110,6 +120,33 @@ export default function SignupScreen() {
       clearError();
     }
   }, [error, clearError]);
+  
+  // Function to scroll to the first error
+  const scrollToFirstError = () => {
+    const errorRefs = [
+      { hasError: !!nameError, ref: nameInputRef },
+      { hasError: !!emailError, ref: emailInputRef },
+      { hasError: !!passwordError, ref: passwordInputRef },
+      { hasError: !!confirmPasswordError, ref: confirmPasswordInputRef },
+      { hasError: !!bioError, ref: bioInputRef },
+      { hasError: !!zipCodeError, ref: zipCodeInputRef },
+      { hasError: !!referralCodeError, ref: referralCodeInputRef }
+    ];
+    
+    for (const { hasError, ref } of errorRefs) {
+      if (hasError && ref.current) {
+        ref.current.measureLayout(
+          // @ts-ignore - This is a valid usage but TypeScript doesn't recognize it
+          scrollViewRef.current,
+          (_x: number, y: number) => {
+            scrollViewRef.current?.scrollTo({ y: y - 50, animated: true });
+          },
+          () => console.log('Failed to measure layout')
+        );
+        break;
+      }
+    }
+  };
   
   const validateForm = () => {
     let isValid = true;
@@ -171,6 +208,11 @@ export default function SignupScreen() {
       // We'll validate referral code asynchronously in handleSignup
     }
     
+    if (!isValid) {
+      // Scroll to the first error
+      setTimeout(scrollToFirstError, 100);
+    }
+    
     return isValid;
   };
   
@@ -199,6 +241,7 @@ export default function SignupScreen() {
           if (!isValidCode) {
             setReferralCodeError('Invalid referral code. Please check and try again.');
             setLocalLoading(false);
+            scrollToFirstError();
             return;
           }
         }
@@ -246,6 +289,9 @@ export default function SignupScreen() {
         } else {
           setSignupError(errorMessage || 'Signup failed. Please check your network connection and try again.');
         }
+        
+        // Scroll to the top to show the error message
+        scrollViewRef.current?.scrollTo({ y: 0, animated: true });
       } finally {
         setLocalLoading(false);
       }
@@ -264,6 +310,7 @@ export default function SignupScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView 
+        ref={scrollViewRef}
         style={styles.scrollView}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
@@ -304,72 +351,82 @@ export default function SignupScreen() {
           
           <Text style={styles.sectionTitle}>Basic Information</Text>
           
-          <Input
-            label="Referral Code (Optional)"
-            value={referralCode}
-            onChangeText={(text) => {
-              setReferralCode(text);
-              setReferralCodeError('');
-            }}
-            placeholder="Enter referral code"
-            autoCapitalize="none"
-            error={referralCodeError}
-            editable={!isLoading && !localLoading && !rateLimitCooldown}
-            helperText="Enter a referral code if someone invited you"
-          />
+          <View ref={referralCodeInputRef}>
+            <Input
+              label="Referral Code (Optional)"
+              value={referralCode}
+              onChangeText={(text) => {
+                setReferralCode(text);
+                setReferralCodeError('');
+              }}
+              placeholder="Enter referral code"
+              autoCapitalize="none"
+              error={referralCodeError}
+              editable={!isLoading && !localLoading && !rateLimitCooldown}
+              helperText="Enter a referral code if someone invited you"
+            />
+          </View>
           
-          <Input
-            label="Full Name"
-            value={name}
-            onChangeText={(text) => {
-              setName(text);
-              setNameError('');
-            }}
-            placeholder="Enter your full name"
-            error={nameError}
-            autoCapitalize="words"
-            editable={!isLoading && !localLoading && !rateLimitCooldown}
-          />
+          <View ref={nameInputRef}>
+            <Input
+              label="Full Name"
+              value={name}
+              onChangeText={(text) => {
+                setName(text);
+                setNameError('');
+              }}
+              placeholder="Enter your full name"
+              error={nameError}
+              autoCapitalize="words"
+              editable={!isLoading && !localLoading && !rateLimitCooldown}
+            />
+          </View>
           
-          <Input
-            label="Email"
-            value={email}
-            onChangeText={(text) => {
-              setEmail(text);
-              setEmailError('');
-            }}
-            placeholder="Enter your email"
-            keyboardType="email-address"
-            error={emailError}
-            autoCapitalize="none"
-            editable={!isLoading && !localLoading && !rateLimitCooldown}
-          />
+          <View ref={emailInputRef}>
+            <Input
+              label="Email"
+              value={email}
+              onChangeText={(text) => {
+                setEmail(text);
+                setEmailError('');
+              }}
+              placeholder="Enter your email"
+              keyboardType="email-address"
+              error={emailError}
+              autoCapitalize="none"
+              editable={!isLoading && !localLoading && !rateLimitCooldown}
+            />
+          </View>
           
-          <Input
-            label="Password"
-            value={password}
-            onChangeText={(text) => {
-              setPassword(text);
-              setPasswordError('');
-            }}
-            placeholder="Create a password"
-            secureTextEntry
-            error={passwordError}
-            editable={!isLoading && !localLoading && !rateLimitCooldown}
-          />
+          <View ref={passwordInputRef}>
+            <Input
+              label="Password"
+              value={password}
+              onChangeText={(text) => {
+                setPassword(text);
+                setPasswordError('');
+              }}
+              placeholder="Create a password"
+              secureTextEntry
+              error={passwordError}
+              editable={!isLoading && !localLoading && !rateLimitCooldown}
+            />
+          </View>
           
-          <Input
-            label="Confirm Password"
-            value={confirmPassword}
-            onChangeText={(text) => {
-              setConfirmPassword(text);
-              setConfirmPasswordError('');
-            }}
-            placeholder="Confirm your password"
-            secureTextEntry
-            error={confirmPasswordError}
-            editable={!isLoading && !localLoading && !rateLimitCooldown}
-          />
+          <View ref={confirmPasswordInputRef}>
+            <Input
+              label="Confirm Password"
+              value={confirmPassword}
+              onChangeText={(text) => {
+                setConfirmPassword(text);
+                setConfirmPasswordError('');
+              }}
+              placeholder="Confirm your password"
+              secureTextEntry
+              error={confirmPasswordError}
+              editable={!isLoading && !localLoading && !rateLimitCooldown}
+            />
+          </View>
           
           <Input
             label="Business Field"
@@ -401,20 +458,22 @@ export default function SignupScreen() {
             </View>
           </View>
           
-          <Input
-            label="Brief Introduction"
-            value={bio}
-            onChangeText={(text) => {
-              setBio(text);
-              setBioError('');
-            }}
-            placeholder="Tell us about yourself or your business"
-            multiline
-            numberOfLines={4}
-            error={bioError}
-            autoCapitalize="sentences"
-            editable={!isLoading && !localLoading && !rateLimitCooldown}
-          />
+          <View ref={bioInputRef}>
+            <Input
+              label="Brief Introduction"
+              value={bio}
+              onChangeText={(text) => {
+                setBio(text);
+                setBioError('');
+              }}
+              placeholder="Tell us about yourself or your business"
+              multiline
+              numberOfLines={4}
+              error={bioError}
+              autoCapitalize="sentences"
+              editable={!isLoading && !localLoading && !rateLimitCooldown}
+            />
+          </View>
           
           <Text style={styles.sectionTitle}>Enhanced Profile</Text>
           
@@ -490,18 +549,20 @@ export default function SignupScreen() {
             editable={!isLoading && !localLoading && !rateLimitCooldown}
           />
           
-          <Input
-            label="ZIP Code"
-            value={zipCode}
-            onChangeText={(text) => {
-              setZipCode(text);
-              setZipCodeError('');
-            }}
-            placeholder="e.g. 12345"
-            keyboardType="numeric"
-            error={zipCodeError}
-            editable={!isLoading && !localLoading && !rateLimitCooldown}
-          />
+          <View ref={zipCodeInputRef}>
+            <Input
+              label="ZIP Code"
+              value={zipCode}
+              onChangeText={(text) => {
+                setZipCode(text);
+                setZipCodeError('');
+              }}
+              placeholder="e.g. 12345"
+              keyboardType="numeric"
+              error={zipCodeError}
+              editable={!isLoading && !localLoading && !rateLimitCooldown}
+            />
+          </View>
           
           <Input
             label="Timezone"

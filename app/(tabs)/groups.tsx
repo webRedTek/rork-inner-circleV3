@@ -42,6 +42,7 @@ export default function GroupsScreen() {
   const [groupCategory, setGroupCategory] = useState('');
   const [groupIndustry, setGroupIndustry] = useState('');
   const [createLoading, setCreateLoading] = useState(false);
+  const [joinLoading, setJoinLoading] = useState<string | null>(null);
   
   useEffect(() => {
     fetchGroups();
@@ -49,6 +50,7 @@ export default function GroupsScreen() {
   
   const handleJoinGroup = async (groupId: string) => {
     try {
+      setJoinLoading(groupId);
       if (Platform.OS !== 'web') {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
@@ -57,6 +59,8 @@ export default function GroupsScreen() {
       await fetchGroups();
     } catch (error) {
       Alert.alert('Error', error instanceof Error ? error.message : 'Failed to join group');
+    } finally {
+      setJoinLoading(null);
     }
   };
   
@@ -129,6 +133,8 @@ export default function GroupsScreen() {
   };
   
   const renderGroupItem = ({ item, isJoined }: { item: Group, isJoined: boolean }) => {
+    const isJoining = joinLoading === item.id;
+    
     return (
       <TouchableOpacity 
         style={styles.groupCard}
@@ -162,6 +168,7 @@ export default function GroupsScreen() {
             variant={isJoined ? "outline" : "primary"}
             size="small"
             style={styles.groupButton}
+            loading={isJoining}
           />
         </View>
       </TouchableOpacity>
