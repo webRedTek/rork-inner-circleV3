@@ -182,7 +182,7 @@ export default function GroupDetailScreen() {
       }
       
       if (Platform.OS !== 'web') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackStyle.Success);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
       
       await updateGroupEvent({
