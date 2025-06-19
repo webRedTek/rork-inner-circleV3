@@ -89,6 +89,23 @@ const rateLimitedQuery = async () => {
   lastQueryTime = Date.now();
 };
 
+// Retry logic for failed RPC calls
+const retryOperation = async <T>(operation: () => Promise<T>, maxRetries: number = 3, delay: number = 1000): Promise<T | null> => {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      console.error(`[MatchesStore] Attempt ${attempt} failed:`, getReadableError(error));
+      if (attempt === maxRetries) {
+        console.error(`[MatchesStore] Max retries reached. Operation failed.`);
+        throw error;
+      }
+      await new Promise(resolve => setTimeout(resolve, delay * attempt));
+    }
+  }
+  return null;
+};
+
 interface MatchesState {
   potentialMatches: UserProfile[];
   cachedMatches: UserProfile[];
@@ -164,8 +181,8 @@ export const useMatchesStore = create<MatchesState>()(
             // Apply rate limiting
             await rateLimitedQuery();
             
-            // Fetch potential matches using the optimized stored procedure
-            const result = await fetchPotentialMatchesFromSupabase(user.id, userMaxDistance, isGlobalDiscovery, get().batchSize * 2);
+            // Fetch potential matches with retry logic
+            const result = await retryOperation(() => fetchPotentialMatchesFromSupabase(user.id, userMaxDistance, isGlobalDiscovery, get().batchSize * 2));
             
             if (!result || result.count === 0) {
               throw new Error(isGlobalDiscovery ? "No global matches found. Try adjusting your preferences." : "No matches found in your area. Try increasing your distance.");
@@ -218,8 +235,8 @@ export const useMatchesStore = create<MatchesState>()(
             // Apply rate limiting
             await rateLimitedQuery();
             
-            // Fetch potential matches using the optimized stored procedure
-            const result = await fetchPotentialMatchesFromSupabase(user.id, userMaxDistance, isGlobalDiscovery, get().batchSize * 2);
+            // Fetch potential matches with retry logic
+            const result = await retryOperation(() => fetchPotentialMatchesFromSupabase(user.id, userMaxDistance, isGlobalDiscovery, get().batchSize * 2));
             
             if (!result || result.count === 0) {
               throw new Error(isGlobalDiscovery ? "No additional global matches found." : "No additional matches found in your area.");
