@@ -1588,10 +1588,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   tabLoadingContainer: {
-    flex: 1,
+    padding: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
   },
   tabLoadingText: {
     marginTop: 16,
