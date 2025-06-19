@@ -132,6 +132,7 @@ interface MatchesState {
   clearNewMatch: () => void;
   checkSwipeLimits: () => Promise<boolean>;
   syncUsageCounters: () => Promise<void>;
+  resetCacheAndState: () => Promise<void>;
 }
 
 export const useMatchesStore = create<MatchesState>()(
@@ -603,6 +604,44 @@ export const useMatchesStore = create<MatchesState>()(
         } catch (error) {
           console.error('[MatchesStore] Error syncing usage counters:', getReadableError(error));
           notifyError('Error syncing usage counters: ' + getReadableError(error));
+        }
+      },
+      
+      resetCacheAndState: async () => {
+        const { user, isReady } = useAuthStore.getState();
+        if (!isReady || !user) return; // Silent fail if not ready or authenticated
+        
+        try {
+          console.log('[MatchesStore] Resetting cache and state');
+          // Clear all cached matches and reset state
+          set({
+            potentialMatches: [],
+            cachedMatches: [],
+            swipeQueue: [],
+            error: null,
+            newMatch: null,
+            swipeLimitReached: false,
+            matchLimitReached: false,
+            isLoading: false,
+            isPrefetching: false
+          });
+          
+          // Clear in-memory cache
+          userProfileCache.clear();
+          
+          console.log('[MatchesStore] Cache and state reset complete, fetching fresh data');
+          // Fetch fresh data after reset
+          await get().fetchPotentialMatches(50, true);
+          await get().syncUsageCounters();
+          
+          console.log('[MatchesStore] Fresh data fetched after reset');
+        } catch (error) {
+          console.error('[MatchesStore] Error during reset and refresh:', getReadableError(error));
+          notifyError('Error resetting cache: ' + getReadableError(error));
+          set({ 
+            error: getReadableError(error), 
+            isLoading: false 
+          });
         }
       }
     }),
