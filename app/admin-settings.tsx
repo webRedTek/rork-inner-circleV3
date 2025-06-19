@@ -86,22 +86,70 @@ export default function AdminSettingsScreen() {
         throw new Error('Supabase client not initialized');
       }
       
+      console.log('Saving settings for tiers:', Object.keys(settingsByTier));
+      
       for (const tier in settingsByTier) {
-        const settings = settingsByTier[tier as MembershipTier];
+        const tierKey = tier as MembershipTier;
+        const settings = settingsByTier[tierKey];
+        console.log(`Processing tier: ${tier}`, settings);
+        
+        // Ensure required fields have default values if missing
+        const settingsToSave = {
+          tier: tierKey,
+          daily_swipe_limit: settings.daily_swipe_limit || 0,
+          daily_match_limit: settings.daily_match_limit || 0,
+          message_sending_limit: settings.message_sending_limit || 0,
+          can_see_who_liked_you: settings.can_see_who_liked_you || false,
+          can_rewind_last_swipe: settings.can_rewind_last_swipe || false,
+          profile_visibility_control: settings.profile_visibility_control || false,
+          priority_listing: settings.priority_listing || false,
+          premium_filters_access: settings.premium_filters_access || false,
+          global_discovery: settings.global_discovery || false,
+          boost_duration: settings.boost_duration || 0,
+          boost_frequency: settings.boost_frequency || 0,
+          groups_limit: settings.groups_limit || 0,
+          groups_creation_limit: settings.groups_creation_limit || 0,
+          featured_portfolio_limit: settings.featured_portfolio_limit || 0,
+          events_per_month: settings.events_per_month || 0,
+          can_create_groups: settings.can_create_groups || false,
+          has_business_verification: settings.has_business_verification || false,
+          has_advanced_analytics: settings.has_advanced_analytics || false,
+          has_priority_inbox: settings.has_priority_inbox || false,
+          can_send_direct_intro: settings.can_send_direct_intro || false,
+          has_virtual_meeting_room: settings.has_virtual_meeting_room || false,
+          has_custom_branding: settings.has_custom_branding || false,
+          has_dedicated_support: settings.has_dedicated_support || false,
+        };
+        
         if (settings.id) {
+          console.log(`Updating settings for tier ${tier} with ID: ${settings.id}`);
           const { error: updateError } = await supabase
             .from('app_settings')
-            .update(settings)
+            .update(settingsToSave)
             .eq('id', settings.id);
 
           if (updateError) {
+            console.error(`Update error for tier ${tier}:`, updateError);
             throw new Error(`Failed to update settings for ${tier}: ${updateError.message}`);
+          }
+        } else {
+          console.log(`Inserting new settings for tier ${tier}`);
+          const { error: insertError } = await supabase
+            .from('app_settings')
+            .insert(settingsToSave);
+
+          if (insertError) {
+            console.error(`Insert error for tier ${tier}:`, insertError);
+            throw new Error(`Failed to insert settings for ${tier}: ${insertError.message}`);
           }
         }
       }
 
       Alert.alert('Success', 'Settings updated successfully.', [{ text: 'OK' }]);
+      console.log('Settings saved successfully, refreshing data...');
+      await fetchSettings(); // Refresh settings after save
     } catch (err) {
+      console.error('Error saving settings:', err);
       setError(err instanceof Error ? err.message : 'Failed to save settings. Please try again.');
     } finally {
       setSaving(false);
