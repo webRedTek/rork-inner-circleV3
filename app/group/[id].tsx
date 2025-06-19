@@ -140,7 +140,6 @@ export default function GroupDetailScreen() {
   
   const loadMessages = async (page: number = 1) => {
     if (!currentGroup) return;
-    setIsMessagesLoading(true);
     try {
       await fetchGroupMessages(currentGroup.id, page);
       setMessagesLoaded(true);
@@ -148,8 +147,6 @@ export default function GroupDetailScreen() {
     } catch (err) {
       notify.error('Failed to load messages');
       console.error('Error loading messages:', err);
-    } finally {
-      setIsMessagesLoading(false);
     }
   };
   
@@ -168,7 +165,6 @@ export default function GroupDetailScreen() {
   
   const loadEvents = async (page: number = 1) => {
     if (!currentGroup) return;
-    setIsEventsLoading(true);
     try {
       await fetchGroupEvents(currentGroup.id, page);
       setEventsLoaded(true);
@@ -176,8 +172,6 @@ export default function GroupDetailScreen() {
     } catch (err) {
       notify.error('Failed to load events');
       console.error('Error loading events:', err);
-    } finally {
-      setIsEventsLoading(false);
     }
   };
   
