@@ -89,6 +89,10 @@ const supabaseToGroupEventRSVP = (data: Record<string, any>): GroupEventRSVP => 
   };
 };
 
+// In-memory cache for group data
+const groupMessagesCache = new Map<string, GroupMessage[]>();
+const groupEventsCache = new Map<string, GroupEvent[]>();
+
 interface GroupsState {
   groups: Group[];
   userGroups: Group[];
@@ -98,18 +102,25 @@ interface GroupsState {
   groupEvents: GroupEvent[];
   userRSVPs: GroupEventRSVP[];
   isLoading: boolean;
+  isMessagesLoading: boolean;
+  isEventsLoading: boolean;
   error: string | null;
+  messagesPage: number;
+  eventsPage: number;
+  messagesPerPage: number;
+  eventsPerPage: number;
   fetchGroups: () => Promise<void>;
   joinGroup: (groupId: string) => Promise<void>;
   leaveGroup: (groupId: string) => Promise<void>;
   createGroup: (groupData: Partial<Group>) => Promise<void>;
   fetchGroupDetails: (groupId: string) => Promise<void>;
   sendGroupMessage: (groupId: string, content: string, type?: 'text' | 'image', imageUrl?: string) => Promise<void>;
-  fetchGroupMessages: (groupId: string) => Promise<void>;
+  fetchGroupMessages: (groupId: string, page?: number) => Promise<void>;
+  fetchGroupEvents: (groupId: string, page?: number) => Promise<void>;
   createGroupEvent: (eventData: Partial<GroupEvent>) => Promise<void>;
   updateGroupEvent: (eventData: Partial<GroupEvent>) => Promise<void>;
-  fetchGroupEvents: (groupId: string) => Promise<void>;
   rsvpToEvent: (eventId: string, response: 'yes' | 'no' | 'maybe') => Promise<void>;
+  updateGroup: (groupData: Partial<Group>) => Promise<void>;
   clearError: () => void;
 }
 
@@ -122,7 +133,13 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
   groupEvents: [],
   userRSVPs: [],
   isLoading: false,
+  isMessagesLoading: false,
+  isEventsLoading: false,
   error: null,
+  messagesPage: 1,
+  eventsPage: 1,
+  messagesPerPage: 20,
+  eventsPerPage: 10,
 
   fetchGroups: async () => {
     const { user, isReady } = useAuthStore.getState();
@@ -191,7 +208,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       // Check membership tier restrictions using tier settings
-      if (!tierSettings || tierSettings.groups_limit <= 0) { // Check if user's tier allows group joining
+      if (!tierSettings || tierSettings.groups_limit <= 0) {
         throw new Error('Basic/Bronze members cannot join groups. Please upgrade to Silver or Gold.');
       }
       
@@ -456,12 +473,6 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         
         const group = supabaseToGroup(groupData || {});
         set({ currentGroup: group, isLoading: false });
-        
-        // Fetch messages and events for this group
-        await Promise.all([
-          get().fetchGroupMessages(groupId),
-          get().fetchGroupEvents(groupId)
-        ]);
       } else {
         throw new Error('Supabase is not configured');
       }
@@ -525,23 +536,33 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     }
   },
 
-  fetchGroupMessages: async (groupId: string) => {
+  fetchGroupMessages: async (groupId: string, page: number = 1) => {
     const { user, isReady } = useAuthStore.getState();
     if (!isReady || !user) return; // Silent fail if not ready or not authenticated
     
-    set({ isLoading: true, error: null });
+    set({ isMessagesLoading: true, error: null });
     try {
       if (isSupabaseConfigured() && supabase) {
+        const messagesPerPage = get().messagesPerPage;
+        const offset = (page - 1) * messagesPerPage;
+        
         const { data: messagesData, error: messagesError } = await supabase
           .from('group_messages')
           .select('*')
           .eq('group_id', groupId)
-          .order('created_at', { ascending: true });
+          .order('created_at', { ascending: true })
+          .range(offset, offset + messagesPerPage - 1);
           
         if (messagesError) throw messagesError;
         
         const typedMessages: GroupMessage[] = (messagesData || []).map(supabaseToGroupMessage);
-        set({ groupMessages: typedMessages, isLoading: false });
+        
+        // Cache messages
+        const cachedMessages = groupMessagesCache.get(groupId) || [];
+        const updatedMessages = [...cachedMessages, ...typedMessages].sort((a, b) => a.createdAt - b.createdAt);
+        groupMessagesCache.set(groupId, updatedMessages);
+        
+        set({ groupMessages: typedMessages, messagesPage: page, isMessagesLoading: false });
       } else {
         throw new Error('Supabase is not configured');
       }
@@ -549,7 +570,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
       console.error('Error fetching group messages:', getReadableError(error));
       set({ 
         error: getReadableError(error), 
-        isLoading: false 
+        isMessagesLoading: false 
       });
     }
   },
@@ -664,23 +685,32 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     }
   },
 
-  fetchGroupEvents: async (groupId: string) => {
+  fetchGroupEvents: async (groupId: string, page: number = 1) => {
     const { user, isReady } = useAuthStore.getState();
     if (!isReady || !user) return; // Silent fail if not ready or not authenticated
     
-    set({ isLoading: true, error: null });
+    set({ isEventsLoading: true, error: null });
     try {
       if (isSupabaseConfigured() && supabase) {
-        // Fetch events for the group
+        const eventsPerPage = get().eventsPerPage;
+        const offset = (page - 1) * eventsPerPage;
+        
+        // Fetch events for the group with pagination
         const { data: eventsData, error: eventsError } = await supabase
           .from('group_events')
           .select('*')
           .eq('group_id', groupId)
-          .order('start_time', { ascending: true });
+          .order('start_time', { ascending: true })
+          .range(offset, offset + eventsPerPage - 1);
           
         if (eventsError) throw eventsError;
         
         const typedEvents: GroupEvent[] = (eventsData || []).map(supabaseToGroupEvent);
+        
+        // Cache events
+        const cachedEvents = groupEventsCache.get(groupId) || [];
+        const updatedEvents = [...cachedEvents, ...typedEvents].sort((a, b) => a.startTime - b.startTime);
+        groupEventsCache.set(groupId, updatedEvents);
         
         // Fetch user's RSVPs for these events
         const eventIds = typedEvents.map(event => event.id);
@@ -693,7 +723,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         if (rsvpError) throw rsvpError;
         
         const typedRSVPs: GroupEventRSVP[] = (rsvpData || []).map(supabaseToGroupEventRSVP);
-        set({ groupEvents: typedEvents, userRSVPs: typedRSVPs, isLoading: false });
+        set({ groupEvents: typedEvents, userRSVPs: typedRSVPs, eventsPage: page, isEventsLoading: false });
       } else {
         throw new Error('Supabase is not configured');
       }
@@ -701,7 +731,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
       console.error('Error fetching group events:', getReadableError(error));
       set({ 
         error: getReadableError(error), 
-        isLoading: false 
+        isEventsLoading: false 
       });
     }
   },
@@ -770,6 +800,56 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
       set({ isLoading: false });
     } catch (error) {
       console.error('Error RSVPing to event:', getReadableError(error));
+      set({ 
+        error: getReadableError(error), 
+        isLoading: false 
+      });
+    }
+  },
+
+  updateGroup: async (groupData: Partial<Group>) => {
+    const { user, isReady } = useAuthStore.getState();
+    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    
+    set({ isLoading: true, error: null });
+    try {
+      if (isSupabaseConfigured() && supabase) {
+        const updatedGroup = {
+          name: groupData.name,
+          description: groupData.description,
+          category: groupData.category,
+          industry: groupData.industry
+        };
+        
+        const { error: updateError } = await supabase
+          .from('groups')
+          .update(updatedGroup)
+          .eq('id', groupData.id);
+          
+        if (updateError) throw updateError;
+        
+        // Log the action
+        try {
+          await supabase.rpc('log_user_action', {
+            user_id: user.id,
+            action: 'update_group',
+            details: { group_id: groupData.id, group_name: groupData.name }
+          });
+        } catch (logError) {
+          console.warn('Failed to log update_group action:', getReadableError(logError));
+        }
+        
+        // Refresh group details
+        if (groupData.id) {
+          await get().fetchGroupDetails(groupData.id);
+        }
+      } else {
+        throw new Error('Supabase is not configured');
+      }
+      
+      set({ isLoading: false });
+    } catch (error) {
+      console.error('Error updating group:', getReadableError(error));
       set({ 
         error: getReadableError(error), 
         isLoading: false 

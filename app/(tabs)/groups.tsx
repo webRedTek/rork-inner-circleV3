@@ -43,10 +43,17 @@ export default function GroupsScreen() {
   const [groupIndustry, setGroupIndustry] = useState('');
   const [createLoading, setCreateLoading] = useState(false);
   const [joinLoading, setJoinLoading] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
   
   useEffect(() => {
     fetchGroups();
-  }, []);
+  }, [fetchGroups]);
+  
+  useEffect(() => {
+    if (error) {
+      Alert.alert('Error', error);
+    }
+  }, [error]);
   
   const handleJoinGroup = async (groupId: string) => {
     try {
@@ -95,11 +102,12 @@ export default function GroupsScreen() {
   
   const handleCreateGroup = async () => {
     if (!groupName.trim()) {
-      Alert.alert('Error', 'Please enter a group name');
+      setCreateError('Group name is required');
       return;
     }
     
     setCreateLoading(true);
+    setCreateError(null);
     
     try {
       if (Platform.OS !== 'web') {
@@ -122,7 +130,7 @@ export default function GroupsScreen() {
       // Refresh the groups list after creating a new group
       await fetchGroups();
     } catch (error) {
-      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to create group');
+      setCreateError(error instanceof Error ? error.message : 'Failed to create group');
     } finally {
       setCreateLoading(false);
     }
@@ -169,6 +177,7 @@ export default function GroupsScreen() {
             size="small"
             style={styles.groupButton}
             loading={isJoining}
+            disabled={isJoining}
           />
         </View>
       </TouchableOpacity>
@@ -296,6 +305,10 @@ export default function GroupsScreen() {
             </View>
             
             <View style={styles.modalContent}>
+              {createError && (
+                <Text style={styles.createErrorText}>{createError}</Text>
+              )}
+              
               <TextInput
                 style={styles.input}
                 placeholder="Group Name"
@@ -336,6 +349,7 @@ export default function GroupsScreen() {
                 variant="primary"
                 size="large"
                 loading={createLoading}
+                error={!!createError}
                 style={styles.createGroupButton}
               />
             </View>
@@ -551,5 +565,11 @@ const styles = StyleSheet.create({
   },
   createGroupButton: {
     marginTop: 8,
+  },
+  createErrorText: {
+    color: Colors.dark.error,
+    fontSize: 14,
+    marginBottom: 16,
+    textAlign: 'center',
   },
 });

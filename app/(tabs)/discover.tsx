@@ -431,10 +431,69 @@ export default function DiscoverScreen() {
             {selectedProfile && (
               <View style={styles.profileDetailContainer}>
                 <ProfileDetailCard 
-                  title="Profile Details"
+                  title="Bio"
                   content={selectedProfile.bio || "No bio available"}
                   profile={selectedProfile} 
                 />
+                
+                <ProfileDetailCard 
+                  title="Location"
+                  content={`${selectedProfile.location || 'Not specified'}${selectedProfile.zipCode ? ` (${selectedProfile.zipCode})` : ''}`} 
+                />
+                
+                <ProfileDetailCard 
+                  title="Industry"
+                  content={selectedProfile.industryFocus || selectedProfile.businessField || 'Not specified'} 
+                />
+                
+                <ProfileDetailCard 
+                  title="Business Stage"
+                  content={selectedProfile.businessStage || 'Not specified'} 
+                />
+                
+                <ProfileDetailCard 
+                  title="Skills Offered"
+                  content={
+                    selectedProfile.skillsOffered && selectedProfile.skillsOffered.length > 0 
+                      ? selectedProfile.skillsOffered 
+                      : 'No skills added yet'
+                  } 
+                />
+                
+                {selectedProfile.skillsSeeking && selectedProfile.skillsSeeking.length > 0 && (
+                  <ProfileDetailCard 
+                    title="Skills Seeking"
+                    content={selectedProfile.skillsSeeking} 
+                  />
+                )}
+                
+                {selectedProfile.lookingFor && selectedProfile.lookingFor.length > 0 && (
+                  <ProfileDetailCard 
+                    title="Looking For"
+                    content={selectedProfile.lookingFor} 
+                  />
+                )}
+                
+                {selectedProfile.availabilityLevel && selectedProfile.availabilityLevel.length > 0 && (
+                  <ProfileDetailCard 
+                    title="Availability"
+                    content={selectedProfile.availabilityLevel} 
+                  />
+                )}
+                
+                {selectedProfile.keyChallenge && (
+                  <ProfileDetailCard 
+                    title="Current Challenge"
+                    content={selectedProfile.keyChallenge} 
+                  />
+                )}
+                
+                {selectedProfile.successHighlight && (
+                  <ProfileDetailCard 
+                    title="Success Highlight"
+                    content={selectedProfile.successHighlight} 
+                  />
+                )}
                 
                 <View style={styles.actionButtons}>
                   <Button
@@ -687,6 +746,7 @@ const styles = StyleSheet.create({
   },
   profileDetailContainer: {
     padding: 16,
+    gap: 16,
   },
   actionButtons: {
     flexDirection: 'row',

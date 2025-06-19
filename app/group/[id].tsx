@@ -10,7 +10,8 @@ import {
   ActivityIndicator,
   Modal,
   Platform,
-  KeyboardAvoidingView
+  KeyboardAvoidingView,
+  RefreshControl
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -50,7 +51,12 @@ export default function GroupDetailScreen() {
     createGroupEvent,
     updateGroupEvent,
     rsvpToEvent,
+    updateGroup,
+    fetchGroupMessages,
+    fetchGroupEvents,
     isLoading, 
+    isMessagesLoading,
+    isEventsLoading,
     error 
   } = useGroupsStore();
   
@@ -58,7 +64,15 @@ export default function GroupDetailScreen() {
   const [message, setMessage] = useState('');
   const [showCreateEventModal, setShowCreateEventModal] = useState(false);
   const [showEditEventModal, setShowEditEventModal] = useState(false);
+  const [showEditGroupModal, setShowEditGroupModal] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<GroupEvent | null>(null);
+  const [messagesPage, setMessagesPage] = useState(1);
+  const [eventsPage, setEventsPage] = useState(1);
+  const [isMessagesLoadingMore, setIsMessagesLoadingMore] = useState(false);
+  const [isEventsLoadingMore, setIsEventsLoadingMore] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [messagesLoaded, setMessagesLoaded] = useState(false);
+  const [eventsLoaded, setEventsLoaded] = useState(false);
   
   // Event form state
   const [eventTitle, setEventTitle] = useState('');
@@ -68,6 +82,24 @@ export default function GroupDetailScreen() {
   const [eventTime, setEventTime] = useState('');
   const [eventEndTime, setEventEndTime] = useState('');
   const [eventReminder, setEventReminder] = useState('30'); // minutes before
+  const [eventTimezone, setEventTimezone] = useState('UTC');
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  
+  // Group edit form state
+  const [groupName, setGroupName] = useState('');
+  const [groupDescription, setGroupDescription] = useState('');
+  const [groupCategory, setGroupCategory] = useState('');
+  const [groupIndustry, setGroupIndustry] = useState('');
+  
+  // Location autocomplete state
+  const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
+  const locationSuggestions = [
+    "123 Main St, City",
+    "456 Business Ave, Town",
+    "789 Conference Rd, Metro",
+    "Central Park, City",
+    "Downtown Cafe, Urban Area"
+  ];
   
   const scrollViewRef = useRef<ScrollView>(null);
   
@@ -75,7 +107,7 @@ export default function GroupDetailScreen() {
     if (id) {
       fetchGroupDetails(id);
     }
-  }, [id]);
+  }, [id, fetchGroupDetails]);
   
   useEffect(() => {
     if (error) {
@@ -83,7 +115,103 @@ export default function GroupDetailScreen() {
     }
   }, [error]);
   
+  useEffect(() => {
+    if (currentGroup) {
+      setGroupName(currentGroup.name);
+      setGroupDescription(currentGroup.description);
+      setGroupCategory(currentGroup.category || '');
+      setGroupIndustry(currentGroup.industry || '');
+    }
+  }, [currentGroup]);
+  
+  useEffect(() => {
+    if (activeTab === 'messages' && !messagesLoaded && currentGroup) {
+      loadMessages();
+    }
+  }, [activeTab, messagesLoaded, currentGroup]);
+  
+  useEffect(() => {
+    if (activeTab === 'events' && !eventsLoaded && currentGroup) {
+      loadEvents();
+    }
+  }, [activeTab, eventsLoaded, currentGroup]);
+  
   const isGroupAdmin = currentGroup?.createdBy === user?.id;
+  
+  const loadMessages = async (page: number = 1) => {
+    if (!currentGroup) return;
+    setIsMessagesLoading(true);
+    try {
+      await fetchGroupMessages(currentGroup.id, page);
+      setMessagesLoaded(true);
+      setMessagesPage(page);
+    } catch (err) {
+      notify.error('Failed to load messages');
+      console.error('Error loading messages:', err);
+    } finally {
+      setIsMessagesLoading(false);
+    }
+  };
+  
+  const loadMoreMessages = async () => {
+    if (!currentGroup || isMessagesLoadingMore) return;
+    setIsMessagesLoadingMore(true);
+    try {
+      await loadMessages(messagesPage + 1);
+    } catch (err) {
+      notify.error('Failed to load more messages');
+      console.error('Error loading more messages:', err);
+    } finally {
+      setIsMessagesLoadingMore(false);
+    }
+  };
+  
+  const loadEvents = async (page: number = 1) => {
+    if (!currentGroup) return;
+    setIsEventsLoading(true);
+    try {
+      await fetchGroupEvents(currentGroup.id, page);
+      setEventsLoaded(true);
+      setEventsPage(page);
+    } catch (err) {
+      notify.error('Failed to load events');
+      console.error('Error loading events:', err);
+    } finally {
+      setIsEventsLoading(false);
+    }
+  };
+  
+  const loadMoreEvents = async () => {
+    if (!currentGroup || isEventsLoadingMore) return;
+    setIsEventsLoadingMore(true);
+    try {
+      await loadEvents(eventsPage + 1);
+    } catch (err) {
+      notify.error('Failed to load more events');
+      console.error('Error loading more events:', err);
+    } finally {
+      setIsEventsLoadingMore(false);
+    }
+  };
+  
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      if (currentGroup) {
+        await fetchGroupDetails(currentGroup.id);
+        if (activeTab === 'messages') {
+          await loadMessages();
+        } else if (activeTab === 'events') {
+          await loadEvents();
+        }
+      }
+    } catch (err) {
+      notify.error('Failed to refresh content');
+      console.error('Error refreshing:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  };
   
   const handleSendMessage = async () => {
     if (!message.trim() || !currentGroup || !isGroupAdmin) return;
@@ -108,9 +236,62 @@ export default function GroupDetailScreen() {
     }
   };
   
+  const validateEventForm = (): boolean => {
+    const errors: Record<string, string> = {};
+    const now = new Date();
+    let isValid = true;
+    
+    if (!eventTitle.trim()) {
+      errors.title = 'Title is required';
+      isValid = false;
+    }
+    
+    if (!eventDate) {
+      errors.date = 'Date is required';
+      isValid = false;
+    }
+    
+    if (!eventTime) {
+      errors.time = 'Start time is required';
+      isValid = false;
+    }
+    
+    if (eventDate && eventTime) {
+      try {
+        const startDateTime = new Date(`${eventDate}T${eventTime}:00`);
+        if (startDateTime < now) {
+          errors.date = 'Event cannot be in the past';
+          isValid = false;
+        }
+        
+        if (eventEndTime) {
+          const endDateTime = new Date(`${eventDate}T${eventEndTime}:00`);
+          if (endDateTime <= startDateTime) {
+            errors.endTime = 'End time must be after start time';
+            isValid = false;
+          }
+        }
+      } catch (e) {
+        errors.date = 'Invalid date or time format';
+        isValid = false;
+      }
+    }
+    
+    if (eventReminder) {
+      const reminderMinutes = parseInt(eventReminder);
+      if (isNaN(reminderMinutes) || reminderMinutes < 0) {
+        errors.reminder = 'Reminder must be a positive number';
+        isValid = false;
+      }
+    }
+    
+    setFormErrors(errors);
+    return isValid;
+  };
+  
   const handleCreateEvent = async () => {
-    if (!eventTitle.trim() || !eventDate.trim() || !eventTime.trim() || !currentGroup) {
-      notify.warning('Please fill in all required fields');
+    if (!validateEventForm() || !currentGroup) {
+      notify.warning('Please correct the errors in the form');
       return;
     }
     
@@ -155,6 +336,7 @@ export default function GroupDetailScreen() {
       setEventTime('');
       setEventEndTime('');
       setEventReminder('30');
+      setFormErrors({});
       
       setShowCreateEventModal(false);
       notify.success('Event created successfully');
@@ -165,8 +347,8 @@ export default function GroupDetailScreen() {
   };
   
   const handleEditEvent = async () => {
-    if (!selectedEvent || !eventTitle.trim() || !eventDate.trim() || !eventTime.trim() || !currentGroup) {
-      notify.warning('Please fill in all required fields');
+    if (!selectedEvent || !validateEventForm() || !currentGroup) {
+      notify.warning('Please correct the errors in the form');
       return;
     }
     
@@ -200,6 +382,33 @@ export default function GroupDetailScreen() {
     } catch (error) {
       notify.error('Failed to update event');
       console.error('Error updating event:', error);
+    }
+  };
+  
+  const handleEditGroup = async () => {
+    if (!groupName.trim() || !currentGroup) {
+      notify.warning('Group name is required');
+      return;
+    }
+    
+    try {
+      await updateGroup({
+        id: currentGroup.id,
+        name: groupName,
+        description: groupDescription,
+        category: groupCategory || 'Interest',
+        industry: groupIndustry || undefined
+      });
+      
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      
+      setShowEditGroupModal(false);
+      notify.success('Group updated successfully');
+    } catch (error) {
+      notify.error('Failed to update group');
+      console.error('Error updating group:', error);
     }
   };
   
@@ -262,6 +471,15 @@ export default function GroupDetailScreen() {
     return rsvp ? rsvp.response : null;
   };
   
+  const handleLocationSelect = (location: string) => {
+    setEventLocation(location);
+    setShowLocationSuggestions(false);
+  };
+  
+  const handleTabChange = (tab: 'info' | 'messages' | 'events') => {
+    setActiveTab(tab);
+  };
+  
   if (isLoading && !currentGroup) {
     return (
       <SafeAreaView style={styles.loadingContainer} edges={['bottom']}>
@@ -315,7 +533,10 @@ export default function GroupDetailScreen() {
             </View>
             
             {isGroupAdmin && (
-              <TouchableOpacity style={styles.editButton}>
+              <TouchableOpacity 
+                style={styles.editButton}
+                onPress={() => setShowEditGroupModal(true)}
+              >
                 <Edit size={16} color={Colors.dark.text} />
                 <Text style={styles.editButtonText}>Edit Group</Text>
               </TouchableOpacity>
@@ -326,7 +547,7 @@ export default function GroupDetailScreen() {
         <View style={styles.tabBar}>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'info' && styles.activeTab]}
-            onPress={() => setActiveTab('info')}
+            onPress={() => handleTabChange('info')}
           >
             <Info size={20} color={activeTab === 'info' ? Colors.dark.accent : Colors.dark.textSecondary} />
             <Text style={[styles.tabText, activeTab === 'info' && styles.activeTabText]}>Info</Text>
@@ -334,7 +555,7 @@ export default function GroupDetailScreen() {
           
           <TouchableOpacity
             style={[styles.tab, activeTab === 'messages' && styles.activeTab]}
-            onPress={() => setActiveTab('messages')}
+            onPress={() => handleTabChange('messages')}
           >
             <MessageCircle size={20} color={activeTab === 'messages' ? Colors.dark.accent : Colors.dark.textSecondary} />
             <Text style={[styles.tabText, activeTab === 'messages' && styles.activeTabText]}>Messages</Text>
@@ -342,7 +563,7 @@ export default function GroupDetailScreen() {
           
           <TouchableOpacity
             style={[styles.tab, activeTab === 'events' && styles.activeTab]}
-            onPress={() => setActiveTab('events')}
+            onPress={() => handleTabChange('events')}
           >
             <CalendarIcon size={20} color={activeTab === 'events' ? Colors.dark.accent : Colors.dark.textSecondary} />
             <Text style={[styles.tabText, activeTab === 'events' && styles.activeTabText]}>Events</Text>
@@ -350,7 +571,12 @@ export default function GroupDetailScreen() {
         </View>
         
         {activeTab === 'info' && (
-          <ScrollView style={styles.content}>
+          <ScrollView 
+            style={styles.content}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            }
+          >
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>About</Text>
               <Text style={styles.description}>{currentGroup.description}</Text>
@@ -378,8 +604,24 @@ export default function GroupDetailScreen() {
               style={styles.content}
               ref={scrollViewRef}
               onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: false })}
+              refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+              }
+              onScroll={({ nativeEvent }) => {
+                const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+                const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 20;
+                if (isCloseToBottom && !isMessagesLoadingMore) {
+                  loadMoreMessages();
+                }
+              }}
+              scrollEventThrottle={400}
             >
-              {groupMessages.length === 0 ? (
+              {isMessagesLoading && !isMessagesLoadingMore ? (
+                <View style={styles.tabLoadingContainer}>
+                  <ActivityIndicator size="large" color={Colors.dark.accent} />
+                  <Text style={styles.tabLoadingText}>Loading messages...</Text>
+                </View>
+              ) : groupMessages.length === 0 ? (
                 <View style={styles.emptyState}>
                   <MessageCircle size={40} color={Colors.dark.textSecondary} />
                   <Text style={styles.emptyStateText}>No messages yet</Text>
@@ -409,6 +651,12 @@ export default function GroupDetailScreen() {
                       <Text style={styles.messageContent}>{message.content}</Text>
                     </View>
                   ))}
+                  {isMessagesLoadingMore && (
+                    <View style={styles.loadMoreContainer}>
+                      <ActivityIndicator size="small" color={Colors.dark.accent} />
+                      <Text style={styles.loadMoreText}>Loading more messages...</Text>
+                    </View>
+                  )}
                 </View>
               )}
             </ScrollView>
@@ -437,7 +685,20 @@ export default function GroupDetailScreen() {
         
         {activeTab === 'events' && (
           <>
-            <ScrollView style={styles.content}>
+            <ScrollView 
+              style={styles.content}
+              refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+              }
+              onScroll={({ nativeEvent }) => {
+                const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+                const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 20;
+                if (isCloseToBottom && !isEventsLoadingMore) {
+                  loadMoreEvents();
+                }
+              }}
+              scrollEventThrottle={400}
+            >
               {isGroupAdmin && (
                 <TouchableOpacity 
                   style={styles.createEventButton}
@@ -448,7 +709,12 @@ export default function GroupDetailScreen() {
                 </TouchableOpacity>
               )}
               
-              {groupEvents.length === 0 ? (
+              {isEventsLoading && !isEventsLoadingMore ? (
+                <View style={styles.tabLoadingContainer}>
+                  <ActivityIndicator size="large" color={Colors.dark.accent} />
+                  <Text style={styles.tabLoadingText}>Loading events...</Text>
+                </View>
+              ) : groupEvents.length === 0 ? (
                 <View style={styles.emptyState}>
                   <CalendarIcon size={40} color={Colors.dark.textSecondary} />
                   <Text style={styles.emptyStateText}>No events scheduled</Text>
@@ -564,6 +830,12 @@ export default function GroupDetailScreen() {
                         </View>
                       );
                     })}
+                  {isEventsLoadingMore && (
+                    <View style={styles.loadMoreContainer}>
+                      <ActivityIndicator size="small" color={Colors.dark.accent} />
+                      <Text style={styles.loadMoreText}>Loading more events...</Text>
+                    </View>
+                  )}
                 </View>
               )}
             </ScrollView>
@@ -592,12 +864,13 @@ export default function GroupDetailScreen() {
             
             <ScrollView style={styles.modalContent}>
               <TextInput
-                style={styles.modalInput}
+                style={[styles.modalInput, formErrors.title && styles.inputError]}
                 placeholder="Event Title *"
                 placeholderTextColor={Colors.dark.textSecondary}
                 value={eventTitle}
                 onChangeText={setEventTitle}
               />
+              {formErrors.title && <Text style={styles.errorText}>{formErrors.title}</Text>}
               
               <TextInput
                 style={[styles.modalInput, styles.textArea]}
@@ -609,49 +882,87 @@ export default function GroupDetailScreen() {
                 numberOfLines={4}
               />
               
-              <TextInput
-                style={styles.modalInput}
-                placeholder="Location"
-                placeholderTextColor={Colors.dark.textSecondary}
-                value={eventLocation}
-                onChangeText={setEventLocation}
-              />
+              <View style={styles.locationContainer}>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Location"
+                  placeholderTextColor={Colors.dark.textSecondary}
+                  value={eventLocation}
+                  onChangeText={(text) => {
+                    setEventLocation(text);
+                    setShowLocationSuggestions(true);
+                  }}
+                  onFocus={() => setShowLocationSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowLocationSuggestions(false), 200)}
+                />
+                {showLocationSuggestions && eventLocation.length > 2 && (
+                  <View style={styles.locationSuggestions}>
+                    {locationSuggestions
+                      .filter(suggestion => suggestion.toLowerCase().includes(eventLocation.toLowerCase()))
+                      .map((suggestion, index) => (
+                        <TouchableOpacity
+                          key={index}
+                          style={styles.locationSuggestionItem}
+                          onPress={() => handleLocationSelect(suggestion)}
+                        >
+                          <Text style={styles.locationSuggestionText}>{suggestion}</Text>
+                        </TouchableOpacity>
+                      ))}
+                  </View>
+                )}
+              </View>
               
               <Text style={styles.inputLabel}>Date *</Text>
               <TextInput
-                style={styles.modalInput}
-                placeholder="YYYY-MM-DD"
+                style={[styles.modalInput, formErrors.date && styles.inputError]}
+                placeholder="YYYY-MM-DD (e.g., 2025-06-20)"
                 placeholderTextColor={Colors.dark.textSecondary}
                 value={eventDate}
                 onChangeText={setEventDate}
               />
+              <Text style={styles.inputHint}>Format: YYYY-MM-DD. In a full implementation, this would be a date picker.</Text>
+              {formErrors.date && <Text style={styles.errorText}>{formErrors.date}</Text>}
               
               <Text style={styles.inputLabel}>Start Time *</Text>
               <TextInput
-                style={styles.modalInput}
-                placeholder="HH:MM (24-hour format)"
+                style={[styles.modalInput, formErrors.time && styles.inputError]}
+                placeholder="HH:MM (24-hour format, e.g., 14:30)"
                 placeholderTextColor={Colors.dark.textSecondary}
                 value={eventTime}
                 onChangeText={setEventTime}
               />
+              <Text style={styles.inputHint}>Format: HH:MM (24-hour). In a full implementation, this would be a time picker.</Text>
+              {formErrors.time && <Text style={styles.errorText}>{formErrors.time}</Text>}
               
               <Text style={styles.inputLabel}>End Time (optional)</Text>
               <TextInput
-                style={styles.modalInput}
-                placeholder="HH:MM (24-hour format)"
+                style={[styles.modalInput, formErrors.endTime && styles.inputError]}
+                placeholder="HH:MM (24-hour format, e.g., 16:30)"
                 placeholderTextColor={Colors.dark.textSecondary}
                 value={eventEndTime}
                 onChangeText={setEventEndTime}
               />
+              <Text style={styles.inputHint}>Format: HH:MM (24-hour). In a full implementation, this would be a time picker.</Text>
+              {formErrors.endTime && <Text style={styles.errorText}>{formErrors.endTime}</Text>}
               
               <Text style={styles.inputLabel}>Reminder (minutes before)</Text>
               <TextInput
-                style={styles.modalInput}
+                style={[styles.modalInput, formErrors.reminder && styles.inputError]}
                 placeholder="30"
                 placeholderTextColor={Colors.dark.textSecondary}
                 value={eventReminder}
                 onChangeText={setEventReminder}
                 keyboardType="numeric"
+              />
+              {formErrors.reminder && <Text style={styles.errorText}>{formErrors.reminder}</Text>}
+              
+              <Text style={styles.inputLabel}>Timezone</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="UTC"
+                placeholderTextColor={Colors.dark.textSecondary}
+                value={eventTimezone}
+                onChangeText={setEventTimezone}
               />
               
               <Button
@@ -687,12 +998,13 @@ export default function GroupDetailScreen() {
             
             <ScrollView style={styles.modalContent}>
               <TextInput
-                style={styles.modalInput}
+                style={[styles.modalInput, formErrors.title && styles.inputError]}
                 placeholder="Event Title *"
                 placeholderTextColor={Colors.dark.textSecondary}
                 value={eventTitle}
                 onChangeText={setEventTitle}
               />
+              {formErrors.title && <Text style={styles.errorText}>{formErrors.title}</Text>}
               
               <TextInput
                 style={[styles.modalInput, styles.textArea]}
@@ -704,44 +1016,138 @@ export default function GroupDetailScreen() {
                 numberOfLines={4}
               />
               
-              <TextInput
-                style={styles.modalInput}
-                placeholder="Location"
-                placeholderTextColor={Colors.dark.textSecondary}
-                value={eventLocation}
-                onChangeText={setEventLocation}
-              />
+              <View style={styles.locationContainer}>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Location"
+                  placeholderTextColor={Colors.dark.textSecondary}
+                  value={eventLocation}
+                  onChangeText={(text) => {
+                    setEventLocation(text);
+                    setShowLocationSuggestions(true);
+                  }}
+                  onFocus={() => setShowLocationSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowLocationSuggestions(false), 200)}
+                />
+                {showLocationSuggestions && eventLocation.length > 2 && (
+                  <View style={styles.locationSuggestions}>
+                    {locationSuggestions
+                      .filter(suggestion => suggestion.toLowerCase().includes(eventLocation.toLowerCase()))
+                      .map((suggestion, index) => (
+                        <TouchableOpacity
+                          key={index}
+                          style={styles.locationSuggestionItem}
+                          onPress={() => handleLocationSelect(suggestion)}
+                        >
+                          <Text style={styles.locationSuggestionText}>{suggestion}</Text>
+                        </TouchableOpacity>
+                      ))}
+                  </View>
+                )}
+              </View>
               
               <Text style={styles.inputLabel}>Date *</Text>
               <TextInput
-                style={styles.modalInput}
-                placeholder="YYYY-MM-DD"
+                style={[styles.modalInput, formErrors.date && styles.inputError]}
+                placeholder="YYYY-MM-DD (e.g., 2025-06-20)"
                 placeholderTextColor={Colors.dark.textSecondary}
                 value={eventDate}
                 onChangeText={setEventDate}
               />
+              <Text style={styles.inputHint}>Format: YYYY-MM-DD. In a full implementation, this would be a date picker.</Text>
+              {formErrors.date && <Text style={styles.errorText}>{formErrors.date}</Text>}
               
               <Text style={styles.inputLabel}>Start Time *</Text>
               <TextInput
-                style={styles.modalInput}
-                placeholder="HH:MM (24-hour format)"
+                style={[styles.modalInput, formErrors.time && styles.inputError]}
+                placeholder="HH:MM (24-hour format, e.g., 14:30)"
                 placeholderTextColor={Colors.dark.textSecondary}
                 value={eventTime}
                 onChangeText={setEventTime}
               />
+              <Text style={styles.inputHint}>Format: HH:MM (24-hour). In a full implementation, this would be a time picker.</Text>
+              {formErrors.time && <Text style={styles.errorText}>{formErrors.time}</Text>}
               
               <Text style={styles.inputLabel}>End Time (optional)</Text>
               <TextInput
-                style={styles.modalInput}
-                placeholder="HH:MM (24-hour format)"
+                style={[styles.modalInput, formErrors.endTime && styles.inputError]}
+                placeholder="HH:MM (24-hour format, e.g., 16:30)"
                 placeholderTextColor={Colors.dark.textSecondary}
                 value={eventEndTime}
                 onChangeText={setEventEndTime}
               />
+              <Text style={styles.inputHint}>Format: HH:MM (24-hour). In a full implementation, this would be a time picker.</Text>
+              {formErrors.endTime && <Text style={styles.errorText}>{formErrors.endTime}</Text>}
               
               <Button
                 title="Update Event"
                 onPress={handleEditEvent}
+                variant="primary"
+                size="large"
+                style={styles.modalButton}
+              />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+      
+      {/* Edit Group Modal */}
+      <Modal
+        visible={showEditGroupModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowEditGroupModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Edit Group</Text>
+              <TouchableOpacity 
+                onPress={() => setShowEditGroupModal(false)}
+                style={styles.closeButton}
+              >
+                <X size={24} color={Colors.dark.text} />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.modalContent}>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Group Name *"
+                placeholderTextColor={Colors.dark.textSecondary}
+                value={groupName}
+                onChangeText={setGroupName}
+              />
+              
+              <TextInput
+                style={[styles.modalInput, styles.textArea]}
+                placeholder="Group Description"
+                placeholderTextColor={Colors.dark.textSecondary}
+                value={groupDescription}
+                onChangeText={setGroupDescription}
+                multiline
+                numberOfLines={4}
+              />
+              
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Category (e.g., Industry, Interest, Community)"
+                placeholderTextColor={Colors.dark.textSecondary}
+                value={groupCategory}
+                onChangeText={setGroupCategory}
+              />
+              
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Industry Focus (optional)"
+                placeholderTextColor={Colors.dark.textSecondary}
+                value={groupIndustry}
+                onChangeText={setGroupIndustry}
+              />
+              
+              <Button
+                title="Update Group"
+                onPress={handleEditGroup}
                 variant="primary"
                 size="large"
                 style={styles.modalButton}
@@ -1142,8 +1548,71 @@ const styles = StyleSheet.create({
     color: Colors.dark.text,
     marginBottom: 8,
   },
+  inputHint: {
+    fontSize: 12,
+    color: Colors.dark.textSecondary,
+    marginTop: -12,
+    marginBottom: 16,
+  },
   modalButton: {
     marginTop: 8,
     marginBottom: 24,
+  },
+  locationContainer: {
+    position: 'relative',
+    marginBottom: 16,
+  },
+  locationSuggestions: {
+    position: 'absolute',
+    top: 50,
+    left: 0,
+    right: 0,
+    backgroundColor: Colors.dark.card,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    maxHeight: 200,
+    overflow: 'hidden',
+    zIndex: 1000,
+  },
+  locationSuggestionItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.dark.border,
+  },
+  locationSuggestionText: {
+    color: Colors.dark.text,
+    fontSize: 14,
+  },
+  inputError: {
+    borderColor: Colors.dark.error,
+  },
+  errorText: {
+    color: Colors.dark.error,
+    fontSize: 12,
+    marginTop: -12,
+    marginBottom: 16,
+  },
+  tabLoadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  tabLoadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: Colors.dark.textSecondary,
+  },
+  loadMoreContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  loadMoreText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: Colors.dark.textSecondary,
   },
 });

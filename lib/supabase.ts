@@ -219,6 +219,35 @@ export type SwipeAction = {
   swipe_timestamp: number;
 };
 
+// Define potential matches result type
+export type PotentialMatchesResult = {
+  matches: any[];
+  count: number;
+  max_distance: number;
+  is_global: boolean;
+};
+
+// Define swipe batch result type
+export type SwipeBatchResult = {
+  processed_swipes: SwipeAction[];
+  new_matches: any[];
+  swipe_limit: number;
+  match_limit: number;
+  swipe_count: number;
+  match_count: number;
+};
+
+// Define usage counters result type
+export type UsageCountersResult = {
+  swipe_count: number;
+  match_count: number;
+  swipe_limit: number;
+  match_limit: number;
+  swipe_remaining: number;
+  match_remaining: number;
+  timestamp: number;
+};
+
 // Initialize supabase client with proper typing
 let supabase: ReturnType<typeof createClient<Database>> | null = null;
 
@@ -541,6 +570,93 @@ export const logUserAction = async (userId: string, action: string, details: Rec
     }
   } catch (error) {
     console.warn('Exception while logging user action:', error);
+  }
+};
+
+/**
+ * Processes a batch of swipe actions in Supabase
+ * @param swipeActions - Array of swipe actions to process
+ * @returns Promise with batch processing results or error
+ */
+export const processSwipeBatch = async (swipeActions: SwipeAction[]): Promise<SwipeBatchResult | null> => {
+  if (!supabase) {
+    throw new Error('Supabase client not initialized');
+  }
+  
+  try {
+    const { data, error } = await supabase.rpc('process_swipe_batch', {
+      p_swipe_actions: swipeActions,
+    });
+    
+    if (error) {
+      console.error('Error processing swipe batch:', error);
+      throw error;
+    }
+    
+    return data as SwipeBatchResult;
+  } catch (error) {
+    console.error('Exception processing swipe batch:', error);
+    throw error;
+  }
+};
+
+/**
+ * Fetches potential matches for a user from Supabase
+ * @param userId - The user ID to fetch matches for
+ * @param maxDistance - Maximum distance for local discovery
+ * @param isGlobalDiscovery - Whether to use global discovery
+ * @param limit - Maximum number of matches to return
+ * @returns Promise with potential matches or error
+ */
+export const fetchPotentialMatches = async (userId: string, maxDistance: number = 50, isGlobalDiscovery: boolean = false, limit: number = 25): Promise<PotentialMatchesResult | null> => {
+  if (!supabase) {
+    throw new Error('Supabase client not initialized');
+  }
+  
+  try {
+    const { data, error } = await supabase.rpc('fetch_potential_matches', {
+      p_user_id: userId,
+      p_max_distance: maxDistance,
+      p_is_global_discovery: isGlobalDiscovery,
+      p_limit: limit,
+    });
+    
+    if (error) {
+      console.error('Error fetching potential matches:', error);
+      throw error;
+    }
+    
+    return data as PotentialMatchesResult;
+  } catch (error) {
+    console.error('Exception fetching potential matches:', error);
+    throw error;
+  }
+};
+
+/**
+ * Syncs usage counters for a user from Supabase
+ * @param userId - The user ID to sync counters for
+ * @returns Promise with usage counters or error
+ */
+export const syncUsageCounters = async (userId: string): Promise<UsageCountersResult | null> => {
+  if (!supabase) {
+    throw new Error('Supabase client not initialized');
+  }
+  
+  try {
+    const { data, error } = await supabase.rpc('sync_usage_counters', {
+      p_user_id: userId,
+    });
+    
+    if (error) {
+      console.error('Error syncing usage counters:', error);
+      throw error;
+    }
+    
+    return data as UsageCountersResult;
+  } catch (error) {
+    console.error('Exception syncing usage counters:', error);
+    throw error;
   }
 };
 

@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/auth-store';
 import Colors from '@/constants/colors';
 import { Button } from '@/components/Button';
+import { ProfileHeader } from '@/components/ProfileHeader';
 import { ProfileDetailCard } from '@/components/ProfileDetailCard';
 import { SupabaseStatus } from '@/components/SupabaseStatus';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -97,57 +98,7 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <View style={styles.profileHeader}>
-            <View style={styles.avatarContainer}>
-              {user.photoUrl ? (
-                <Image source={{ uri: user.photoUrl }} style={styles.avatar} />
-              ) : (
-                <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                  <Text style={styles.avatarText}>{user.name.charAt(0)}</Text>
-                </View>
-              )}
-              <View style={styles.membershipBadge}>
-                <Text style={styles.membershipText}>{user.membershipTier}</Text>
-              </View>
-            </View>
-            
-            <View style={styles.profileInfo}>
-              <Text style={styles.name}>{user.name}</Text>
-              <Text style={styles.businessField}>{user.businessField}</Text>
-              <Text style={styles.location}>{user.location || 'No location set'}</Text>
-            </View>
-          </View>
-          
-          <View style={styles.actions}>
-            <Button
-              title="Edit Profile"
-              onPress={handleEditProfile}
-              variant="outline"
-              size="small"
-              icon={<Edit size={16} color={Colors.dark.text} />}
-              style={styles.actionButton}
-            />
-            <Button
-              title="Membership"
-              onPress={handleMembership}
-              variant="outline"
-              size="small"
-              icon={<Settings size={16} color={Colors.dark.text} />}
-              style={styles.actionButton}
-            />
-            {(user.membershipTier === 'silver' || user.membershipTier === 'gold') && (
-              <Button
-                title="Affiliate Dashboard"
-                onPress={handleAffiliateDashboard}
-                variant="outline"
-                size="small"
-                icon={<Gift size={16} color={Colors.dark.text} />}
-                style={styles.actionButton}
-              />
-            )}
-          </View>
-        </View>
+        <ProfileHeader profile={user} />
         
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>About</Text>
@@ -258,11 +209,10 @@ export default function ProfileScreen() {
           </View>
         )}
         
-        
         {user.role === 'admin' && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>App Data</Text>
-						<Text style={styles.sectionTitle}>Supabase Status</Text>
+            <Text style={styles.sectionTitle}>Supabase Status</Text>
             <SupabaseStatus />
             <Button
               title="Configure Supabase"
@@ -292,15 +242,43 @@ export default function ProfileScreen() {
           </View>
         )}
         
-        <Button
-          title="Log Out"
-          onPress={handleLogout}
-          variant="danger"
-          size="large"
-          icon={<LogOut size={18} color={Colors.dark.error} />}
-          style={styles.logoutButton}
-          loading={isLoading}
-        />
+        <View style={styles.bottomActions}>
+          <Button
+            title="Edit Profile"
+            onPress={handleEditProfile}
+            variant="outline"
+            size="large"
+            icon={<Edit size={18} color={Colors.dark.text} />}
+            style={styles.actionButton}
+          />
+          <Button
+            title="Membership"
+            onPress={handleMembership}
+            variant="outline"
+            size="large"
+            icon={<Settings size={18} color={Colors.dark.text} />}
+            style={styles.actionButton}
+          />
+          {(user.membershipTier === 'silver' || user.membershipTier === 'gold') && (
+            <Button
+              title="Affiliate Dashboard"
+              onPress={handleAffiliateDashboard}
+              variant="outline"
+              size="large"
+              icon={<Gift size={18} color={Colors.dark.text} />}
+              style={styles.actionButton}
+            />
+          )}
+          <Button
+            title="Log Out"
+            onPress={handleLogout}
+            variant="danger"
+            size="large"
+            icon={<LogOut size={18} color={Colors.dark.error} />}
+            style={styles.logoutButton}
+            loading={isLoading}
+          />
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -313,82 +291,6 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
-  },
-  header: {
-    padding: 16,
-    backgroundColor: Colors.dark.card,
-    borderRadius: 12,
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 16,
-  },
-  profileHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  avatarContainer: {
-    position: 'relative',
-    marginRight: 16,
-  },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-  },
-  avatarPlaceholder: {
-    backgroundColor: Colors.dark.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarText: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: Colors.dark.text,
-  },
-  membershipBadge: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    backgroundColor: Colors.dark.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  membershipText: {
-    color: Colors.dark.text,
-    fontSize: 10,
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-  },
-  profileInfo: {
-    flex: 1,
-  },
-  name: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: Colors.dark.text,
-    marginBottom: 4,
-  },
-  businessField: {
-    fontSize: 16,
-    color: Colors.dark.textSecondary,
-    marginBottom: 4,
-  },
-  location: {
-    fontSize: 14,
-    color: Colors.dark.textSecondary,
-  },
-  actions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-  },
-  actionButton: {
-    flex: 1,
-    marginHorizontal: 4,
-    marginBottom: 8,
-    minWidth: 100,
   },
   section: {
     padding: 16,
@@ -467,18 +369,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.dark.textSecondary,
   },
-  supabaseActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
-  },
-  supabaseButton: {
-    flex: 1,
-    marginHorizontal: 4,
-  },
-  logoutButton: {
+  bottomActions: {
+    padding: 16,
     marginHorizontal: 16,
     marginBottom: 32,
+  },
+  actionButton: {
+    marginBottom: 16,
   },
   adminButton: {
     marginHorizontal: 0,
@@ -486,6 +383,9 @@ const styles = StyleSheet.create({
   },
   clearCacheButton: {
     marginTop: 8,
+    marginBottom: 0,
+  },
+  logoutButton: {
     marginBottom: 0,
   },
   loadingContainer: {

@@ -9,7 +9,7 @@ export function notify(
   options: { duration?: number; id?: string } = {}
 ) {
   // Use the notification store to show notifications
-  useNotificationStore.getState().add({
+  useNotificationStore.getState().addNotification({
     message,
     type,
     duration: options.duration || 3000,

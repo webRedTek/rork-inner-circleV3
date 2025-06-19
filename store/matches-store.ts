@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { Match, UserProfile, MembershipTier } from '@/types/user';
-import { isSupabaseConfigured, supabase, convertToCamelCase, convertToSnakeCase, SwipeAction } from '@/lib/supabase';
+import { isSupabaseConfigured, supabase, convertToCamelCase, convertToSnakeCase, SwipeAction, SwipeBatchResult, PotentialMatchesResult, syncUsageCounters } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
 import { notifyError } from '@/utils/notify';
 
@@ -135,7 +135,7 @@ export const useMatchesStore = create<MatchesState>()(
       matchLimitReached: false,
       fetchPotentialMatches: async (maxDistance = 50, forceRefresh = false) => {
         const { user, isReady, tierSettings } = useAuthStore.getState();
-        if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+        if (!isReady || !user) return; // Silent fail if not ready or authenticated
         
         if (get().isLoading && !forceRefresh) return;
         
@@ -161,87 +161,28 @@ export const useMatchesStore = create<MatchesState>()(
             // Use user's preferred distance if available
             const userMaxDistance = user.preferredDistance || maxDistance;
             
-            let potentialUsers: any[] = [];
-            let matchError: any = null;
-            
             // Apply rate limiting
             await rateLimitedQuery();
             
-            // Get potential matches - don't filter by any criteria initially to ensure we get all users
-            const { data, error } = await supabase
-              .from('users')
-              .select('*')
-              .neq('id', user.id);
-              
-            if (error) {
-              matchError = error;
-            } else {
-              potentialUsers = data || [];
+            // Fetch potential matches using the optimized stored procedure
+            const result = await fetchPotentialMatches(user.id, userMaxDistance, isGlobalDiscovery, get().batchSize * 2);
+            
+            if (!result || result.count === 0) {
+              throw new Error(isGlobalDiscovery ? "No global matches found. Try adjusting your preferences." : "No matches found in your area. Try increasing your distance.");
             }
             
-            if (matchError) throw matchError;
-            
-            // Filter out users that have already been matched or passed
-            const { data: existingLikes, error: likesError } = await supabase
-              .from('likes')
-              .select('liked_id')
-              .eq('liker_id', user.id);
-              
-            if (likesError) throw likesError;
-            
-            const likedIds = existingLikes ? existingLikes.map((like: any) => like.liked_id) : [];
-            
-            // Convert to UserProfile type and cache
-            const potentialData = potentialUsers as Record<string, any>[] || [];
-            const filteredMatches = potentialData
-              .filter((user: any) => !likedIds.includes(user.id))
-              .map((userData) => {
-                const profile = supabaseToUserProfile(userData);
-                userProfileCache.set(profile.id, profile);
-                return profile;
-              });
-            
-            // Sort based on discovery type
-            const sortedMatches = isGlobalDiscovery 
-              ? filteredMatches.sort(() => Math.random() - 0.5) // Randomize for global
-              : filteredMatches.sort((a, b) => {
-                  // If we have location data, sort by distance
-                  if (a.latitude && a.longitude && b.latitude && b.longitude && user.latitude && user.longitude) {
-                    const distA = calculateDistance(
-                      user.latitude, user.longitude, 
-                      a.latitude, a.longitude
-                    );
-                    const distB = calculateDistance(
-                      user.latitude, user.longitude, 
-                      b.latitude, b.longitude
-                    );
-                    return distA - distB;
-                  }
-                  // Otherwise sort by creation date (newest first)
-                  return (b.createdAt || 0) - (a.createdAt || 0);
-                });
+            // Convert raw matches to UserProfile type and cache
+            const potentialMatches = result.matches.map(match => {
+              const profile = supabaseToUserProfile(match);
+              userProfileCache.set(profile.id, profile);
+              return profile;
+            });
             
             // Split into potential and cached
-            const batchToShow = sortedMatches.slice(0, get().batchSize);
-            const remainingCache = sortedMatches.slice(get().batchSize);
+            const batchToShow = potentialMatches.slice(0, get().batchSize);
+            const remainingCache = potentialMatches.slice(get().batchSize);
             
-            // Log the action
-            try {
-              await supabase.rpc('log_user_action', {
-                user_id: user.id,
-                action: 'fetch_potential_matches',
-                details: { 
-                  count: sortedMatches.length,
-                  max_distance: userMaxDistance,
-                  global_discovery: isGlobalDiscovery
-                }
-              });
-            } catch (logError) {
-              console.warn('[MatchesStore] Failed to log fetch_potential_matches action:', getReadableError(logError));
-              notifyError('Failed to log fetch action: ' + getReadableError(logError));
-            }
-            
-            console.log('[MatchesStore] Fetched potential matches', { total: sortedMatches.length, batchToShow: batchToShow.length, cached: remainingCache.length });
+            console.log('[MatchesStore] Fetched potential matches', { total: potentialMatches.length, batchToShow: batchToShow.length, cached: remainingCache.length });
             set({ 
               potentialMatches: batchToShow, 
               cachedMatches: remainingCache, 
@@ -262,7 +203,7 @@ export const useMatchesStore = create<MatchesState>()(
 
       prefetchNextBatch: async (maxDistance = 50) => {
         const { user, isReady, tierSettings } = useAuthStore.getState();
-        if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+        if (!isReady || !user) return; // Silent fail if not ready or authenticated
         
         if (get().isPrefetching || get().isLoading) return;
         
@@ -277,75 +218,23 @@ export const useMatchesStore = create<MatchesState>()(
             // Apply rate limiting
             await rateLimitedQuery();
             
-            // Get potential matches - don't filter by any criteria initially to ensure we get all users
-            const { data, error } = await supabase
-              .from('users')
-              .select('*')
-              .neq('id', user.id);
-              
-            if (error) throw error;
+            // Fetch potential matches using the optimized stored procedure
+            const result = await fetchPotentialMatches(user.id, userMaxDistance, isGlobalDiscovery, get().batchSize * 2);
             
-            const potentialUsers = data || [];
-            
-            // Filter out users that have already been matched or passed
-            const { data: existingLikes, error: likesError } = await supabase
-              .from('likes')
-              .select('liked_id')
-              .eq('liker_id', user.id);
-              
-            if (likesError) throw likesError;
-            
-            const likedIds = existingLikes ? existingLikes.map((like: any) => like.liked_id) : [];
-            
-            // Convert to UserProfile type and cache
-            const potentialData = potentialUsers as Record<string, any>[] || [];
-            const filteredMatches = potentialData
-              .filter((user: any) => !likedIds.includes(user.id))
-              .map((userData) => {
-                const profile = supabaseToUserProfile(userData);
-                userProfileCache.set(profile.id, profile);
-                return profile;
-              });
-            
-            // Sort based on discovery type
-            const sortedMatches = isGlobalDiscovery 
-              ? filteredMatches.sort(() => Math.random() - 0.5) // Randomize for global
-              : filteredMatches.sort((a, b) => {
-                  // If we have location data, sort by distance
-                  if (a.latitude && a.longitude && b.latitude && b.longitude && user.latitude && user.longitude) {
-                    const distA = calculateDistance(
-                      user.latitude, user.longitude, 
-                      a.latitude, a.longitude
-                    );
-                    const distB = calculateDistance(
-                      user.latitude, user.longitude, 
-                      b.latitude, b.longitude
-                    );
-                    return distA - distB;
-                  }
-                  // Otherwise sort by creation date (newest first)
-                  return (b.createdAt || 0) - (a.createdAt || 0);
-                });
-            
-            // Log the action
-            try {
-              await supabase.rpc('log_user_action', {
-                user_id: user.id,
-                action: 'prefetch_potential_matches',
-                details: { 
-                  count: sortedMatches.length,
-                  max_distance: userMaxDistance,
-                  global_discovery: isGlobalDiscovery
-                }
-              });
-            } catch (logError) {
-              console.warn('[MatchesStore] Failed to log prefetch_potential_matches action:', getReadableError(logError));
-              notifyError('Failed to log prefetch action: ' + getReadableError(logError));
+            if (!result || result.count === 0) {
+              throw new Error(isGlobalDiscovery ? "No additional global matches found." : "No additional matches found in your area.");
             }
             
-            console.log('[MatchesStore] Prefetched additional matches', { count: sortedMatches.length });
+            // Convert raw matches to UserProfile type and cache
+            const potentialMatches = result.matches.map(match => {
+              const profile = supabaseToUserProfile(match);
+              userProfileCache.set(profile.id, profile);
+              return profile;
+            });
+            
+            console.log('[MatchesStore] Prefetched additional matches', { count: potentialMatches.length });
             set({ 
-              cachedMatches: [...get().cachedMatches, ...sortedMatches].slice(0, 50), 
+              cachedMatches: [...get().cachedMatches, ...potentialMatches].slice(0, 50), 
               isPrefetching: false 
             });
           } else {
@@ -363,7 +252,7 @@ export const useMatchesStore = create<MatchesState>()(
 
       likeUser: async (userId: string) => {
         const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) return null; // Silent fail if not ready or not authenticated
+        if (!isReady || !user) return null; // Silent fail if not ready or authenticated
         
         set({ isLoading: true, error: null });
         try {
@@ -423,7 +312,7 @@ export const useMatchesStore = create<MatchesState>()(
 
       passUser: async (userId: string) => {
         const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+        if (!isReady || !user) return; // Silent fail if not ready or authenticated
         
         set({ isLoading: true, error: null });
         try {
@@ -470,7 +359,7 @@ export const useMatchesStore = create<MatchesState>()(
 
       queueSwipe: async (userId: string, direction: 'left' | 'right') => {
         const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+        if (!isReady || !user) return; // Silent fail if not ready or authenticated
         
         try {
           const swipeAction: SwipeAction = {
@@ -499,7 +388,7 @@ export const useMatchesStore = create<MatchesState>()(
 
       processSwipeBatch: async () => {
         const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+        if (!isReady || !user) return; // Silent fail if not ready or authenticated
         
         set({ isLoading: true, error: null });
         try {
@@ -516,84 +405,16 @@ export const useMatchesStore = create<MatchesState>()(
             // Apply rate limiting
             await rateLimitedQuery();
             
-            // Process right swipes (likes) first
-            const rightSwipes = swipeQueue.filter(swipe => swipe.direction === 'right');
-            const newMatches: any[] = [];
-
-            for (const swipe of rightSwipes) {
-              // Check if the other user also liked this user
-              const { data: existingLike, error: likeError } = await supabase
-                .from('likes')
-                .select('*')
-                .eq('liker_id', swipe.swipee_id)
-                .eq('liked_id', swipe.swiper_id)
-                .single();
-
-              if (likeError && likeError.code !== 'PGRST116') {
-                console.error('[MatchesStore] Error checking for existing like:', getReadableError(likeError));
-                notifyError('Error checking for existing like: ' + getReadableError(likeError));
-                continue;
-              }
-
-              // If there's a match
-              if (existingLike) {
-                // Create a match
-                const { data: match, error: matchError } = await supabase
-                  .from('matches')
-                  .insert({
-                    user_id: swipe.swiper_id,
-                    matched_user_id: swipe.swipee_id,
-                    created_at: swipe.swipe_timestamp
-                  })
-                  .select()
-                  .single();
-
-                if (matchError) {
-                  console.error('[MatchesStore] Error creating match:', getReadableError(matchError));
-                  notifyError('Error creating match: ' + getReadableError(matchError));
-                  continue;
-                }
-
-                if (match) {
-                  newMatches.push(match);
-                }
-              }
-
-              // Record the swipe
-              const { error: swipeError } = await supabase
-                .from('likes')
-                .insert({
-                  liker_id: swipe.swiper_id,
-                  liked_id: swipe.swipee_id,
-                  timestamp: swipe.swipe_timestamp
-                });
-
-              if (swipeError) {
-                console.error('[MatchesStore] Error recording swipe:', getReadableError(swipeError));
-                notifyError('Error recording swipe: ' + getReadableError(swipeError));
-              }
+            // Process swipe batch using the optimized stored procedure
+            const result = await processSwipeBatch(swipeQueue) as SwipeBatchResult;
+            
+            if (!result) {
+              throw new Error('Failed to process swipe batch');
             }
-
-            // Process left swipes (passes)
-            const leftSwipes = swipeQueue.filter(swipe => swipe.direction === 'left');
-            for (const swipe of leftSwipes) {
-              const { error: swipeError } = await supabase
-                .from('likes')
-                .insert({
-                  liker_id: swipe.swiper_id,
-                  liked_id: swipe.swipee_id,
-                  timestamp: swipe.swipe_timestamp
-                });
-
-              if (swipeError) {
-                console.error('[MatchesStore] Error recording swipe:', getReadableError(swipeError));
-                notifyError('Error recording swipe: ' + getReadableError(swipeError));
-              }
-            }
-
+            
             // Update matches if any new ones were created
-            if (newMatches.length > 0) {
-              const typedMatches = newMatches.map((match: any) => supabaseToMatch(match));
+            if (result.new_matches.length > 0) {
+              const typedMatches = result.new_matches.map((match: any) => supabaseToMatch(match));
               
               set(state => ({
                 matches: [...state.matches, ...typedMatches],
@@ -602,19 +423,19 @@ export const useMatchesStore = create<MatchesState>()(
               
               // Check if match limit is reached
               const tierSettings = useAuthStore.getState().tierSettings;
-              const today = new Date();
-              today.setHours(0, 0, 0, 0);
-              const todayTimestamp = today.getTime();
-              const todayMatches = typedMatches.filter(m => m.createdAt >= todayTimestamp).length;
-              if (tierSettings && todayMatches >= tierSettings.daily_match_limit) {
+              if (tierSettings && result.match_count >= tierSettings.daily_match_limit) {
                 set({ matchLimitReached: true });
               }
               
               console.log(`[MatchesStore] Batch processing created ${typedMatches.length} new matches`);
             }
             
-            // Clear the swipe queue
-            set({ swipeQueue: [], isLoading: false });
+            // Update swipe limit reached status
+            set({ 
+              swipeLimitReached: result.swipe_count >= result.swipe_limit,
+              swipeQueue: [], 
+              isLoading: false 
+            });
           } else {
             throw new Error('Supabase is not configured');
           }
@@ -630,7 +451,7 @@ export const useMatchesStore = create<MatchesState>()(
 
       getMatches: async () => {
         const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+        if (!isReady || !user) return; // Silent fail if not ready or authenticated
         
         set({ isLoading: true, error: null });
         try {
@@ -679,7 +500,7 @@ export const useMatchesStore = create<MatchesState>()(
 
       refreshCandidates: async () => {
         const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+        if (!isReady || !user) return; // Silent fail if not ready or authenticated
         
         console.log('[MatchesStore] Refreshing candidates - clearing current matches');
         set({ potentialMatches: [], cachedMatches: [] });
@@ -740,46 +561,24 @@ export const useMatchesStore = create<MatchesState>()(
         }
         
         try {
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          const todayTimestamp = today.getTime();
-          
           if (isSupabaseConfigured() && supabase) {
             // Apply rate limiting
             await rateLimitedQuery();
             
-            // Sync swipe count
-            const { data: likesData, error: likesError } = await supabase
-              .from('likes')
-              .select('id, timestamp')
-              .eq('liker_id', user.id)
-              .gte('timestamp', todayTimestamp);
-              
-            if (likesError) {
-              console.error('[MatchesStore] Error syncing swipe count:', getReadableError(likesError));
-              notifyError('Error syncing swipe count: ' + getReadableError(likesError));
-            } else {
-              const todaySwipes = likesData ? likesData.length : 0;
-              const swipeLimitReached = todaySwipes >= tierSettings.daily_swipe_limit;
-              set({ swipeLimitReached });
-              console.log('[MatchesStore] Synced swipe count', { todaySwipes, limit: tierSettings.daily_swipe_limit });
-            }
+            // Sync usage counters using the optimized function
+            const result = await syncUsageCounters(user.id);
             
-            // Sync match count
-            const { data: matchesData, error: matchesError } = await supabase
-              .from('matches')
-              .select('id, created_at')
-              .eq('user_id', user.id)
-              .gte('created_at', todayTimestamp);
-              
-            if (matchesError) {
-              console.error('[MatchesStore] Error syncing match count:', getReadableError(matchesError));
-              notifyError('Error syncing match count: ' + getReadableError(matchesError));
-            } else {
-              const todayMatches = matchesData ? matchesData.length : 0;
-              const matchLimitReached = todayMatches >= tierSettings.daily_match_limit;
-              set({ matchLimitReached });
-              console.log('[MatchesStore] Synced match count', { todayMatches, limit: tierSettings.daily_match_limit });
+            if (result) {
+              set({ 
+                swipeLimitReached: result.swipe_count >= result.swipe_limit,
+                matchLimitReached: result.match_count >= result.match_limit
+              });
+              console.log('[MatchesStore] Synced usage counters', { 
+                swipeCount: result.swipe_count, 
+                swipeLimit: result.swipe_limit,
+                matchCount: result.match_count,
+                matchLimit: result.match_limit
+              });
             }
           } else {
             throw new Error('Supabase is not configured');
@@ -828,7 +627,7 @@ export const startBatchProcessing = () => {
   const { batchProcessingInterval: intervalMs } = useMatchesStore.getState();
   batchProcessingIntervalId = setInterval(async () => {
     const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    if (!isReady || !user) return; // Silent fail if not ready or authenticated
     
     const { swipeQueue } = useMatchesStore.getState();
     if (swipeQueue.length >= 5) {

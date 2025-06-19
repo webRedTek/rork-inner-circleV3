@@ -9,6 +9,8 @@ import {
   View
 } from 'react-native';
 import Colors from '@/constants/colors';
+import * as Haptics from 'expo-haptics';
+import { Platform } from 'react-native';
 
 interface ButtonProps {
   title?: string;
@@ -17,6 +19,8 @@ interface ButtonProps {
   size?: 'small' | 'medium' | 'large';
   disabled?: boolean;
   loading?: boolean;
+  error?: boolean;
+  success?: boolean;
   style?: ViewStyle;
   textStyle?: TextStyle;
   icon?: ReactNode;
@@ -31,6 +35,8 @@ export const Button: React.FC<ButtonProps> = ({
   size = 'medium',
   disabled = false,
   loading = false,
+  error = false,
+  success = false,
   style,
   textStyle,
   icon,
@@ -39,6 +45,15 @@ export const Button: React.FC<ButtonProps> = ({
 }) => {
   // Use leftIcon as fallback if icon is not provided
   const iconToUse = icon || leftIcon;
+  
+  const handlePress = () => {
+    if (!disabled && !loading) {
+      if (Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+      onPress();
+    }
+  };
   
   const getButtonStyle = () => {
     let buttonStyle: ViewStyle = {};
@@ -99,11 +114,23 @@ export const Button: React.FC<ButtonProps> = ({
         break;
     }
     
-    // Disabled style
+    // State styles
     if (disabled) {
       buttonStyle = {
         ...buttonStyle,
         opacity: 0.5,
+      };
+    } else if (error) {
+      buttonStyle = {
+        ...buttonStyle,
+        borderColor: Colors.dark.error,
+        backgroundColor: variant === 'outline' || variant === 'ghost' ? 'transparent' : 'rgba(255, 69, 58, 0.2)',
+      };
+    } else if (success) {
+      buttonStyle = {
+        ...buttonStyle,
+        borderColor: Colors.dark.success,
+        backgroundColor: variant === 'outline' || variant === 'ghost' ? 'transparent' : 'rgba(75, 181, 67, 0.2)',
       };
     }
     
@@ -150,6 +177,18 @@ export const Button: React.FC<ButtonProps> = ({
         break;
     }
     
+    if (error) {
+      textStyleObj = {
+        ...textStyleObj,
+        color: Colors.dark.error,
+      };
+    } else if (success) {
+      textStyleObj = {
+        ...textStyleObj,
+        color: Colors.dark.success,
+      };
+    }
+    
     return textStyleObj;
   };
 
@@ -188,9 +227,11 @@ export const Button: React.FC<ButtonProps> = ({
         getButtonStyle(),
         style
       ]}
-      onPress={onPress}
+      onPress={handlePress}
       disabled={disabled || loading}
       activeOpacity={0.8}
+      accessibilityState={{ disabled: disabled || loading }}
+      accessibilityRole="button"
     >
       {renderContent()}
     </TouchableOpacity>

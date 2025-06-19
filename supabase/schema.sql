@@ -526,6 +526,291 @@ begin
 end;
 $$ language plpgsql security definer;
 
+-- Create stored procedure to process swipe batch
+create or replace function process_swipe_batch(p_swipe_actions jsonb)
+returns jsonb as $$
+declare
+  v_swiper_id uuid;
+  v_swipee_id uuid;
+  v_direction text;
+  v_timestamp bigint;
+  v_limit_check jsonb;
+  v_new_matches jsonb[] = '{}';
+  v_processed_swipes jsonb[] = '{}';
+  v_swipe_action jsonb;
+  v_match_result jsonb;
+  v_existing_like jsonb;
+  v_new_match_id uuid;
+  v_swipe_count integer = 0;
+  v_match_count integer = 0;
+  v_swipe_limit integer;
+  v_match_limit integer;
+begin
+  -- Loop through each swipe action in the array
+  for v_swipe_action in select jsonb_array_elements(p_swipe_actions)
+  loop
+    -- Extract swipe action details
+    v_swiper_id := (v_swipe_action->>'swiper_id')::uuid;
+    v_swipee_id := (v_swipe_action->>'swipee_id')::uuid;
+    v_direction := (v_swipe_action->>'direction')::text;
+    v_timestamp := (v_swipe_action->>'swipe_timestamp')::bigint;
+
+    -- Check swipe limits for the user
+    select check_user_limits(v_swiper_id, 'swipe') into v_limit_check;
+    v_swipe_limit := (v_limit_check->>'swipe_limit')::integer;
+    v_match_limit := (v_limit_check->>'match_limit')::integer;
+
+    -- Only process if swipe is allowed
+    if (v_limit_check->>'is_allowed')::boolean then
+      -- Record the swipe in likes table
+      insert into public.likes (liker_id, liked_id, timestamp)
+      values (v_swiper_id, v_swipee_id, v_timestamp);
+
+      -- Increment swipe count for usage tracking
+      v_swipe_count := v_swipe_count + 1;
+
+      -- If it's a right swipe (like), check for mutual like
+      if v_direction = 'right' then
+        -- Check if the swipee has liked the swiper
+        select jsonb_build_object('exists', true, 'liked_id', liked_id)
+        into v_existing_like
+        from public.likes
+        where liker_id = v_swipee_id and liked_id = v_swiper_id
+        limit 1;
+
+        -- If mutual like found, create a match if within limits
+        if v_existing_like->>'exists' = 'true' then
+          select check_user_limits(v_swiper_id, 'match') into v_limit_check;
+          if (v_limit_check->>'is_allowed')::boolean then
+            -- Create a new match
+            insert into public.matches (user_id, matched_user_id, created_at)
+            values (v_swiper_id, v_swipee_id, v_timestamp)
+            returning id into v_new_match_id;
+
+            -- Increment match count for usage tracking
+            v_match_count := v_match_count + 1;
+
+            -- Add to new matches array
+            v_match_result := jsonb_build_object(
+              'match_id', v_new_match_id,
+              'user_id', v_swiper_id,
+              'matched_user_id', v_swipee_id,
+              'created_at', v_timestamp
+            );
+            v_new_matches := array_append(v_new_matches, v_match_result);
+          end if;
+        end if;
+      end if;
+
+      -- Add processed swipe to array
+      v_processed_swipes := array_append(v_processed_swipes, v_swipe_action);
+    end if;
+  end loop;
+
+  -- Update usage tracking for swipes and matches
+  if v_swipe_count > 0 then
+    insert into public.usage_tracking (user_id, action_type, first_action_timestamp, last_action_timestamp, current_count, reset_timestamp)
+    values (v_swiper_id, 'swipe', extract(epoch from now()) * 1000, extract(epoch from now()) * 1000, v_swipe_count, extract(epoch from (current_date + interval '1 day')) * 1000)
+    on conflict (user_id, action_type) do update
+    set current_count = usage_tracking.current_count + v_swipe_count,
+        last_action_timestamp = extract(epoch from now()) * 1000;
+  end if;
+
+  if v_match_count > 0 then
+    insert into public.usage_tracking (user_id, action_type, first_action_timestamp, last_action_timestamp, current_count, reset_timestamp)
+    values (v_swiper_id, 'match', extract(epoch from now()) * 1000, extract(epoch from now()) * 1000, v_match_count, extract(epoch from (current_date + interval '1 day')) * 1000)
+    on conflict (user_id, action_type) do update
+    set current_count = usage_tracking.current_count + v_match_count,
+        last_action_timestamp = extract(epoch from now()) * 1000;
+  end if;
+
+  -- Return results with processed swipes and any new matches
+  return jsonb_build_object(
+    'processed_swipes', v_processed_swipes,
+    'new_matches', v_new_matches,
+    'swipe_limit', v_swipe_limit,
+    'match_limit', v_match_limit,
+    'swipe_count', v_swipe_count,
+    'match_count', v_match_count
+  );
+end;
+$$ language plpgsql security definer;
+
+-- Create stored procedure to fetch potential matches
+create or replace function fetch_potential_matches(p_user_id uuid, p_max_distance integer, p_is_global_discovery boolean, p_limit integer default 25)
+returns jsonb as $$
+declare
+  v_user jsonb;
+  v_user_lat double precision;
+  v_user_lon double precision;
+  v_potential_matches jsonb[] = '{}';
+  v_liked_ids uuid[];
+  v_matched_ids uuid[];
+  v_match jsonb;
+begin
+  -- Get user data for location and preferences
+  select jsonb_build_object(
+    'latitude', latitude,
+    'longitude', longitude,
+    'business_field', business_field,
+    'looking_for', looking_for
+  ) into v_user
+  from public.users
+  where id = p_user_id;
+
+  v_user_lat := (v_user->>'latitude')::double precision;
+  v_user_lon := (v_user->>'longitude')::double precision;
+
+  -- Get IDs of users already liked by the current user
+  select array_agg(liked_id) into v_liked_ids
+  from public.likes
+  where liker_id = p_user_id;
+
+  -- Get IDs of users already matched with the current user
+  select array_agg(matched_user_id) into v_matched_ids
+  from public.matches
+  where user_id = p_user_id
+  union
+  select array_agg(user_id)
+  from public.matches
+  where matched_user_id = p_user_id;
+
+  -- Fetch potential matches
+  for v_match in
+    select jsonb_build_object(
+      'id', u.id,
+      'name', u.name,
+      'bio', u.bio,
+      'location', u.location,
+      'zip_code', u.zip_code,
+      'latitude', u.latitude,
+      'longitude', u.longitude,
+      'business_field', u.business_field,
+      'entrepreneur_status', u.entrepreneur_status,
+      'photo_url', u.photo_url,
+      'membership_tier', u.membership_tier,
+      'business_verified', u.business_verified,
+      'created_at', u.created_at,
+      'skills_offered', u.skills_offered,
+      'skills_seeking', u.skills_seeking,
+      'industry_focus', u.industry_focus,
+      'business_stage', u.business_stage,
+      'looking_for', u.looking_for,
+      'availability_level', u.availability_level,
+      'distance', case
+        when p_is_global_discovery or u.latitude is null or u.longitude is null or v_user_lat is null or v_user_lon is null then null
+        else round((
+          6371 * acos(
+            cos(radians(v_user_lat)) * cos(radians(u.latitude)) * cos(radians(u.longitude) - radians(v_user_lon)) +
+            sin(radians(v_user_lat)) * sin(radians(u.latitude))
+          )
+        )::numeric, 2)
+      end
+    ) as match_data
+    from public.users u
+    where u.id != p_user_id
+    and (v_liked_ids is null or u.id != any(v_liked_ids))
+    and (v_matched_ids is null or u.id != any(v_matched_ids))
+    and (p_is_global_discovery or (
+      u.latitude is not null and u.longitude is not null and
+      v_user_lat is not null and v_user_lon is not null and
+      (
+        6371 * acos(
+          cos(radians(v_user_lat)) * cos(radians(u.latitude)) * cos(radians(u.longitude) - radians(v_user_lon)) +
+          sin(radians(v_user_lat)) * sin(radians(u.latitude))
+        )
+      ) <= p_max_distance
+    ))
+    order by
+      case when p_is_global_discovery then random() end,
+      case when not p_is_global_discovery then
+        6371 * acos(
+          cos(radians(v_user_lat)) * cos(radians(u.latitude)) * cos(radians(u.longitude) - radians(v_user_lon)) +
+          sin(radians(v_user_lat)) * sin(radians(u.latitude))
+        )
+      end asc,
+      u.created_at desc
+    limit p_limit
+  loop
+    v_potential_matches := array_append(v_potential_matches, v_match);
+  end loop;
+
+  -- Log the action
+  perform log_user_action(p_user_id, 'fetch_potential_matches', jsonb_build_object(
+    'count', array_length(v_potential_matches, 1),
+    'max_distance', p_max_distance,
+    'global_discovery', p_is_global_discovery
+  ));
+
+  -- Return the potential matches
+  return jsonb_build_object(
+    'matches', v_potential_matches,
+    'count', array_length(v_potential_matches, 1),
+    'max_distance', p_max_distance,
+    'is_global', p_is_global_discovery
+  );
+end;
+$$ language plpgsql security definer;
+
+-- Create function to sync usage counters
+create or replace function sync_usage_counters(p_user_id uuid)
+returns jsonb as $$
+declare
+  v_today_timestamp bigint;
+  v_swipe_count integer = 0;
+  v_match_count integer = 0;
+  v_user_tier_settings jsonb;
+  v_swipe_limit integer;
+  v_match_limit integer;
+begin
+  -- Get today's timestamp for counting
+  v_today_timestamp := extract(epoch from (current_date)) * 1000;
+  
+  -- Get user's tier settings
+  select get_user_tier_settings(p_user_id) into v_user_tier_settings;
+  v_swipe_limit := (v_user_tier_settings->>'daily_swipe_limit')::integer;
+  v_match_limit := (v_user_tier_settings->>'daily_match_limit')::integer;
+  
+  -- Count today's swipes
+  select count(*) into v_swipe_count
+  from public.likes
+  where liker_id = p_user_id
+  and timestamp >= v_today_timestamp;
+  
+  -- Count today's matches
+  select count(*) into v_match_count
+  from public.matches
+  where user_id = p_user_id
+  and created_at >= v_today_timestamp;
+  
+  -- Log the action
+  perform log_user_action(p_user_id, 'sync_usage_counters', jsonb_build_object(
+    'swipe_count', v_swipe_count,
+    'match_count', v_match_count
+  ));
+  
+  -- Return current usage stats
+  return jsonb_build_object(
+    'swipe_count', v_swipe_count,
+    'match_count', v_match_count,
+    'swipe_limit', v_swipe_limit,
+    'match_limit', v_match_limit,
+    'swipe_remaining', greatest(0, v_swipe_limit - v_swipe_count),
+    'match_remaining', greatest(0, v_match_limit - v_match_count),
+    'timestamp', extract(epoch from now()) * 1000
+  );
+end;
+$$ language plpgsql security definer;
+
+-- Create indexes for performance optimization
+create index if not exists idx_likes_liker_id_timestamp on public.likes (liker_id, timestamp);
+create index if not exists idx_likes_liked_id on public.likes (liked_id);
+create index if not exists idx_matches_user_id_created_at on public.matches (user_id, created_at);
+create index if not exists idx_matches_matched_user_id on public.matches (matched_user_id);
+create index if not exists idx_users_location on public.users (latitude, longitude);
+create index if not exists idx_group_messages_group_id_created_at on public.group_messages (group_id, created_at);
+create index if not exists idx_group_events_group_id_start_time on public.group_events (group_id, start_time);
+
 -- Create RLS policies
 
 -- Users table policies
