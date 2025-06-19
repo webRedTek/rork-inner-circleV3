@@ -865,7 +865,7 @@ export default function GroupDetailScreen() {
                 value={eventTitle}
                 onChangeText={setEventTitle}
               />
-              {formErrors.title && <Text style={styles.errorText}>{formErrors.title}</Text>}
+              {formErrors.title && <Text style={styles.formErrorText}>{formErrors.title}</Text>}
               
               <TextInput
                 style={[styles.modalInput, styles.textArea]}
@@ -916,7 +916,7 @@ export default function GroupDetailScreen() {
                 onChangeText={setEventDate}
               />
               <Text style={styles.inputHint}>Format: YYYY-MM-DD. In a full implementation, this would be a date picker.</Text>
-              {formErrors.date && <Text style={styles.errorText}>{formErrors.date}</Text>}
+              {formErrors.date && <Text style={styles.formErrorText}>{formErrors.date}</Text>}
               
               <Text style={styles.inputLabel}>Start Time *</Text>
               <TextInput
@@ -927,7 +927,7 @@ export default function GroupDetailScreen() {
                 onChangeText={setEventTime}
               />
               <Text style={styles.inputHint}>Format: HH:MM (24-hour). In a full implementation, this would be a time picker.</Text>
-              {formErrors.time && <Text style={styles.errorText}>{formErrors.time}</Text>}
+              {formErrors.time && <Text style={styles.formErrorText}>{formErrors.time}</Text>}
               
               <Text style={styles.inputLabel}>End Time (optional)</Text>
               <TextInput
@@ -938,7 +938,7 @@ export default function GroupDetailScreen() {
                 onChangeText={setEventEndTime}
               />
               <Text style={styles.inputHint}>Format: HH:MM (24-hour). In a full implementation, this would be a time picker.</Text>
-              {formErrors.endTime && <Text style={styles.errorText}>{formErrors.endTime}</Text>}
+              {formErrors.endTime && <Text style={styles.formErrorText}>{formErrors.endTime}</Text>}
               
               <Text style={styles.inputLabel}>Reminder (minutes before)</Text>
               <TextInput
@@ -949,7 +949,7 @@ export default function GroupDetailScreen() {
                 onChangeText={setEventReminder}
                 keyboardType="numeric"
               />
-              {formErrors.reminder && <Text style={styles.errorText}>{formErrors.reminder}</Text>}
+              {formErrors.reminder && <Text style={styles.formErrorText}>{formErrors.reminder}</Text>}
               
               <Text style={styles.inputLabel}>Timezone</Text>
               <TextInput
@@ -999,7 +999,7 @@ export default function GroupDetailScreen() {
                 value={eventTitle}
                 onChangeText={setEventTitle}
               />
-              {formErrors.title && <Text style={styles.errorText}>{formErrors.title}</Text>}
+              {formErrors.title && <Text style={styles.formErrorText}>{formErrors.title}</Text>}
               
               <TextInput
                 style={[styles.modalInput, styles.textArea]}
@@ -1050,7 +1050,7 @@ export default function GroupDetailScreen() {
                 onChangeText={setEventDate}
               />
               <Text style={styles.inputHint}>Format: YYYY-MM-DD. In a full implementation, this would be a date picker.</Text>
-              {formErrors.date && <Text style={styles.errorText}>{formErrors.date}</Text>}
+              {formErrors.date && <Text style={styles.formErrorText}>{formErrors.date}</Text>}
               
               <Text style={styles.inputLabel}>Start Time *</Text>
               <TextInput
@@ -1061,7 +1061,7 @@ export default function GroupDetailScreen() {
                 onChangeText={setEventTime}
               />
               <Text style={styles.inputHint}>Format: HH:MM (24-hour). In a full implementation, this would be a time picker.</Text>
-              {formErrors.time && <Text style={styles.errorText}>{formErrors.time}</Text>}
+              {formErrors.time && <Text style={styles.formErrorText}>{formErrors.time}</Text>}
               
               <Text style={styles.inputLabel}>End Time (optional)</Text>
               <TextInput
@@ -1072,7 +1072,7 @@ export default function GroupDetailScreen() {
                 onChangeText={setEventEndTime}
               />
               <Text style={styles.inputHint}>Format: HH:MM (24-hour). In a full implementation, this would be a time picker.</Text>
-              {formErrors.endTime && <Text style={styles.errorText}>{formErrors.endTime}</Text>}
+              {formErrors.endTime && <Text style={styles.formErrorText}>{formErrors.endTime}</Text>}
               
               <Button
                 title="Update Event"
@@ -1582,7 +1582,7 @@ const styles = StyleSheet.create({
   inputError: {
     borderColor: Colors.dark.error,
   },
-  errorText: {
+  formErrorText: {
     color: Colors.dark.error,
     fontSize: 12,
     marginTop: -12,
