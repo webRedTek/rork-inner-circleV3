@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { Match, UserProfile, MembershipTier } from '@/types/user';
-import { isSupabaseConfigured, supabase, convertToCamelCase, SwipeAction } from '@/lib/supabase';
+import { isSupabaseConfigured, supabase, convertToCamelCase, SwipeAction, fetchPotentialMatches as fetchPotentialMatchesFromSupabase, processSwipeBatch as processSwipeBatchFromSupabase, syncUsageCounters as syncUsageCountersFromSupabase } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
 import { notifyError } from '@/utils/notify';
 
@@ -89,186 +89,6 @@ const rateLimitedQuery = async () => {
   lastQueryTime = Date.now();
 };
 
-// Interface for potential matches result
-interface PotentialMatchesResult {
-  count: number;
-  matches: Record<string, any>[];
-}
-
-// Interface for swipe batch result
-interface SwipeBatchResult {
-  new_matches: Record<string, any>[];
-  swipe_count: number;
-  swipe_limit: number;
-  match_count: number;
-  match_limit: number;
-}
-
-// Function to fetch potential matches
-const fetchPotentialMatches = async (
-  userId: string,
-  maxDistance: number,
-  isGlobalDiscovery: boolean,
-  limit: number
-): Promise<PotentialMatchesResult> => {
-  if (!supabase) throw new Error('Supabase is not configured');
-  
-  try {
-    // This would ideally call a stored procedure, but since it's not defined, we'll use a direct query
-    let query = supabase
-      .from('profiles')
-      .select('*')
-      .neq('id', userId)
-      .limit(limit);
-      
-    if (!isGlobalDiscovery) {
-      // Apply distance filter - this is a simplified version
-      // In a real app, you'd use PostGIS for proper geospatial queries
-      query = query.filter('latitude', 'gte', 0); // Placeholder for actual distance logic
-    }
-    
-    const { data, error } = await query;
-    
-    if (error) throw error;
-    
-    return {
-      count: data?.length || 0,
-      matches: data || []
-    };
-  } catch (error) {
-    console.error('Error in fetchPotentialMatches:', error);
-    throw error;
-  }
-};
-
-// Function to process swipe batch
-const processSwipeBatch = async (swipeQueue: SwipeAction[]): Promise<SwipeBatchResult> => {
-  if (!supabase) throw new Error('Supabase is not configured');
-  
-  try {
-    // This would ideally call a stored procedure, but we'll simulate the behavior
-    const newMatches = [];
-    const swipeLimit = 100; // Placeholder value
-    const matchLimit = 10; // Placeholder value
-    
-    // Process each swipe individually for now
-    for (const swipe of swipeQueue) {
-      if (swipe.direction === 'right') {
-        // Insert into likes table
-        const { data, error } = await supabase
-          .from('likes')
-          .insert({
-            liker_id: swipe.swiper_id,
-            likee_id: swipe.swipee_id,
-            timestamp: swipe.swipe_timestamp
-          })
-          .select();
-          
-        if (error) {
-          console.error('Error recording swipe:', error);
-          continue;
-        }
-        
-        // Check for mutual like
-        const { data: mutualLike, error: mutualError } = await supabase
-          .from('likes')
-          .select('*')
-          .eq('liker_id', swipe.swipee_id)
-          .eq('likee_id', swipe.swiper_id);
-          
-        if (mutualError) {
-          console.error('Error checking mutual like:', mutualError);
-          continue;
-        }
-        
-        if (mutualLike && mutualLike.length > 0) {
-          // Create a match
-          const { data: matchData, error: matchError } = await supabase
-            .from('matches')
-            .insert({
-              user_id: swipe.swiper_id,
-              matched_user_id: swipe.swipee_id,
-              created_at: Date.now()
-            })
-            .select();
-            
-          if (matchError) {
-            console.error('Error creating match:', matchError);
-          } else if (matchData && matchData.length > 0) {
-            newMatches.push(matchData[0]);
-          }
-        }
-      }
-    }
-    
-    return {
-      new_matches: newMatches,
-      swipe_count: swipeQueue.length,
-      swipe_limit: swipeLimit,
-      match_count: newMatches.length,
-      match_limit: matchLimit
-    };
-  } catch (error) {
-    console.error('Error in processSwipeBatch:', error);
-    throw error;
-  }
-};
-
-// Function to sync usage counters
-const syncUsageCounters = async (userId: string): Promise<{
-  swipe_count: number;
-  swipe_limit: number;
-  match_count: number;
-  match_limit: number;
-} | null> => {
-  if (!supabase) throw new Error('Supabase is not configured');
-  
-  try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayTimestamp = today.getTime();
-    
-    // Get swipe count
-    const { data: swipeData, error: swipeError } = await supabase
-      .from('likes')
-      .select('id')
-      .eq('liker_id', userId)
-      .gte('timestamp', todayTimestamp);
-      
-    if (swipeError) {
-      console.error('Error getting swipe count:', swipeError);
-      throw swipeError;
-    }
-    
-    // Get match count
-    const { data: matchData, error: matchError } = await supabase
-      .from('matches')
-      .select('id')
-      .or(`user_id.eq.${userId},matched_user_id.eq.${userId}`)
-      .gte('created_at', todayTimestamp);
-      
-    if (matchError) {
-      console.error('Error getting match count:', matchError);
-      throw matchError;
-    }
-    
-    // Get limits from tier settings (placeholder values)
-    const tierSettings = useAuthStore.getState().tierSettings;
-    const swipeLimit = tierSettings?.daily_swipe_limit || 100;
-    const matchLimit = tierSettings?.daily_match_limit || 10;
-    
-    return {
-      swipe_count: swipeData?.length || 0,
-      swipe_limit: swipeLimit,
-      match_count: matchData?.length || 0,
-      match_limit: matchLimit
-    };
-  } catch (error) {
-    console.error('Error syncing usage counters:', error);
-    throw error;
-  }
-};
-
 interface MatchesState {
   potentialMatches: UserProfile[];
   cachedMatches: UserProfile[];
@@ -345,7 +165,7 @@ export const useMatchesStore = create<MatchesState>()(
             await rateLimitedQuery();
             
             // Fetch potential matches using the optimized stored procedure
-            const result = await fetchPotentialMatches(user.id, userMaxDistance, isGlobalDiscovery, get().batchSize * 2);
+            const result = await fetchPotentialMatchesFromSupabase(user.id, userMaxDistance, isGlobalDiscovery, get().batchSize * 2);
             
             if (!result || result.count === 0) {
               throw new Error(isGlobalDiscovery ? "No global matches found. Try adjusting your preferences." : "No matches found in your area. Try increasing your distance.");
@@ -399,7 +219,7 @@ export const useMatchesStore = create<MatchesState>()(
             await rateLimitedQuery();
             
             // Fetch potential matches using the optimized stored procedure
-            const result = await fetchPotentialMatches(user.id, userMaxDistance, isGlobalDiscovery, get().batchSize * 2);
+            const result = await fetchPotentialMatchesFromSupabase(user.id, userMaxDistance, isGlobalDiscovery, get().batchSize * 2);
             
             if (!result || result.count === 0) {
               throw new Error(isGlobalDiscovery ? "No additional global matches found." : "No additional matches found in your area.");
@@ -586,7 +406,7 @@ export const useMatchesStore = create<MatchesState>()(
             await rateLimitedQuery();
             
             // Process swipe batch using the optimized stored procedure
-            const result = await processSwipeBatch(swipeQueue) as SwipeBatchResult;
+            const result = await processSwipeBatchFromSupabase(swipeQueue);
             
             if (!result) {
               throw new Error('Failed to process swipe batch');
@@ -594,7 +414,7 @@ export const useMatchesStore = create<MatchesState>()(
             
             // Update matches if any new ones were created
             if (result.new_matches.length > 0) {
-              const typedMatches = result.new_matches.map((match: any) => supabaseToMatch(match));
+              const typedMatches = result.new_matches.map((match: Record<string, any>) => supabaseToMatch(match));
               
               set(state => ({
                 matches: [...state.matches, ...typedMatches],
@@ -746,7 +566,7 @@ export const useMatchesStore = create<MatchesState>()(
             await rateLimitedQuery();
             
             // Sync usage counters using the optimized function
-            const result = await syncUsageCounters(user.id);
+            const result = await syncUsageCountersFromSupabase(user.id);
             
             if (result) {
               set({ 
