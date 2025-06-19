@@ -731,12 +731,13 @@ export default function GroupDetailScreen() {
                       const eventDate = new Date(event.startTime);
                       const isUpcoming = eventDate > new Date();
                       const userRSVP = getUserRSVPStatus(event.id);
+                      const isEventCreator = event.createdBy === user?.id;
                       
                       return (
                         <View key={event.id} style={[styles.eventItem, !isUpcoming && styles.pastEvent]}>
                           <View style={styles.eventHeader}>
                             <Text style={styles.eventTitle}>{event.title}</Text>
-                            {isGroupAdmin && isUpcoming && (
+                            {(isGroupAdmin || isEventCreator) && isUpcoming && (
                               <TouchableOpacity 
                                 style={styles.editEventButton}
                                 onPress={() => openEditEventModal(event)}
@@ -1607,5 +1608,5 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 14,
     color: Colors.dark.textSecondary,
-  },
+  }
 });
