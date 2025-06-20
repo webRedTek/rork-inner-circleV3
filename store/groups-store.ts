@@ -4,6 +4,7 @@ import { isSupabaseConfigured, supabase, convertToCamelCase, convertToSnakeCase 
 import { useAuthStore } from './auth-store';
 import { useUsageStore } from './usage-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNotificationStore } from './notification-store';
 
 // Helper function to extract readable error message from Supabase error
 const getReadableError = (error: any): string => {
@@ -122,6 +123,7 @@ interface GroupsState {
   rsvpToEvent: (eventId: string, response: 'yes' | 'no' | 'maybe') => Promise<void>;
   updateGroup: (groupData: Partial<Group>) => Promise<void>;
   clearError: () => void;
+  resetGroupsCache: () => Promise<void>;
 }
 
 export const useGroupsStore = create<GroupsState>((set, get) => ({
@@ -857,5 +859,52 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     }
   },
 
-  clearError: () => set({ error: null })
+  clearError: () => set({ error: null }),
+
+  resetGroupsCache: async () => {
+    try {
+      console.log('[GroupsStore] Resetting groups cache and state');
+      set({
+        groups: [],
+        userGroups: [],
+        availableGroups: [],
+        currentGroup: null,
+        groupMessages: [],
+        groupEvents: [],
+        userRSVPs: [],
+        error: null,
+        isLoading: false,
+        isMessagesLoading: false,
+        isEventsLoading: false
+      });
+      
+      // Clear in-memory caches
+      groupMessagesCache.clear();
+      groupEventsCache.clear();
+      
+      console.log('[GroupsStore] Groups cache reset complete');
+      useNotificationStore.getState().addNotification({
+        id: `groups-reset-${Date.now()}`,
+        type: 'success',
+        message: 'Groups data refreshed',
+        displayStyle: 'toast',
+        duration: 3000,
+        timestamp: Date.now()
+      });
+      
+      // Optionally, refetch groups data
+      await get().fetchGroups();
+    } catch (error) {
+      console.error('[GroupsStore] Error resetting groups cache:', getReadableError(error));
+      useNotificationStore.getState().addNotification({
+        id: `groups-reset-error-${Date.now()}`,
+        type: 'error',
+        message: 'Failed to reset groups data',
+        displayStyle: 'toast',
+        duration: 5000,
+        timestamp: Date.now()
+      });
+      set({ error: getReadableError(error) });
+    }
+  }
 }));

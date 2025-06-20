@@ -3,6 +3,7 @@ import { Message } from '@/types/user';
 import { isSupabaseConfigured, supabase, convertToCamelCase, convertToSnakeCase } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
 import { useUsageStore } from './usage-store';
+import { useNotificationStore } from './notification-store';
 
 // Helper function to extract readable error message from Supabase error
 const getReadableError = (error: any): string => {
@@ -52,6 +53,7 @@ interface MessagesState {
   getMessages: (conversationId: string) => Promise<void>;
   markAsRead: (conversationId: string) => Promise<void>;
   clearError: () => void;
+  resetMessagesCache: () => Promise<void>;
 }
 
 export const useMessagesStore = create<MessagesState>((set, get) => ({
@@ -421,5 +423,36 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     }
   },
 
-  clearError: () => set({ error: null })
+  clearError: () => set({ error: null }),
+
+  resetMessagesCache: async () => {
+    try {
+      console.log('[MessagesStore] Resetting messages cache');
+      set({
+        messages: {},
+        error: null,
+        isLoading: false
+      });
+      console.log('[MessagesStore] Messages cache reset successfully');
+      useNotificationStore.getState().addNotification({
+        id: `messages-reset-${Date.now()}`,
+        type: 'success',
+        message: 'Messages data cleared',
+        displayStyle: 'toast',
+        duration: 3000,
+        timestamp: Date.now()
+      });
+    } catch (error) {
+      console.error('[MessagesStore] Error resetting messages cache:', getReadableError(error));
+      useNotificationStore.getState().addNotification({
+        id: `messages-reset-error-${Date.now()}`,
+        type: 'error',
+        message: 'Failed to reset messages data',
+        displayStyle: 'toast',
+        duration: 5000,
+        timestamp: Date.now()
+      });
+      set({ error: getReadableError(error) });
+    }
+  }
 }));

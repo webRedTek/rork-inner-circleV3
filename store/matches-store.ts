@@ -5,6 +5,7 @@ import { Match, UserProfile, MembershipTier } from '@/types/user';
 import { isSupabaseConfigured, supabase, convertToCamelCase, SwipeAction, fetchPotentialMatches as fetchPotentialMatchesFromSupabase, processSwipeBatch as processSwipeBatchFromSupabase, syncUsageCounters as syncUsageCountersFromSupabase } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
 import { notifyError } from '@/utils/notify';
+import { useNotificationStore } from './notification-store';
 
 // Helper function to extract readable error message from Supabase error
 const getReadableError = (error: any): string => {
@@ -635,12 +636,28 @@ export const useMatchesStore = create<MatchesState>()(
           await get().syncUsageCounters();
           
           console.log('[MatchesStore] Fresh data fetched after reset');
+          useNotificationStore.getState().addNotification({
+            id: `matches-reset-${Date.now()}`,
+            type: 'success',
+            message: 'Matches data refreshed',
+            displayStyle: 'toast',
+            duration: 3000,
+            timestamp: Date.now()
+          });
         } catch (error) {
           console.error('[MatchesStore] Error during reset and refresh:', getReadableError(error));
           notifyError('Error resetting cache: ' + getReadableError(error));
           set({ 
             error: getReadableError(error), 
             isLoading: false 
+          });
+          useNotificationStore.getState().addNotification({
+            id: `matches-reset-error-${Date.now()}`,
+            type: 'error',
+            message: 'Failed to refresh matches data',
+            displayStyle: 'toast',
+            duration: 5000,
+            timestamp: Date.now()
           });
         }
       }

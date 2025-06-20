@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Colors from '@/constants/colors';
 import { Input } from './Input';
 import { Button } from './Button';
-import { initSupabase, isSupabaseConfigured, testSupabaseConnection } from '@/lib/supabase';
-import { Database } from 'lucide-react-native';
+import { initSupabase, isSupabaseConfigured, testSupabaseConnection, checkNetworkStatus } from '@/lib/supabase';
+import { Database, RefreshCw, Wifi, WifiOff } from 'lucide-react-native';
 
 interface SupabaseSetupProps {
   onSetupComplete: () => void;
@@ -18,6 +18,37 @@ export function SupabaseSetup({ onSetupComplete }: SupabaseSetupProps) {
   const [urlError, setUrlError] = useState('');
   const [keyError, setKeyError] = useState('');
   const [testStatus, setTestStatus] = useState<{success: boolean, message: string} | null>(null);
+  const [networkStatus, setNetworkStatus] = useState<{isConnected: boolean | null}>({isConnected: null});
+  const [checkingNetwork, setCheckingNetwork] = useState(false);
+  
+  useEffect(() => {
+    checkNetwork();
+    loadSavedConfig();
+  }, []);
+  
+  const checkNetwork = async () => {
+    setCheckingNetwork(true);
+    try {
+      const status = await checkNetworkStatus();
+      setNetworkStatus(status);
+    } catch (error) {
+      console.error('Error checking network:', error);
+    } finally {
+      setCheckingNetwork(false);
+    }
+  };
+  
+  const loadSavedConfig = async () => {
+    try {
+      const savedUrl = await AsyncStorage.getItem('SUPABASE_URL');
+      const savedKey = await AsyncStorage.getItem('SUPABASE_KEY');
+      
+      if (savedUrl) setSupabaseUrl(savedUrl);
+      if (savedKey) setSupabaseKey(savedKey);
+    } catch (error) {
+      console.error('Error loading saved config:', error);
+    }
+  };
   
   const validateInputs = () => {
     let isValid = true;
@@ -48,6 +79,16 @@ export function SupabaseSetup({ onSetupComplete }: SupabaseSetupProps) {
   const handleSave = async () => {
     if (!validateInputs()) return;
     
+    // Check network status before attempting to save
+    await checkNetwork();
+    if (networkStatus.isConnected === false) {
+      setTestStatus({
+        success: false,
+        message: 'Network appears to be offline. Please check your internet connection.'
+      });
+      return;
+    }
+    
     setLoading(true);
     setTestStatus(null);
     
@@ -55,6 +96,7 @@ export function SupabaseSetup({ onSetupComplete }: SupabaseSetupProps) {
       await AsyncStorage.setItem('SUPABASE_URL', supabaseUrl.trim());
       await AsyncStorage.setItem('SUPABASE_KEY', supabaseKey.trim());
       
+      // Try to initialize with retry logic
       const initialized = await initSupabase();
       
       if (initialized && isSupabaseConfigured()) {
@@ -70,13 +112,23 @@ export function SupabaseSetup({ onSetupComplete }: SupabaseSetupProps) {
             [{ text: 'OK', onPress: onSetupComplete }]
           );
         } else {
+          let errorMessage = 'Connection test failed';
+          
+          if (testResult.networkStatus?.isConnected === false) {
+            errorMessage = 'Network appears to be offline. Please check your internet connection.';
+          } else if (testResult.error) {
+            errorMessage += ': ' + testResult.error;
+          }
+          
           setTestStatus({
             success: false,
-            message: 'Connection test failed: ' + (testResult.error || 'Unknown error')
+            message: errorMessage
           });
+          
           Alert.alert(
             'Error', 
-            'Supabase configuration saved, but connection test failed: ' + (testResult.error || 'Unknown error')
+            errorMessage,
+            [{ text: 'OK' }]
           );
         }
       } else {
@@ -84,14 +136,33 @@ export function SupabaseSetup({ onSetupComplete }: SupabaseSetupProps) {
       }
     } catch (error) {
       console.error('Error saving Supabase configuration:', error);
+      
+      let errorMessage = 'Failed to connect to Supabase';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('Failed to fetch') || 
+            error.message.includes('Network') || 
+            error.message.includes('offline')) {
+          errorMessage = 'Network error: Please check your internet connection and try again.';
+        } else {
+          errorMessage += ': ' + error.message;
+        }
+      }
+      
       setTestStatus({
         success: false,
-        message: 'Failed to connect to Supabase: ' + (error instanceof Error ? error.message : String(error))
+        message: errorMessage
       });
-      Alert.alert('Error', 'Failed to connect to Supabase: ' + (error instanceof Error ? error.message : String(error)));
+      
+      Alert.alert('Error', errorMessage);
     } finally {
       setLoading(false);
     }
+  };
+  
+  const handleRetryConnection = async () => {
+    setTestStatus(null);
+    await checkNetwork();
   };
   
   if (loading) {
@@ -112,6 +183,24 @@ export function SupabaseSetup({ onSetupComplete }: SupabaseSetupProps) {
           You can find these in your Supabase project settings.
         </Text>
       </View>
+      
+      {networkStatus.isConnected === false && (
+        <View style={styles.networkErrorContainer}>
+          <WifiOff size={20} color={Colors.dark.error} />
+          <Text style={styles.networkErrorText}>
+            Network appears to be offline. Please check your internet connection.
+          </Text>
+          <Button
+            title="Check Connection"
+            onPress={handleRetryConnection}
+            variant="outline"
+            size="small"
+            icon={<RefreshCw size={16} color={Colors.dark.text} />}
+            loading={checkingNetwork}
+            style={styles.retryButton}
+          />
+        </View>
+      )}
       
       <View style={styles.form}>
         <Input
@@ -150,6 +239,18 @@ export function SupabaseSetup({ onSetupComplete }: SupabaseSetupProps) {
             ]}>
               {testStatus.message}
             </Text>
+            
+            {!testStatus.success && testStatus.message.includes('Network') && (
+              <Button
+                title="Check Connection"
+                onPress={handleRetryConnection}
+                variant="outline"
+                size="small"
+                icon={<RefreshCw size={16} color={Colors.dark.error} />}
+                loading={checkingNetwork}
+                style={styles.errorRetryButton}
+              />
+            )}
           </View>
         )}
         
@@ -160,6 +261,7 @@ export function SupabaseSetup({ onSetupComplete }: SupabaseSetupProps) {
           icon={<Database size={18} color={Colors.dark.text} />}
           style={styles.saveButton}
           loading={loading}
+          disabled={networkStatus.isConnected === false}
         />
       </View>
       
@@ -167,6 +269,41 @@ export function SupabaseSetup({ onSetupComplete }: SupabaseSetupProps) {
         <Text style={styles.helpText}>
           Don't have a Supabase project? Visit supabase.com to create one.
         </Text>
+      </View>
+      
+      <View style={styles.networkStatusContainer}>
+        <View style={styles.networkStatusRow}>
+          {networkStatus.isConnected === true ? (
+            <Wifi size={16} color={Colors.dark.success} />
+          ) : networkStatus.isConnected === false ? (
+            <WifiOff size={16} color={Colors.dark.error} />
+          ) : (
+            <Wifi size={16} color={Colors.dark.textSecondary} />
+          )}
+          <Text style={styles.networkStatusText}>
+            {networkStatus.isConnected === true
+              ? 'Network Connected'
+              : networkStatus.isConnected === false
+                ? 'Network Offline'
+                : 'Network Status Unknown'}
+          </Text>
+          
+          <Button
+            title="Check"
+            onPress={handleRetryConnection}
+            variant="text"
+            size="small"
+            icon={<RefreshCw size={14} color={Colors.dark.accent} />}
+            loading={checkingNetwork}
+            style={styles.networkCheckButton}
+          />
+        </View>
+        
+        {networkStatus.type && (
+          <Text style={styles.networkTypeText}>
+            Connection type: {networkStatus.type}
+          </Text>
+        )}
       </View>
     </View>
   );
@@ -240,5 +377,54 @@ const styles = StyleSheet.create({
     color: Colors.dark.textSecondary,
     marginTop: 16,
     textAlign: 'center',
+  },
+  networkErrorContainer: {
+    backgroundColor: Colors.dark.error + '20',
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: Colors.dark.error,
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 12,
+  },
+  networkErrorText: {
+    color: Colors.dark.error,
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  retryButton: {
+    marginTop: 8,
+  },
+  errorRetryButton: {
+    marginTop: 12,
+    alignSelf: 'center',
+  },
+  networkStatusContainer: {
+    marginTop: 24,
+    padding: 12,
+    backgroundColor: Colors.dark.card,
+    borderRadius: 8,
+  },
+  networkStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  networkStatusText: {
+    fontSize: 14,
+    color: Colors.dark.textSecondary,
+    marginLeft: 8,
+    flex: 1,
+  },
+  networkTypeText: {
+    fontSize: 12,
+    color: Colors.dark.textSecondary,
+    marginTop: 4,
+    marginLeft: 24,
+  },
+  networkCheckButton: {
+    marginLeft: 8,
   },
 });

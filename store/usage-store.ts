@@ -4,6 +4,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { UsageCache, BatchUpdate, SyncStrategy, RateLimits, CacheConfig, RetryStrategy } from '@/types/user';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
+import { useNotificationStore } from './notification-store';
 
 // Helper function to extract readable error message
 const getReadableError = (error: any): string => {
@@ -36,6 +37,7 @@ interface UsageState {
   checkLimit: (actionType: string, limit: number) => boolean;
   resetUsage: (actionType?: string) => void;
   clearError: () => void;
+  resetUsageCache: () => Promise<void>;
 }
 
 // Default usage cache
@@ -328,6 +330,37 @@ export const useUsageStore = create<UsageState>()(
       },
 
       clearError: () => set({ lastSyncError: null }),
+
+      resetUsageCache: async () => {
+        try {
+          console.log('Resetting usage cache...');
+          set({
+            usageCache: defaultUsageCache,
+            batchUpdates: [],
+            lastSyncError: null,
+            isSyncing: false
+          });
+          console.log('Usage cache reset successfully');
+          useNotificationStore.getState().addNotification({
+            id: `usage-reset-${Date.now()}`,
+            type: 'success',
+            message: 'Usage data reset successfully',
+            displayStyle: 'toast',
+            duration: 3000,
+            timestamp: Date.now()
+          });
+        } catch (error) {
+          console.error('Error resetting usage cache:', getReadableError(error));
+          useNotificationStore.getState().addNotification({
+            id: `usage-reset-error-${Date.now()}`,
+            type: 'error',
+            message: 'Failed to reset usage data',
+            displayStyle: 'toast',
+            duration: 5000,
+            timestamp: Date.now()
+          });
+        }
+      }
     }),
     {
       name: 'usage-storage',

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { AffiliateStats, ReferralHistory } from '@/types/user';
 import { isSupabaseConfigured, supabase, getReadableError } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
+import { useNotificationStore } from './notification-store';
 
 interface AffiliateState {
   stats: AffiliateStats | null;
@@ -12,6 +13,7 @@ interface AffiliateState {
   generateReferralLink: () => Promise<string>;
   checkReferralCode: (code: string) => Promise<boolean>;
   clearError: () => void;
+  resetAffiliateCache: () => Promise<void>;
 }
 
 export const useAffiliateStore = create<AffiliateState>((set, get) => ({
@@ -171,5 +173,37 @@ export const useAffiliateStore = create<AffiliateState>((set, get) => ({
     }
   },
 
-  clearError: () => set({ error: null })
+  clearError: () => set({ error: null }),
+
+  resetAffiliateCache: async () => {
+    try {
+      console.log('[AffiliateStore] Resetting affiliate cache');
+      set({
+        stats: null,
+        referralHistory: [],
+        error: null,
+        isLoading: false
+      });
+      console.log('[AffiliateStore] Affiliate cache reset successfully');
+      useNotificationStore.getState().addNotification({
+        id: `affiliate-reset-${Date.now()}`,
+        type: 'success',
+        message: 'Affiliate data cleared',
+        displayStyle: 'toast',
+        duration: 3000,
+        timestamp: Date.now()
+      });
+    } catch (error) {
+      console.error('[AffiliateStore] Error resetting affiliate cache:', getReadableError(error));
+      useNotificationStore.getState().addNotification({
+        id: `affiliate-reset-error-${Date.now()}`,
+        type: 'error',
+        message: 'Failed to reset affiliate data',
+        displayStyle: 'toast',
+        duration: 5000,
+        timestamp: Date.now()
+      });
+      set({ error: getReadableError(error) });
+    }
+  }
 }));

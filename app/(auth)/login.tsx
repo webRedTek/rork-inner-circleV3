@@ -6,6 +6,8 @@ import Colors from '@/constants/colors';
 import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
 import { useAuthStore } from '@/store/auth-store';
+import { checkNetworkStatus } from '@/lib/supabase';
+import { WifiOff, RefreshCw } from 'lucide-react-native';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -17,6 +19,8 @@ export default function LoginScreen() {
   const [passwordError, setPasswordError] = useState('');
   const [loginError, setLoginError] = useState('');
   const [localLoading, setLocalLoading] = useState(false);
+  const [networkStatus, setNetworkStatus] = useState<{isConnected: boolean | null}>({isConnected: null});
+  const [checkingNetwork, setCheckingNetwork] = useState(false);
   
   useEffect(() => {
     if (isAuthenticated) {
@@ -25,8 +29,33 @@ export default function LoginScreen() {
   }, [isAuthenticated, router]);
   
   useEffect(() => {
+    checkNetwork();
+  }, []);
+  
+  const checkNetwork = async () => {
+    setCheckingNetwork(true);
+    try {
+      const status = await checkNetworkStatus();
+      setNetworkStatus(status);
+    } catch (error) {
+      console.error('Error checking network:', error);
+    } finally {
+      setCheckingNetwork(false);
+    }
+  };
+  
+  useEffect(() => {
     if (error) {
-      setLoginError(error);
+      // Check if it's a network-related error
+      if (error.includes('Failed to fetch') || 
+          error.includes('Network') || 
+          error.includes('offline') ||
+          error.includes('AuthRetryableFetchError')) {
+        setLoginError('Network error: Please check your internet connection and try again.');
+        checkNetwork(); // Re-check network status
+      } else {
+        setLoginError(error);
+      }
       clearError();
     }
   }, [error, clearError]);
@@ -58,6 +87,15 @@ export default function LoginScreen() {
   const handleLogin = async () => {
     if (validateForm()) {
       try {
+        // Check network status before attempting login
+        const status = await checkNetworkStatus();
+        setNetworkStatus(status);
+        
+        if (status.isConnected === false) {
+          setLoginError('Network error: Please check your internet connection and try again.');
+          return;
+        }
+        
         setLocalLoading(true);
         console.log('Attempting login with:', email);
         await login(email, password);
@@ -65,7 +103,19 @@ export default function LoginScreen() {
       } catch (err) {
         console.error('Login error in component:', 
           err instanceof Error ? err.message : 'Unknown error');
-        setLoginError('Login failed. Please check your credentials or network connection.');
+        
+        // Check if it's a network-related error
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        if (errorMsg.includes('Failed to fetch') || 
+            errorMsg.includes('Network') || 
+            errorMsg.includes('offline') ||
+            errorMsg.includes('AuthRetryableFetchError')) {
+          setLoginError('Network error: Please check your internet connection and try again.');
+          checkNetwork(); // Re-check network status
+        } else {
+          setLoginError('Login failed. Please check your credentials or network connection.');
+        }
+        
         setLocalLoading(false);
       }
     }
@@ -75,6 +125,11 @@ export default function LoginScreen() {
     router.push('/supabase-setup');
   };
   
+  const handleRetryConnection = async () => {
+    setLoginError('');
+    await checkNetwork();
+  };
+  
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
@@ -82,6 +137,29 @@ export default function LoginScreen() {
           <Text style={styles.title}>Welcome Back</Text>
           <Text style={styles.subtitle}>Log in to your Inner Circle account</Text>
         </View>
+        
+        {networkStatus.isConnected === false && (
+          <View style={styles.networkErrorContainer}>
+            <WifiOff size={20} color={Colors.dark.error} />
+            <Text style={styles.networkErrorText}>
+              Network appears to be offline. Please check your internet connection.
+            </Text>
+            <TouchableOpacity 
+              style={styles.retryButton}
+              onPress={handleRetryConnection}
+              disabled={checkingNetwork}
+            >
+              {checkingNetwork ? (
+                <ActivityIndicator size="small" color={Colors.dark.text} />
+              ) : (
+                <View style={styles.retryButtonContent}>
+                  <RefreshCw size={16} color={Colors.dark.text} />
+                  <Text style={styles.retryButtonText}>Retry</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
         
         <View style={styles.form}>
           <Input
@@ -116,6 +194,23 @@ export default function LoginScreen() {
           {loginError ? (
             <View style={styles.errorContainer}>
               <Text style={styles.errorText}>{loginError}</Text>
+              
+              {(loginError.includes('Network') || loginError.includes('Failed to fetch') || loginError.includes('offline')) && (
+                <TouchableOpacity 
+                  style={styles.errorRetryButton}
+                  onPress={handleRetryConnection}
+                  disabled={checkingNetwork}
+                >
+                  {checkingNetwork ? (
+                    <ActivityIndicator size="small" color={Colors.dark.error} />
+                  ) : (
+                    <View style={styles.retryButtonContent}>
+                      <RefreshCw size={16} color={Colors.dark.error} />
+                      <Text style={styles.errorRetryText}>Check Connection</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
           ) : null}
           
@@ -134,12 +229,21 @@ export default function LoginScreen() {
             size="large"
             loading={isLoading || localLoading}
             style={styles.button}
+            disabled={networkStatus.isConnected === false}
+          />
+          
+          <Button
+            title="Configure Supabase"
+            onPress={handleSupabaseSetup}
+            variant="outline"
+            size="medium"
+            style={styles.configButton}
           />
         </View>
         
         <View style={styles.footer}>
           <Text style={styles.footerText}>
-            Don't have an account?
+            Don't have an account?{' '}
             <Text style={styles.signupLink} onPress={() => router.push('/signup')}>
               Sign Up
             </Text>
@@ -213,5 +317,54 @@ const styles = StyleSheet.create({
   errorText: {
     color: Colors.dark.error,
     fontSize: 14,
+  },
+  networkErrorContainer: {
+    backgroundColor: Colors.dark.error + '20',
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: Colors.dark.error,
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 12,
+  },
+  networkErrorText: {
+    color: Colors.dark.error,
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  retryButton: {
+    backgroundColor: Colors.dark.card,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 100,
+  },
+  retryButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  retryButtonText: {
+    color: Colors.dark.text,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  errorRetryButton: {
+    marginTop: 12,
+    backgroundColor: 'transparent',
+    paddingVertical: 8,
+    paddingHorizontal: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorRetryText: {
+    color: Colors.dark.error,
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

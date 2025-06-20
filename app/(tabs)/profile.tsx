@@ -10,10 +10,20 @@ import { ProfileDetailCard } from '@/components/ProfileDetailCard';
 import { SupabaseStatus } from '@/components/SupabaseStatus';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { Settings, Edit, LogOut, Database, RefreshCw, MapPin, Shield, Gift } from 'lucide-react-native';
+import { useMatchesStore } from '@/store/matches-store';
+import { useUsageStore } from '@/store/usage-store';
+import { useGroupsStore } from '@/store/groups-store';
+import { useMessagesStore } from '@/store/messages-store';
+import { useAffiliateStore } from '@/store/affiliate-store';
 
 export default function ProfileScreen() {
   const router = useRouter();
   const { user, tierSettings, logout, clearCache, isLoading } = useAuthStore();
+  const { resetCacheAndState } = useMatchesStore();
+  const { resetUsageCache } = useUsageStore();
+  const { resetGroupsCache } = useGroupsStore();
+  const { resetMessagesCache } = useMessagesStore();
+  const { resetAffiliateCache } = useAffiliateStore();
   const [isSupabaseReady, setIsSupabaseReady] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -77,8 +87,19 @@ export default function ProfileScreen() {
         {
           text: 'Clear & Restart',
           onPress: async () => {
-            await clearCache();
-            router.replace('/(auth)');
+            try {
+              // Clear all store caches
+              await clearCache();
+              await resetCacheAndState();
+              await resetUsageCache();
+              await resetGroupsCache();
+              await resetMessagesCache();
+              await resetAffiliateCache();
+              router.replace('/(auth)');
+            } catch (error) {
+              console.error('Error during full cache reset:', error);
+              Alert.alert('Error', 'Failed to clear cache completely. Please try again.', [{ text: 'OK' }]);
+            }
           },
           style: 'destructive',
         },

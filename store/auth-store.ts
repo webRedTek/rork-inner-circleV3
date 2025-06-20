@@ -2,8 +2,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { UserProfile, MembershipTier, TierSettings, UserRole, UsageCache } from '@/types/user';
-import { isSupabaseConfigured, supabase, initSupabase, convertToCamelCase, convertToSnakeCase } from '@/lib/supabase';
+import { isSupabaseConfigured, supabase, initSupabase, convertToCamelCase, convertToSnakeCase, retryOperation, checkNetworkStatus } from '@/lib/supabase';
 import { Platform } from 'react-native';
+import { useNotificationStore } from './notification-store';
 
 interface AuthState {
   user: UserProfile | null;
@@ -13,6 +14,7 @@ interface AuthState {
   isLoading: boolean;
   isReady: boolean; // Indicates if initial session check is complete
   error: string | null;
+  networkStatus: { isConnected: boolean | null; type?: string | null; } | null;
   login: (email: string, password: string) => Promise<void>;
   signup: (userData: Partial<UserProfile>, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -25,6 +27,7 @@ interface AuthState {
   clearError: () => void;
   clearCache: () => Promise<void>;
   checkSession: () => Promise<void>; // Method to check/restore session on app start
+  checkNetworkConnection: () => Promise<void>; // Method to check network connectivity
 }
 
 // Helper function to extract readable error message from Supabase error
@@ -132,18 +135,44 @@ export const useAuthStore = create<AuthState>()(
       isLoading: false,
       isReady: false, // Initially false until session check is complete
       error: null,
+      networkStatus: null,
+
+      checkNetworkConnection: async () => {
+        try {
+          const status = await checkNetworkStatus();
+          set({ networkStatus: status });
+          return status;
+        } catch (error) {
+          console.error('Error checking network connection:', error);
+          set({ networkStatus: { isConnected: null } });
+          return { isConnected: null };
+        }
+      },
 
       login: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
         try {
           console.log('Login attempt with email:', email);
+          
+          // Check network connectivity first
+          const networkStatus = await checkNetworkStatus();
+          set({ networkStatus });
+          
+          if (networkStatus.isConnected === false) {
+            throw new Error('Network appears to be offline. Please check your internet connection and try again.');
+          }
+          
           await initSupabase();
           
           if (isSupabaseConfigured() && supabase) {
             console.log('Using Supabase for login');
-            const { data, error } = await supabase.auth.signInWithPassword({
-              email,
-              password,
+            
+            // Use retry operation for login
+            const { data, error } = await retryOperation(async () => {
+              return await supabase.auth.signInWithPassword({
+                email,
+                password,
+              });
             });
 
             if (error) {
@@ -152,11 +181,15 @@ export const useAuthStore = create<AuthState>()(
             }
 
             console.log('Supabase login successful, fetching profile...');
-            const { data: profileData, error: profileError } = await supabase
-              .from('users')
-              .select('*')
-              .eq('id', data.user.id)
-              .single();
+            
+            // Use retry operation for profile fetch
+            const { data: profileData, error: profileError } = await retryOperation(async () => {
+              return await supabase
+                .from('users')
+                .select('*')
+                .eq('id', data.user.id)
+                .single();
+            });
 
             if (profileError) {
               console.error('Profile fetch error:', profileError);
@@ -164,6 +197,7 @@ export const useAuthStore = create<AuthState>()(
                 const newProfile: UserProfile = {
                   id: data.user.id,
                   email: data.user.email || email,
+                  role: 'user',
                   name: email.split('@')[0],
                   bio: '',
                   location: '',
@@ -193,9 +227,13 @@ export const useAuthStore = create<AuthState>()(
                 const profileRecord = convertToSnakeCase(newProfile);
                 
                 console.log('Creating new profile in Supabase...');
-                const { error: insertError } = await supabase
-                  .from('users')
-                  .insert(profileRecord);
+                
+                // Use retry operation for profile creation
+                const { error: insertError } = await retryOperation(async () => {
+                  return await supabase
+                    .from('users')
+                    .insert(profileRecord);
+                });
                 
                 if (insertError) {
                   console.error('Profile insert error:', insertError);
@@ -231,6 +269,18 @@ export const useAuthStore = create<AuthState>()(
           }
         } catch (error) {
           console.error('Login error:', getReadableError(error));
+          
+          // Check if it's a network-related error
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          if (errorMsg.includes('Failed to fetch') || 
+              errorMsg.includes('Network') || 
+              errorMsg.includes('offline') ||
+              errorMsg.includes('AuthRetryableFetchError')) {
+            // Re-check network status
+            const networkStatus = await checkNetworkStatus();
+            set({ networkStatus });
+          }
+          
           set({ 
             error: getReadableError(error), 
             isLoading: false 
@@ -241,6 +291,14 @@ export const useAuthStore = create<AuthState>()(
       signup: async (userData: Partial<UserProfile>, password: string) => {
         set({ isLoading: true, error: null });
         try {
+          // Check network connectivity first
+          const networkStatus = await checkNetworkStatus();
+          set({ networkStatus });
+          
+          if (networkStatus.isConnected === false) {
+            throw new Error('Network appears to be offline. Please check your internet connection and try again.');
+          }
+          
           await initSupabase();
           
           if (isSupabaseConfigured() && supabase) {
@@ -253,14 +311,17 @@ export const useAuthStore = create<AuthState>()(
                 throw new Error('Supabase auth is not initialized properly');
               }
               
-              const { data, error } = await supabase.auth.signUp({
-                email: userData.email!,
-                password,
-                options: {
-                  data: {
-                    name: userData.name,
+              // Use retry operation for signup
+              const { data, error } = await retryOperation(async () => {
+                return await supabase.auth.signUp({
+                  email: userData.email!,
+                  password,
+                  options: {
+                    data: {
+                      name: userData.name,
+                    }
                   }
-                }
+                });
               });
 
               if (error) {
@@ -271,6 +332,7 @@ export const useAuthStore = create<AuthState>()(
               const newUser: UserProfile = {
                 id: data.user?.id || `user-${Date.now()}`,
                 email: userData.email!,
+                role: 'user',
                 name: userData.name || userData.email!.split('@')[0],
                 bio: userData.bio || '',
                 location: userData.location || '',
@@ -302,9 +364,12 @@ export const useAuthStore = create<AuthState>()(
               
               console.log('Creating user profile in Supabase:', profileRecord);
               
-              const { error: profileError } = await supabase
-                .from('users')
-                .insert(profileRecord);
+              // Use retry operation for profile creation
+              const { error: profileError } = await retryOperation(async () => {
+                return await supabase
+                  .from('users')
+                  .insert(profileRecord);
+              });
 
               if (profileError) {
                 console.error('Error creating user profile in Supabase:', getReadableError(profileError));
@@ -331,6 +396,18 @@ export const useAuthStore = create<AuthState>()(
           }
         } catch (error) {
           console.error('Signup error:', getReadableError(error));
+          
+          // Check if it's a network-related error
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          if (errorMsg.includes('Failed to fetch') || 
+              errorMsg.includes('Network') || 
+              errorMsg.includes('offline') ||
+              errorMsg.includes('AuthRetryableFetchError')) {
+            // Re-check network status
+            const networkStatus = await checkNetworkStatus();
+            set({ networkStatus });
+          }
+          
           set({ 
             error: getReadableError(error), 
             isLoading: false 
@@ -344,9 +421,17 @@ export const useAuthStore = create<AuthState>()(
           const { user } = get();
           
           if (isSupabaseConfigured() && supabase && user) {
-            const { error } = await supabase.auth.signOut();
-            if (error) {
-              console.warn('Supabase signOut error:', getReadableError(error));
+            try {
+              // Use retry operation for logout
+              const { error } = await retryOperation(async () => {
+                return await supabase.auth.signOut();
+              }, 2); // Only retry twice for logout
+              
+              if (error) {
+                console.warn('Supabase signOut error:', getReadableError(error));
+              }
+            } catch (error) {
+              console.warn('Error during Supabase signOut:', getReadableError(error));
             }
           }
           
@@ -355,6 +440,14 @@ export const useAuthStore = create<AuthState>()(
           set({ user: null, tierSettings: null, usageCache: null, isAuthenticated: false, isLoading: false });
           
           console.log('Logout successful');
+          useNotificationStore.getState().addNotification({
+            id: `logout-${Date.now()}`,
+            type: 'success',
+            message: 'Successfully logged out',
+            displayStyle: 'toast',
+            duration: 3000,
+            timestamp: Date.now()
+          });
           return;
         } catch (error) {
           console.error('Logout error:', getReadableError(error));
@@ -369,15 +462,26 @@ export const useAuthStore = create<AuthState>()(
           const { user } = get();
           if (!user) throw new Error('Not authenticated');
           
+          // Check network connectivity first
+          const networkStatus = await checkNetworkStatus();
+          set({ networkStatus });
+          
+          if (networkStatus.isConnected === false) {
+            throw new Error('Network appears to be offline. Please check your internet connection and try again.');
+          }
+          
           await initSupabase();
           
           if (isSupabaseConfigured() && supabase) {
             const profileRecord = convertToSnakeCase(data);
             
-            const { error } = await supabase
-              .from('users')
-              .update(profileRecord)
-              .eq('id', user.id);
+            // Use retry operation for profile update
+            const { error } = await retryOperation(async () => {
+              return await supabase
+                .from('users')
+                .update(profileRecord)
+                .eq('id', user.id);
+            });
 
             if (error) throw error;
 
@@ -390,6 +494,18 @@ export const useAuthStore = create<AuthState>()(
           }
         } catch (error) {
           console.error('Update profile error:', getReadableError(error));
+          
+          // Check if it's a network-related error
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          if (errorMsg.includes('Failed to fetch') || 
+              errorMsg.includes('Network') || 
+              errorMsg.includes('offline') ||
+              errorMsg.includes('AuthRetryableFetchError')) {
+            // Re-check network status
+            const networkStatus = await checkNetworkStatus();
+            set({ networkStatus });
+          }
+          
           set({ 
             error: getReadableError(error), 
             isLoading: false 
@@ -403,13 +519,24 @@ export const useAuthStore = create<AuthState>()(
           const { user } = get();
           if (!user) throw new Error('Not authenticated');
           
+          // Check network connectivity first
+          const networkStatus = await checkNetworkStatus();
+          set({ networkStatus });
+          
+          if (networkStatus.isConnected === false) {
+            throw new Error('Network appears to be offline. Please check your internet connection and try again.');
+          }
+          
           await initSupabase();
           
           if (isSupabaseConfigured() && supabase) {
-            const { error } = await supabase
-              .from('users')
-              .update({ membership_tier: tier })
-              .eq('id', user.id);
+            // Use retry operation for membership update
+            const { error } = await retryOperation(async () => {
+              return await supabase
+                .from('users')
+                .update({ membership_tier: tier })
+                .eq('id', user.id);
+            });
 
             if (error) throw error;
 
@@ -424,6 +551,18 @@ export const useAuthStore = create<AuthState>()(
           }
         } catch (error) {
           console.error('Update membership error:', getReadableError(error));
+          
+          // Check if it's a network-related error
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          if (errorMsg.includes('Failed to fetch') || 
+              errorMsg.includes('Network') || 
+              errorMsg.includes('offline') ||
+              errorMsg.includes('AuthRetryableFetchError')) {
+            // Re-check network status
+            const networkStatus = await checkNetworkStatus();
+            set({ networkStatus });
+          }
+          
           set({ 
             error: getReadableError(error), 
             isLoading: false 
@@ -451,9 +590,23 @@ export const useAuthStore = create<AuthState>()(
 
         set({ isLoading: true, error: null });
         try {
+          // Check network connectivity first
+          const networkStatus = await checkNetworkStatus();
+          set({ networkStatus });
+          
+          if (networkStatus.isConnected === false) {
+            console.warn('Network appears to be offline. Using default tier settings.');
+            set({ tierSettings: defaultTierSettings, isLoading: false });
+            return;
+          }
+          
           console.log('Fetching tier settings for user:', userId);
-          const { data: tierSettings, error: tierError } = await supabase
-            .rpc('get_user_tier_settings', { p_user_id: userId });
+          
+          // Use retry operation for tier settings fetch
+          const { data: tierSettings, error: tierError } = await retryOperation(async () => {
+            return await supabase
+              .rpc('get_user_tier_settings', { p_user_id: userId });
+          });
             
           if (tierError) {
             console.error('Error fetching tier settings:', JSON.stringify(tierError, null, 2));
@@ -485,11 +638,25 @@ export const useAuthStore = create<AuthState>()(
 
         set({ isLoading: true, error: null });
         try {
+          // Check network connectivity first
+          const networkStatus = await checkNetworkStatus();
+          set({ networkStatus });
+          
+          if (networkStatus.isConnected === false) {
+            console.warn('Network appears to be offline. Using default usage cache.');
+            set({ usageCache: defaultUsageCache, isLoading: false });
+            return;
+          }
+          
           console.log('Fetching usage data for user:', userId);
-          const { data: usageData, error: usageError } = await supabase
-            .from('usage_tracking')
-            .select('*')
-            .eq('user_id', userId);
+          
+          // Use retry operation for usage data fetch
+          const { data: usageData, error: usageError } = await retryOperation(async () => {
+            return await supabase
+              .from('usage_tracking')
+              .select('*')
+              .eq('user_id', userId);
+          });
 
           if (usageError) {
             console.error('Error fetching usage data:', JSON.stringify(usageError, null, 2));
@@ -585,11 +752,22 @@ export const useAuthStore = create<AuthState>()(
 
         if (isSupabaseConfigured() && supabase) {
           try {
-            await supabase.rpc('log_user_action', {
-              user_id: user.id,
-              action: actionType,
-              details: { timestamp: now },
-            });
+            // Check network connectivity first
+            const networkStatus = await checkNetworkStatus();
+            
+            if (networkStatus.isConnected === false) {
+              console.warn('Network appears to be offline. Usage action will be logged locally only.');
+              return;
+            }
+            
+            // Use retry operation for logging user action
+            await retryOperation(async () => {
+              return await supabase.rpc('log_user_action', {
+                user_id: user.id,
+                action: actionType,
+                details: { timestamp: now },
+              });
+            }, 2); // Only retry twice for logging actions
           } catch (error) {
             console.warn('Failed to log user action:', getReadableError(error));
           }
@@ -612,11 +790,27 @@ export const useAuthStore = create<AuthState>()(
           });
           
           console.log('Auth cache cleared successfully');
+          useNotificationStore.getState().addNotification({
+            id: `cache-clear-${Date.now()}`,
+            type: 'success',
+            message: 'App cache cleared successfully',
+            displayStyle: 'toast',
+            duration: 3000,
+            timestamp: Date.now()
+          });
         } catch (error) {
           console.error('Error clearing auth cache:', getReadableError(error));
           set({ 
             error: getReadableError(error), 
             isLoading: false 
+          });
+          useNotificationStore.getState().addNotification({
+            id: `cache-clear-error-${Date.now()}`,
+            type: 'error',
+            message: 'Failed to clear app cache',
+            displayStyle: 'toast',
+            duration: 5000,
+            timestamp: Date.now()
           });
         }
       },
@@ -624,10 +818,22 @@ export const useAuthStore = create<AuthState>()(
       checkSession: async () => {
         set({ isLoading: true, error: null });
         try {
+          // Check network connectivity first
+          const networkStatus = await checkNetworkStatus();
+          set({ networkStatus });
+          
+          if (networkStatus.isConnected === false) {
+            console.warn('Network appears to be offline. Session check may fail.');
+          }
+          
           await initSupabase();
           
           if (isSupabaseConfigured() && supabase) {
-            const { data, error } = await supabase.auth.getSession();
+            // Use retry operation for session check
+            const { data, error } = await retryOperation(async () => {
+              return await supabase.auth.getSession();
+            });
+            
             if (error) {
               console.error('Error checking session:', error);
               set({ isReady: true, isLoading: false, isAuthenticated: false });
@@ -635,11 +841,14 @@ export const useAuthStore = create<AuthState>()(
             }
 
             if (data.session && data.session.user) {
-              const { data: profileData, error: profileError } = await supabase
-                .from('users')
-                .select('*')
-                .eq('id', data.session.user.id)
-                .single();
+              // Use retry operation for profile fetch
+              const { data: profileData, error: profileError } = await retryOperation(async () => {
+                return await supabase
+                  .from('users')
+                  .select('*')
+                  .eq('id', data.session.user.id)
+                  .single();
+              });
 
               if (profileError) {
                 console.error('Error fetching user profile on session check:', profileError);
@@ -665,6 +874,18 @@ export const useAuthStore = create<AuthState>()(
           }
         } catch (error) {
           console.error('Session check error:', getReadableError(error));
+          
+          // Check if it's a network-related error
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          if (errorMsg.includes('Failed to fetch') || 
+              errorMsg.includes('Network') || 
+              errorMsg.includes('offline') ||
+              errorMsg.includes('AuthRetryableFetchError')) {
+            // Re-check network status
+            const networkStatus = await checkNetworkStatus();
+            set({ networkStatus });
+          }
+          
           set({ 
             error: getReadableError(error), 
             isReady: true,
