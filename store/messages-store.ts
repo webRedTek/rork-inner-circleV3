@@ -558,16 +558,18 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           });
           
           try {
-            supabase.rpc('log_user_action', {
-              user_id: user.id,
-              action: 'receive_message',
-              details: { 
-                conversation_id: conversationId,
-                sender_id: newMessage.senderId,
-                message_type: newMessage.type
-              }
-            });
-            useUsageStore.getState().incrementUsage('receive_message');
+            if (supabase) {
+              supabase.rpc('log_user_action', {
+                user_id: user.id,
+                action: 'receive_message',
+                details: { 
+                  conversation_id: conversationId,
+                  sender_id: newMessage.senderId,
+                  message_type: newMessage.type
+                }
+              });
+              useUsageStore.getState().incrementUsage('receive_message');
+            }
           } catch (logError) {
             console.warn('Failed to log receive_message action:', getReadableError(logError));
           }
