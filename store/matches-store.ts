@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { Match, UserProfile, MembershipTier } from '@/types/user';
-import { isSupabaseConfigured, supabase, convertToCamelCase, SwipeAction, fetchPotentialMatches as fetchPotentialMatchesFromSupabase, processSwipeBatch as processSwipeBatchFromSupabase, syncUsageCounters as syncUsageCountersFromSupabase } from '@/lib/supabase';
+import { Match, UserProfile, MembershipTier, MatchWithProfile } from '@/types/user';
+import { isSupabaseConfigured, supabase, convertToCamelCase, SwipeAction, fetchPotentialMatches as fetchPotentialMatchesFromSupabase, processSwipeBatch as processSwipeBatchFromSupabase, syncUsageCounters as syncUsageCountersFromSupabase, fetchUserMatches as fetchUserMatchesFromSupabase } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
 import { notifyError } from '@/utils/notify';
 import { useNotificationStore } from './notification-store';
@@ -478,17 +478,26 @@ export const useMatchesStore = create<MatchesState>()(
             // Apply rate limiting
             await rateLimitedQuery();
             
-            // Get matches from Supabase
-            const { data: matchesData, error: matchesError } = await supabase
-              .from('matches')
-              .select('*')
-              .or(`user_id.eq.${user.id},matched_user_id.eq.${user.id}`)
-              .order('created_at', { ascending: false });
-              
-            if (matchesError) throw matchesError;
+            // Get matches from Supabase using the new fetch_user_matches function
+            const result = await retryOperation(() => fetchUserMatchesFromSupabase(user.id));
+            
+            if (!result) {
+              throw new Error('Failed to fetch user matches');
+            }
             
             // Convert to Match type
-            const typedMatches: Match[] = (matchesData || []).map(supabaseToMatch);
+            const typedMatches: Match[] = result.map((match: MatchWithProfile) => ({
+              id: match.match_id,
+              userId: user.id,
+              matchedUserId: match.matched_user_id,
+              createdAt: match.created_at,
+              lastMessageAt: match.last_message_at || undefined,
+            }));
+            
+            // Cache user profiles
+            result.forEach((match: MatchWithProfile) => {
+              userProfileCache.set(match.matched_user_id, match.matched_user_profile);
+            });
             
             // Log the action
             try {

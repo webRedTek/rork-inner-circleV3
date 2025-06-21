@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import NetInfo from '@react-native-community/netinfo';
+import { MatchWithProfile } from '@/types/user';
 
 // Define the database schema types
 export type Database = {
@@ -872,6 +873,30 @@ export const syncUsageCounters = async (userId: string): Promise<UsageCountersRe
     }
     
     return data as UsageCountersResult;
+  });
+};
+
+/**
+ * Fetches user matches with profiles from Supabase
+ * @param userId - The user ID to fetch matches for
+ * @returns Promise with matches including matched user profiles or error
+ */
+export const fetchUserMatches = async (userId: string): Promise<MatchWithProfile[] | null> => {
+  if (!supabase) {
+    throw new Error('Supabase client not initialized');
+  }
+  
+  return retryOperation(async () => {
+    const { data, error } = await supabase.rpc('fetch_user_matches', {
+      p_user_id: userId,
+    });
+    
+    if (error) {
+      console.error('Error fetching user matches:', error);
+      throw error;
+    }
+    
+    return data as MatchWithProfile[];
   });
 };
 

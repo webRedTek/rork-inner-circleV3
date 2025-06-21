@@ -120,6 +120,14 @@ export interface Match {
   [key: string]: any; // Add index signature to allow any string key
 }
 
+export interface MatchWithProfile {
+  match_id: string;
+  matched_user_id: string;
+  matched_user_profile: UserProfile;
+  created_at: number;
+  last_message_at: number | null;
+}
+
 export interface Message {
   id: string;
   senderId: string;
