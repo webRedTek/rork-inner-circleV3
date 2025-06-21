@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { UsageCache, BatchUpdate, SyncStrategy, RateLimits, CacheConfig, RetryStrategy } from '@/types/user';
+import { UsageCache, BatchUpdate, SyncStrategy, RateLimits, CacheConfig, RetryStrategy, UsageTrackingOptions, UsageResult, UsageStats } from '@/types/user';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
 import { useNotificationStore } from './notification-store';
@@ -31,7 +31,8 @@ interface UsageState {
   isSyncing: boolean;
   lastSyncError: string | null;
   initializeUsage: (userId: string) => Promise<void>;
-  incrementUsage: (actionType: string, count?: number) => void;
+  trackUsage: (options: UsageTrackingOptions) => Promise<UsageResult>;
+  getUsageStats: () => UsageStats | null;
   queueBatchUpdate: (actionType: string, countChange: number) => void;
   syncUsageData: (force?: boolean) => Promise<void>;
   checkLimit: (actionType: string, limit: number) => boolean;
@@ -137,7 +138,7 @@ export const useUsageStore = create<UsageState>()(
 
             usageData?.forEach(entry => {
               usageCache.usageData[entry.action_type] = {
-                currentCount: entry.count,
+                currentCount: entry.current_count,
                 firstActionTimestamp: entry.first_action_timestamp || Date.now(),
                 lastActionTimestamp: entry.last_action_timestamp || Date.now(),
                 resetTimestamp: entry.reset_timestamp || Date.now() + 24 * 60 * 60 * 1000,
@@ -153,32 +154,121 @@ export const useUsageStore = create<UsageState>()(
         }
       },
 
-      incrementUsage: (actionType: string, count = 1) => {
+      trackUsage: async (options: UsageTrackingOptions): Promise<UsageResult> => {
+        const { actionType, count = 1, batchProcess = false, forceSync = false } = options;
+        const { user } = useAuthStore.getState();
         const { usageCache } = get();
-        if (!usageCache) return;
+        
+        if (!user) {
+          return {
+            isAllowed: false,
+            actionType,
+            currentCount: 0,
+            limit: 0,
+            remaining: 0,
+            timestamp: Date.now(),
+            error: 'User not authenticated',
+          };
+        }
+
+        if (!usageCache) {
+          return {
+            isAllowed: false,
+            actionType,
+            currentCount: 0,
+            limit: 0,
+            remaining: 0,
+            timestamp: Date.now(),
+            error: 'Usage cache not initialized',
+          };
+        }
+
+        const tierSettings = useAuthStore.getState().getTierSettings();
+        const limit = actionType === 'swipe' 
+          ? tierSettings?.daily_swipe_limit || 10 
+          : actionType === 'match' 
+            ? tierSettings?.daily_match_limit || 5 
+            : tierSettings?.message_sending_limit || 20;
 
         const now = Date.now();
         const usageData = usageCache.usageData[actionType];
         const resetTimestamp = usageData?.resetTimestamp || now + 24 * 60 * 60 * 1000;
-        const updatedCount = usageData ? usageData.currentCount + count : count;
+        const currentCount = usageData ? usageData.currentCount : 0;
+        const isAllowed = currentCount < limit;
 
-        set({
-          usageCache: {
-            ...usageCache,
-            usageData: {
-              ...usageCache.usageData,
-              [actionType]: {
-                currentCount: updatedCount,
-                firstActionTimestamp: usageData?.firstActionTimestamp || now,
-                lastActionTimestamp: now,
-                resetTimestamp,
+        // Optimistic update if action is allowed
+        if (isAllowed && count > 0) {
+          const updatedCount = currentCount + count;
+          set({
+            usageCache: {
+              ...usageCache,
+              usageData: {
+                ...usageCache.usageData,
+                [actionType]: {
+                  currentCount: updatedCount,
+                  firstActionTimestamp: usageData?.firstActionTimestamp || now,
+                  lastActionTimestamp: now,
+                  resetTimestamp,
+                },
               },
             },
-          },
-        });
+          });
 
-        // Queue batch update for sync
-        get().queueBatchUpdate(actionType, count);
+          // Queue for batch update if not forced sync
+          if (!forceSync && batchProcess) {
+            get().queueBatchUpdate(actionType, count);
+          } else if (isSupabaseConfigured() && supabase) {
+            try {
+              const { error } = await supabase.rpc('handle_user_usage', {
+                p_user_id: user.id,
+                p_action_type: actionType,
+                p_count_change: count,
+              });
+
+              if (error) {
+                console.error(`Error tracking ${actionType} usage:`, error);
+                set({ lastSyncError: getReadableError(error) });
+              }
+            } catch (error) {
+              console.error(`Exception tracking ${actionType} usage:`, error);
+              set({ lastSyncError: getReadableError(error) });
+              get().queueBatchUpdate(actionType, count); // Queue for later sync on error
+            }
+          }
+        }
+
+        return {
+          isAllowed,
+          actionType,
+          currentCount,
+          limit,
+          remaining: Math.max(0, limit - currentCount),
+          timestamp: now,
+        };
+      },
+
+      getUsageStats: (): UsageStats | null => {
+        const { usageCache } = get();
+        const tierSettings = useAuthStore.getState().getTierSettings();
+        
+        if (!usageCache || !tierSettings) return null;
+
+        const swipeData = usageCache.usageData['swipe'] || { currentCount: 0 };
+        const matchData = usageCache.usageData['match'] || { currentCount: 0 };
+        const messageData = usageCache.usageData['message'] || { currentCount: 0 };
+
+        return {
+          swipeCount: swipeData.currentCount,
+          swipeLimit: tierSettings.daily_swipe_limit,
+          swipeRemaining: Math.max(0, tierSettings.daily_swipe_limit - swipeData.currentCount),
+          matchCount: matchData.currentCount,
+          matchLimit: tierSettings.daily_match_limit,
+          matchRemaining: Math.max(0, tierSettings.daily_match_limit - matchData.currentCount),
+          messageCount: messageData.currentCount,
+          messageLimit: tierSettings.message_sending_limit,
+          messageRemaining: Math.max(0, tierSettings.message_sending_limit - messageData.currentCount),
+          timestamp: Date.now(),
+        };
       },
 
       queueBatchUpdate: (actionType: string, countChange: number) => {
@@ -236,9 +326,11 @@ export const useUsageStore = create<UsageState>()(
         try {
           if (isSupabaseConfigured() && supabase) {
             for (const batch of batchUpdates) {
-              const { error } = await supabase.rpc('batch_update_usage', {
+              const { error } = await supabase.rpc('handle_user_usage', {
                 p_user_id: batch.user_id,
-                p_updates: batch.updates,
+                p_action_type: 'batch',
+                p_count_change: 0,
+                p_batch_updates: batch.updates,
               });
 
               if (error) {

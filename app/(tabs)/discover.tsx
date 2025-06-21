@@ -22,6 +22,7 @@ import { Platform } from 'react-native';
 import { ProfileDetailCard } from '@/components/ProfileDetailCard';
 import { X, ArrowLeft, RefreshCw, MapPin } from 'lucide-react-native';
 import { Input } from '@/components/Input';
+import { useUsageStore } from '@/store/usage-store';
 
 export default function DiscoverScreen() {
   const router = useRouter();
@@ -38,8 +39,7 @@ export default function DiscoverScreen() {
     newMatch,
     clearNewMatch,
     swipeLimitReached,
-    matchLimitReached,
-    syncUsageCounters
+    matchLimitReached
   } = useMatchesStore();
   
   const { user, isReady, tierSettings } = useAuthStore();
@@ -62,7 +62,6 @@ export default function DiscoverScreen() {
       console.log('[Discover] Initial load - fetching potential matches', { userId: user.id });
       fetchPotentialMatches();
       startBatchProcessing();
-      syncUsageCounters();
       setInitialLoad(false);
       // Set user's preferred distance from profile
       if (user.preferredDistance) {
@@ -73,7 +72,7 @@ export default function DiscoverScreen() {
     return () => {
       stopBatchProcessing();
     };
-  }, [isReady, user, fetchPotentialMatches, syncUsageCounters]);
+  }, [isReady, user, fetchPotentialMatches]);
   
   // Add focus effect to refresh data when screen is focused
   useFocusEffect(
@@ -81,9 +80,8 @@ export default function DiscoverScreen() {
       if (isReady && user) {
         console.log('[Discover] Screen focused - refreshing potential matches', { userId: user.id, matchesCount: potentialMatches.length });
         fetchPotentialMatches();
-        syncUsageCounters();
       }
-    }, [isReady, user, fetchPotentialMatches, syncUsageCounters])
+    }, [isReady, user, fetchPotentialMatches])
   );
   
   useEffect(() => {
@@ -163,17 +161,38 @@ export default function DiscoverScreen() {
     await passUser(profile.id);
   };
   
-  const handleMessageMatch = () => {
-    if (matchedUser) {
-      router.push(`/chat/${matchedUser.id}`);
-      setShowMatchModal(false);
-      setMatchedUser(null);
+  const handleModalAction = (action: 'message' | 'close' | 'upgrade' | 'applyFilters' | 'cancel') => {
+    switch (action) {
+      case 'message':
+        if (matchedUser) {
+          router.push(`/chat/${matchedUser.id}`);
+          setShowMatchModal(false);
+          setMatchedUser(null);
+        }
+        break;
+      case 'close':
+        setShowMatchModal(false);
+        setShowLimitModal(false);
+        setMatchedUser(null);
+        break;
+      case 'upgrade':
+        router.push('/membership');
+        setShowLimitModal(false);
+        break;
+      case 'applyFilters':
+        const distanceNum = parseInt(preferredDistance);
+        if (isNaN(distanceNum) || distanceNum < 1 || distanceNum > 500) {
+          setDistanceError('Distance must be between 1 and 500 km');
+          return;
+        }
+        setDistanceError('');
+        fetchPotentialMatches(distanceNum, true);
+        setShowFilterModal(false);
+        break;
+      case 'cancel':
+        setShowFilterModal(false);
+        break;
     }
-  };
-  
-  const handleCloseMatchModal = () => {
-    setShowMatchModal(false);
-    setMatchedUser(null);
   };
   
   const handleProfilePress = (profile: UserProfile) => {
@@ -184,27 +203,6 @@ export default function DiscoverScreen() {
   const handleRefresh = () => {
     console.log('[Discover] Manual refresh triggered');
     refreshCandidates();
-  };
-  
-  const handleCloseLimitModal = () => {
-    setShowLimitModal(false);
-  };
-  
-  const handleUpgradePlan = () => {
-    router.push('/membership');
-    setShowLimitModal(false);
-  };
-  
-  const handleApplyFilters = () => {
-    const distanceNum = parseInt(preferredDistance);
-    if (isNaN(distanceNum) || distanceNum < 1 || distanceNum > 500) {
-      setDistanceError('Distance must be between 1 and 500 km');
-      return;
-    }
-    setDistanceError('');
-    // Update the fetch with the new distance
-    fetchPotentialMatches(distanceNum, true);
-    setShowFilterModal(false);
   };
   
   const handleToggleGlobalSearch = () => {
@@ -256,7 +254,7 @@ export default function DiscoverScreen() {
             
             <Button
               title="Send Message"
-              onPress={handleMessageMatch}
+              onPress={() => handleModalAction('message')}
               variant="primary"
               size="large"
               style={styles.messageButton}
@@ -264,7 +262,7 @@ export default function DiscoverScreen() {
             
             <Button
               title="Keep Browsing"
-              onPress={handleCloseMatchModal}
+              onPress={() => handleModalAction('close')}
               variant="outline"
               size="large"
               style={styles.keepBrowsingButton}
@@ -286,7 +284,7 @@ export default function DiscoverScreen() {
             
             <Button
               title="Upgrade Plan"
-              onPress={handleUpgradePlan}
+              onPress={() => handleModalAction('upgrade')}
               variant="primary"
               size="large"
               style={styles.messageButton}
@@ -294,7 +292,7 @@ export default function DiscoverScreen() {
             
             <Button
               title="Continue Browsing"
-              onPress={handleCloseLimitModal}
+              onPress={() => handleModalAction('close')}
               variant="outline"
               size="large"
               style={styles.keepBrowsingButton}
@@ -336,7 +334,7 @@ export default function DiscoverScreen() {
             
             <Button
               title="Apply Filters"
-              onPress={handleApplyFilters}
+              onPress={() => handleModalAction('applyFilters')}
               variant="primary"
               size="large"
               style={styles.messageButton}
@@ -344,7 +342,7 @@ export default function DiscoverScreen() {
             
             <Button
               title="Cancel"
-              onPress={() => setShowFilterModal(false)}
+              onPress={() => handleModalAction('cancel')}
               variant="outline"
               size="large"
               style={styles.keepBrowsingButton}

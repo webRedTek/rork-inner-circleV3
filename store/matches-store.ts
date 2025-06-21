@@ -2,10 +2,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { UserProfile, MembershipTier, MatchWithProfile } from '@/types/user';
-import { isSupabaseConfigured, supabase, convertToCamelCase, SwipeAction, fetchPotentialMatches as fetchPotentialMatchesFromSupabase, processSwipeBatch as processSwipeBatchFromSupabase, syncUsageCounters as syncUsageCountersFromSupabase, fetchUserMatches as fetchUserMatchesFromSupabase } from '@/lib/supabase';
+import { isSupabaseConfigured, supabase, convertToCamelCase, SwipeAction, fetchPotentialMatches as fetchPotentialMatchesFromSupabase, processSwipeBatch as processSwipeBatchFromSupabase, fetchUserMatches as fetchUserMatchesFromSupabase } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
 import { notifyError } from '@/utils/notify';
 import { useNotificationStore } from './notification-store';
+import { useUsageStore } from './usage-store';
 
 // Helper function to extract readable error message from Supabase error
 const getReadableError = (error: any): string => {
@@ -118,8 +119,6 @@ interface MatchesState {
   refreshCandidates: () => Promise<void>;
   clearError: () => void;
   clearNewMatch: () => void;
-  checkSwipeLimits: () => Promise<boolean>;
-  syncUsageCounters: () => Promise<void>;
   resetCacheAndState: () => Promise<void>;
 }
 
@@ -132,7 +131,7 @@ export const useMatchesStore = create<MatchesState>()(
       swipeQueue: [],
       batchSize: 25,
       prefetchThreshold: 5,
-      batchProcessingInterval: 15000, // 15 seconds, increased to run less frequently
+      batchProcessingInterval: 10000, // 10 seconds for batch processing
       isLoading: false,
       isPrefetching: false,
       error: null,
@@ -227,7 +226,7 @@ export const useMatchesStore = create<MatchesState>()(
             await rateLimitedQuery();
             
             // Fetch potential matches with retry logic
-            const result = await retryOperation(() => fetchPotentialMatchesFromSupabase(user.id, userMaxDistance, isGlobalDiscovery, get().batchSize * 2));
+            const result = await retryOperation(() => fetchPotentialMatchesFromSupabase(user.id, userMaxDistance, isGlobalDiscovery, get().batchSize));
             
             if (!result || result.count === 0) {
               throw new Error(isGlobalDiscovery ? "No additional global matches found." : "No additional matches found in your area.");
@@ -264,19 +263,18 @@ export const useMatchesStore = create<MatchesState>()(
         
         set({ isLoading: true, error: null });
         try {
-          const tierSettings = useAuthStore.getState().getTierSettings();
-          
-          // Check swipe limits before proceeding
-          const canSwipe = await get().checkSwipeLimits();
-          if (!canSwipe) {
+          // Check swipe limits using usage store
+          const result = await useUsageStore.getState().trackUsage({ actionType: 'swipe', batchProcess: true });
+          if (!result.isAllowed) {
             set({ swipeLimitReached: true, isLoading: false });
             notifyError('Daily swipe limit reached');
             throw new Error('Daily swipe limit reached');
           }
 
           // Check match limits
-          if (get().matchLimitReached) {
-            set({ isLoading: false });
+          const matchStats = useUsageStore.getState().getUsageStats();
+          if (matchStats && matchStats.matchCount >= matchStats.matchLimit) {
+            set({ matchLimitReached: true, isLoading: false });
             notifyError('Daily match limit reached');
             throw new Error('Daily match limit reached');
           }
@@ -324,9 +322,9 @@ export const useMatchesStore = create<MatchesState>()(
         
         set({ isLoading: true, error: null });
         try {
-          // Check swipe limits before proceeding
-          const canSwipe = await get().checkSwipeLimits();
-          if (!canSwipe) {
+          // Check swipe limits using usage store
+          const result = await useUsageStore.getState().trackUsage({ actionType: 'swipe', batchProcess: true });
+          if (!result.isAllowed) {
             set({ swipeLimitReached: true, isLoading: false });
             notifyError('Daily swipe limit reached');
             throw new Error('Daily swipe limit reached');
@@ -384,7 +382,7 @@ export const useMatchesStore = create<MatchesState>()(
           console.log('[MatchesStore] Queued swipe', { userId, direction, queueLength: get().swipeQueue.length });
           
           // If the queue is long enough, process it immediately
-          if (get().swipeQueue.length >= 5) {
+          if (get().swipeQueue.length >= 3) {
             await get().processSwipeBatch();
           }
         } catch (error) {
@@ -435,21 +433,30 @@ export const useMatchesStore = create<MatchesState>()(
                 newMatch: typedMatches[0] // Set the first new match for UI notification
               }));
               
-              // Check if match limit is reached
-              const tierSettings = useAuthStore.getState().getTierSettings();
-              if (tierSettings && result.match_count >= tierSettings.daily_match_limit) {
-                set({ matchLimitReached: true });
+              // Update match limit status using usage store
+              const matchStats = useUsageStore.getState().getUsageStats();
+              if (matchStats) {
+                set({ matchLimitReached: matchStats.matchCount >= matchStats.matchLimit });
               }
               
               console.log(`[MatchesStore] Batch processing created ${typedMatches.length} new matches`);
             }
             
             // Update swipe limit reached status
-            set({ 
-              swipeLimitReached: result.swipe_count >= result.swipe_limit,
-              swipeQueue: [], 
-              isLoading: false 
-            });
+            const swipeStats = useUsageStore.getState().getUsageStats();
+            if (swipeStats) {
+              set({ 
+                swipeLimitReached: swipeStats.swipeCount >= swipeStats.swipeLimit,
+                swipeQueue: [], 
+                isLoading: false 
+              });
+            } else {
+              set({ 
+                swipeLimitReached: result.swipe_count >= result.swipe_limit,
+                swipeQueue: [], 
+                isLoading: false 
+              });
+            }
           } else {
             throw new Error('Supabase is not configured');
           }
@@ -523,94 +530,6 @@ export const useMatchesStore = create<MatchesState>()(
       
       clearNewMatch: () => set({ newMatch: null }),
 
-      checkSwipeLimits: async () => {
-        const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) {
-          return false; // Silent fail if not ready or not authenticated
-        }
-        
-        const tierSettings = useAuthStore.getState().getTierSettings();
-        if (!tierSettings) {
-          return false; // Silent fail if tier settings are not available
-        }
-        
-        try {
-          const dailySwipeLimit = tierSettings.daily_swipe_limit || 10;
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          const todayTimestamp = today.getTime();
-          
-          if (isSupabaseConfigured() && supabase) {
-            // Apply rate limiting
-            await rateLimitedQuery();
-            
-            const { data: likesData, error } = await supabase
-              .from('likes')
-              .select('id, timestamp')
-              .eq('liker_id', user.id)
-              .gte('timestamp', todayTimestamp);
-              
-            if (error) {
-              console.error('[MatchesStore] Error checking swipe limits:', getReadableError(error));
-              notifyError('Error checking swipe limits: ' + getReadableError(error));
-              return true; // Allow swipe in case of error to not block user
-            }
-            
-            const todaySwipes = likesData ? likesData.length : 0;
-            const canSwipe = todaySwipes < dailySwipeLimit;
-            set({ swipeLimitReached: !canSwipe });
-            console.log('[MatchesStore] Checked swipe limits', { todaySwipes, dailyLimit: dailySwipeLimit, canSwipe });
-            return canSwipe;
-          } else {
-            throw new Error('Supabase is not configured');
-          }
-        } catch (error) {
-          console.error('[MatchesStore] Error checking swipe limits:', getReadableError(error));
-          notifyError('Error checking swipe limits: ' + getReadableError(error));
-          return true; // Allow swipe in case of error to not block user
-        }
-      },
-
-      syncUsageCounters: async () => {
-        const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) {
-          return; // Silent fail if not ready or not authenticated
-        }
-        
-        const tierSettings = useAuthStore.getState().getTierSettings();
-        if (!tierSettings) {
-          return; // Silent fail if tier settings are not available
-        }
-        
-        try {
-          if (isSupabaseConfigured() && supabase) {
-            // Apply rate limiting
-            await rateLimitedQuery();
-            
-            // Sync usage counters using the optimized function
-            const result = await syncUsageCountersFromSupabase(user.id);
-            
-            if (result) {
-              set({ 
-                swipeLimitReached: result.swipe_count >= result.swipe_limit,
-                matchLimitReached: result.match_count >= result.match_limit
-              });
-              console.log('[MatchesStore] Synced usage counters', { 
-                swipeCount: result.swipe_count, 
-                swipeLimit: result.swipe_limit,
-                matchCount: result.match_count,
-                matchLimit: result.match_limit
-              });
-            }
-          } else {
-            throw new Error('Supabase is not configured');
-          }
-        } catch (error) {
-          console.error('[MatchesStore] Error syncing usage counters:', getReadableError(error));
-          notifyError('Error syncing usage counters: ' + getReadableError(error));
-        }
-      },
-      
       resetCacheAndState: async () => {
         const { user, isReady } = useAuthStore.getState();
         if (!isReady || !user) return; // Silent fail if not ready or authenticated
@@ -636,7 +555,15 @@ export const useMatchesStore = create<MatchesState>()(
           console.log('[MatchesStore] Cache and state reset complete, fetching fresh data');
           // Fetch fresh data after reset
           await get().fetchPotentialMatches(50, true);
-          await get().syncUsageCounters();
+          
+          // Update limits from usage store
+          const stats = useUsageStore.getState().getUsageStats();
+          if (stats) {
+            set({
+              swipeLimitReached: stats.swipeCount >= stats.swipeLimit,
+              matchLimitReached: stats.matchCount >= stats.matchLimit
+            });
+          }
           
           console.log('[MatchesStore] Fresh data fetched after reset');
           useNotificationStore.getState().addNotification({
@@ -671,24 +598,6 @@ export const useMatchesStore = create<MatchesState>()(
   )
 );
 
-// Helper function to calculate distance between two points using Haversine formula
-function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371; // Radius of the earth in km
-  const dLat = deg2rad(lat2 - lat1);
-  const dLon = deg2rad(lon2 - lon1);
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
-    Math.sin(dLon/2) * Math.sin(dLon/2); 
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
-  const distance = R * c; // Distance in km
-  return distance;
-}
-
-function deg2rad(deg: number): number {
-  return deg * (Math.PI/180);
-}
-
 // Set up interval for processing swipe batches periodically
 let batchProcessingIntervalId: number | null = null;
 let isBatchProcessingActive = false;
@@ -705,7 +614,7 @@ export const startBatchProcessing = () => {
     if (!isReady || !user) return; // Silent fail if not ready or authenticated
     
     const { swipeQueue } = useMatchesStore.getState();
-    if (swipeQueue.length >= 5) {
+    if (swipeQueue.length > 0) {
       console.log(`[MatchesStore] Periodic batch processing: ${swipeQueue.length} swipes in queue`);
       await useMatchesStore.getState().processSwipeBatch();
     }

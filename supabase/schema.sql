@@ -163,8 +163,6 @@ CREATE TABLE public.app_settings (
   has_virtual_meeting_room boolean NOT NULL DEFAULT false,
   has_custom_branding boolean NOT NULL DEFAULT false,
   has_dedicated_support boolean NOT NULL DEFAULT false,
-  can_create_groups boolean NOT NULL DEFAULT false,
-  groups_creation_limit integer NOT NULL DEFAULT 0,
   CONSTRAINT app_settings_pkey PRIMARY KEY (id)
 );
 
@@ -473,59 +471,6 @@ begin
 end;
 $$ language plpgsql security definer;
 
--- Create function to check and enforce swipe/match limits
-create or replace function check_user_limits(user_id uuid, action_type text)
-returns jsonb as $$
-declare
-  today_timestamp bigint;
-  daily_swipe_limit integer;
-  daily_match_limit integer;
-  today_swipe_count integer;
-  today_match_count integer;
-  user_tier_settings jsonb;
-  is_allowed boolean;
-begin
-  -- Get today's timestamp for limit checks
-  today_timestamp := extract(epoch from (current_date)) * 1000;
-  
-  -- Get user's tier settings
-  select get_user_tier_settings(user_id) into user_tier_settings;
-  daily_swipe_limit := (user_tier_settings->>'daily_swipe_limit')::integer;
-  daily_match_limit := (user_tier_settings->>'daily_match_limit')::integer;
-  
-  -- Count today's swipes for the user
-  select count(*) into today_swipe_count
-  from public.likes
-  where liker_id = user_id
-  and timestamp >= today_timestamp;
-  
-  -- Count today's matches for the user
-  select count(*) into today_match_count
-  from public.matches
-  where user_id = user_id
-  and created_at >= today_timestamp;
-  
-  -- Determine if the action is allowed based on type
-  if action_type = 'swipe' then
-    is_allowed := today_swipe_count < daily_swipe_limit;
-  elsif action_type = 'match' then
-    is_allowed := today_match_count < daily_match_limit;
-  else
-    is_allowed := false;
-  end if;
-  
-  -- Return the result with current usage stats
-  return jsonb_build_object(
-    'is_allowed', is_allowed,
-    'action_type', action_type,
-    'current_swipe_count', today_swipe_count,
-    'swipe_limit', daily_swipe_limit,
-    'current_match_count', today_match_count,
-    'match_limit', daily_match_limit
-  );
-end;
-$$ language plpgsql security definer;
-
 -- Create stored procedure to process swipe batch
 create or replace function process_swipe_batch(p_swipe_actions jsonb)
 returns jsonb as $$
@@ -752,52 +697,145 @@ begin
 end;
 $$ language plpgsql security definer;
 
--- Create function to sync usage counters
-create or replace function sync_usage_counters(p_user_id uuid)
-returns jsonb as $$
+-- Create function to handle user usage (combines checking limits and updating counters)
+create or replace function handle_user_usage(
+  p_user_id uuid, 
+  p_action_type text, 
+  p_count_change integer default 1,
+  p_batch_updates jsonb default null
+) returns jsonb as $$
 declare
   v_today_timestamp bigint;
-  v_swipe_count integer = 0;
-  v_match_count integer = 0;
+  v_daily_swipe_limit integer;
+  v_daily_match_limit integer;
+  v_today_swipe_count integer;
+  v_today_match_count integer;
   v_user_tier_settings jsonb;
-  v_swipe_limit integer;
-  v_match_limit integer;
+  v_is_allowed boolean;
+  v_batch_update jsonb;
+  v_batch_action_type text;
+  v_batch_count_change integer;
+  v_processed_batch jsonb[] = '{}';
+  v_batch_result jsonb;
 begin
-  -- Get today's timestamp for counting
+  -- Get today's timestamp for limit checks
   v_today_timestamp := extract(epoch from (current_date)) * 1000;
   
   -- Get user's tier settings
   select get_user_tier_settings(p_user_id) into v_user_tier_settings;
-  v_swipe_limit := (v_user_tier_settings->>'daily_swipe_limit')::integer;
-  v_match_limit := (v_user_tier_settings->>'daily_match_limit')::integer;
+  v_daily_swipe_limit := (v_user_tier_settings->>'daily_swipe_limit')::integer;
+  v_daily_match_limit := (v_user_tier_settings->>'daily_match_limit')::integer;
   
-  -- Count today's swipes
-  select count(*) into v_swipe_count
+  -- Count today's swipes for the user
+  select count(*) into v_today_swipe_count
   from public.likes
   where liker_id = p_user_id
   and timestamp >= v_today_timestamp;
   
-  -- Count today's matches
-  select count(*) into v_match_count
+  -- Count today's matches for the user
+  select count(*) into v_today_match_count
   from public.matches
   where user_id = p_user_id
   and created_at >= v_today_timestamp;
   
+  -- Determine if the action is allowed based on type
+  if p_action_type = 'swipe' then
+    v_is_allowed := v_today_swipe_count < v_daily_swipe_limit;
+  elsif p_action_type = 'match' then
+    v_is_allowed := v_today_match_count < v_daily_match_limit;
+  else
+    v_is_allowed := true; -- Other actions are allowed by default
+  end if;
+  
+  -- If there's a count change and action is allowed, update usage tracking
+  if p_count_change > 0 and v_is_allowed then
+    insert into public.usage_tracking (
+      user_id, 
+      action_type, 
+      first_action_timestamp, 
+      last_action_timestamp, 
+      current_count, 
+      reset_timestamp
+    )
+    values (
+      p_user_id, 
+      p_action_type, 
+      extract(epoch from now()) * 1000, 
+      extract(epoch from now()) * 1000, 
+      p_count_change, 
+      extract(epoch from (current_date + interval '1 day')) * 1000
+    )
+    on conflict (user_id, action_type) do update
+    set current_count = usage_tracking.current_count + p_count_change,
+        last_action_timestamp = extract(epoch from now()) * 1000;
+  end if;
+  
+  -- Process batch updates if provided
+  if p_batch_updates is not null then
+    for v_batch_update in select jsonb_array_elements(p_batch_updates)
+    loop
+      v_batch_action_type := (v_batch_update->>'action_type')::text;
+      v_batch_count_change := (v_batch_update->>'count_change')::integer;
+      
+      -- Update usage tracking for batch action
+      if v_batch_count_change > 0 then
+        insert into public.usage_tracking (
+          user_id, 
+          action_type, 
+          first_action_timestamp, 
+          last_action_timestamp, 
+          current_count, 
+          reset_timestamp
+        )
+        values (
+          p_user_id, 
+          v_batch_action_type, 
+          extract(epoch from now()) * 1000, 
+          extract(epoch from now()) * 1000, 
+          v_batch_count_change, 
+          extract(epoch from (current_date + interval '1 day')) * 1000
+        )
+        on conflict (user_id, action_type) do update
+        set current_count = usage_tracking.current_count + v_batch_count_change,
+            last_action_timestamp = extract(epoch from now()) * 1000;
+      end if;
+      
+      -- Add to processed batch array
+      v_processed_batch := array_append(v_processed_batch, v_batch_update);
+    end loop;
+    
+    -- Create batch result
+    v_batch_result := jsonb_build_object(
+      'processed_count', array_length(v_processed_batch, 1),
+      'processed_actions', v_processed_batch
+    );
+  else
+    v_batch_result := jsonb_build_object(
+      'processed_count', 0,
+      'processed_actions', jsonb_build_array()
+    );
+  end if;
+  
   -- Log the action
-  perform log_user_action(p_user_id, 'sync_usage_counters', jsonb_build_object(
-    'swipe_count', v_swipe_count,
-    'match_count', v_match_count
+  perform log_user_action(p_user_id, 'handle_user_usage', jsonb_build_object(
+    'action_type', p_action_type,
+    'count_change', p_count_change,
+    'is_allowed', v_is_allowed,
+    'batch_processed', v_batch_result->>'processed_count'
   ));
   
-  -- Return current usage stats
+  -- Return comprehensive usage stats
   return jsonb_build_object(
-    'swipe_count', v_swipe_count,
-    'match_count', v_match_count,
-    'swipe_limit', v_swipe_limit,
-    'match_limit', v_match_limit,
-    'swipe_remaining', greatest(0, v_swipe_limit - v_swipe_count),
-    'match_remaining', greatest(0, v_match_limit - v_match_count),
-    'timestamp', extract(epoch from now()) * 1000
+    'is_allowed', v_is_allowed,
+    'action_type', p_action_type,
+    'current_swipe_count', v_today_swipe_count,
+    'swipe_limit', v_daily_swipe_limit,
+    'current_match_count', v_today_match_count,
+    'match_limit', v_daily_match_limit,
+    'swipe_remaining', greatest(0, v_daily_swipe_limit - v_today_swipe_count),
+    'match_remaining', greatest(0, v_daily_match_limit - v_today_match_count),
+    'timestamp', extract(epoch from now()) * 1000,
+    'batch_result', v_batch_result
   );
 end;
 $$ language plpgsql security definer;

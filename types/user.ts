@@ -342,3 +342,42 @@ export interface ReferralHistory {
   subscriptionType: string;
   earnings: number;
 }
+
+/**
+ * Options for tracking usage actions
+ */
+export interface UsageTrackingOptions {
+  actionType: string;
+  count?: number;
+  batchProcess?: boolean;
+  forceSync?: boolean;
+}
+
+/**
+ * Result of a usage tracking operation
+ */
+export interface UsageResult {
+  isAllowed: boolean;
+  actionType: string;
+  currentCount: number;
+  limit: number;
+  remaining: number;
+  timestamp: number;
+  error?: string;
+}
+
+/**
+ * Comprehensive usage stats for a user
+ */
+export interface UsageStats {
+  swipeCount: number;
+  swipeLimit: number;
+  swipeRemaining: number;
+  matchCount: number;
+  matchLimit: number;
+  matchRemaining: number;
+  messageCount: number;
+  messageLimit: number;
+  messageRemaining: number;
+  timestamp: number;
+}
