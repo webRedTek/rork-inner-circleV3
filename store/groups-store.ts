@@ -206,8 +206,10 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
   },
 
   joinGroup: async (groupId: string) => {
-    const { user, isReady, tierSettings } = useAuthStore.getState();
+    const { user, isReady } = useAuthStore.getState();
     if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    
+    const tierSettings = useAuthStore.getState().getTierSettings();
     
     set({ isLoading: true, error: null });
     try {
@@ -372,8 +374,10 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
   },
 
   createGroup: async (groupData: Partial<Group>) => {
-    const { user, isReady, tierSettings } = useAuthStore.getState();
+    const { user, isReady } = useAuthStore.getState();
     if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    
+    const tierSettings = useAuthStore.getState().getTierSettings();
     
     set({ isLoading: true, error: null });
     try {

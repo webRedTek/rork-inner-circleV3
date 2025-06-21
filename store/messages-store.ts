@@ -69,8 +69,10 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   subscriptions: {},
 
   sendMessage: async (conversationId: string, content: string, receiverId: string) => {
-    const { user, isReady, tierSettings } = useAuthStore.getState();
+    const { user, isReady } = useAuthStore.getState();
     if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    
+    const tierSettings = useAuthStore.getState().getTierSettings();
     
     set(state => ({ 
       isLoading: { ...state.isLoading, [conversationId]: true },
@@ -182,8 +184,10 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   },
 
   sendVoiceMessage: async (conversationId: string, voiceUrl: string, duration: number, receiverId: string) => {
-    const { user, isReady, tierSettings } = useAuthStore.getState();
+    const { user, isReady } = useAuthStore.getState();
     if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    
+    const tierSettings = useAuthStore.getState().getTierSettings();
     
     set(state => ({ 
       isLoading: { ...state.isLoading, [conversationId]: true },

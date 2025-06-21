@@ -140,7 +140,7 @@ export const useMatchesStore = create<MatchesState>()(
       swipeLimitReached: false,
       matchLimitReached: false,
       fetchPotentialMatches: async (maxDistance = 50, forceRefresh = false) => {
-        const { user, isReady, tierSettings } = useAuthStore.getState();
+        const { user, isReady } = useAuthStore.getState();
         if (!isReady || !user) return; // Silent fail if not ready or authenticated
         
         if (get().isLoading && !forceRefresh) return;
@@ -163,6 +163,7 @@ export const useMatchesStore = create<MatchesState>()(
           
           if (isSupabaseConfigured() && supabase) {
             // Use cached tier settings for global discovery
+            const tierSettings = useAuthStore.getState().getTierSettings();
             const isGlobalDiscovery = tierSettings?.global_discovery || false;
             // Use user's preferred distance if available
             const userMaxDistance = user.preferredDistance || maxDistance;
@@ -208,7 +209,7 @@ export const useMatchesStore = create<MatchesState>()(
       },
 
       prefetchNextBatch: async (maxDistance = 50) => {
-        const { user, isReady, tierSettings } = useAuthStore.getState();
+        const { user, isReady } = useAuthStore.getState();
         if (!isReady || !user) return; // Silent fail if not ready or authenticated
         
         if (get().isPrefetching || get().isLoading) return;
@@ -216,6 +217,7 @@ export const useMatchesStore = create<MatchesState>()(
         set({ isPrefetching: true, error: null });
         try {
           // Use cached tier settings for global discovery
+          const tierSettings = useAuthStore.getState().getTierSettings();
           const isGlobalDiscovery = tierSettings?.global_discovery || false;
           // Use user's preferred distance if available
           const userMaxDistance = user.preferredDistance || maxDistance;
@@ -262,7 +264,7 @@ export const useMatchesStore = create<MatchesState>()(
         
         set({ isLoading: true, error: null });
         try {
-          const tierSettings = useAuthStore.getState().tierSettings;
+          const tierSettings = useAuthStore.getState().getTierSettings();
           
           // Check swipe limits before proceeding
           const canSwipe = await get().checkSwipeLimits();
@@ -434,7 +436,7 @@ export const useMatchesStore = create<MatchesState>()(
               }));
               
               // Check if match limit is reached
-              const tierSettings = useAuthStore.getState().tierSettings;
+              const tierSettings = useAuthStore.getState().getTierSettings();
               if (tierSettings && result.match_count >= tierSettings.daily_match_limit) {
                 set({ matchLimitReached: true });
               }
@@ -522,9 +524,14 @@ export const useMatchesStore = create<MatchesState>()(
       clearNewMatch: () => set({ newMatch: null }),
 
       checkSwipeLimits: async () => {
-        const { user, isReady, tierSettings } = useAuthStore.getState();
-        if (!isReady || !user || !tierSettings) {
+        const { user, isReady } = useAuthStore.getState();
+        if (!isReady || !user) {
           return false; // Silent fail if not ready or not authenticated
+        }
+        
+        const tierSettings = useAuthStore.getState().getTierSettings();
+        if (!tierSettings) {
+          return false; // Silent fail if tier settings are not available
         }
         
         try {
@@ -565,9 +572,14 @@ export const useMatchesStore = create<MatchesState>()(
       },
 
       syncUsageCounters: async () => {
-        const { user, isReady, tierSettings } = useAuthStore.getState();
-        if (!isReady || !user || !tierSettings) {
+        const { user, isReady } = useAuthStore.getState();
+        if (!isReady || !user) {
           return; // Silent fail if not ready or not authenticated
+        }
+        
+        const tierSettings = useAuthStore.getState().getTierSettings();
+        if (!tierSettings) {
+          return; // Silent fail if tier settings are not available
         }
         
         try {

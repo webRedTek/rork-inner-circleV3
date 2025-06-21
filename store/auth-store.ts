@@ -10,10 +10,11 @@ import NetInfo from '@react-native-community/netinfo';
 interface AuthState {
   user: UserProfile | null;
   tierSettings: TierSettings | null;
+  tierSettingsTimestamp: number | null;
   usageCache: UsageCache | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  isReady: boolean; // Indicates if initial session check is complete
+  isReady: boolean;
   error: string | null;
   networkStatus: { isConnected: boolean | null; type?: string | null; } | null;
   login: (email: string, password: string) => Promise<void>;
@@ -21,14 +22,16 @@ interface AuthState {
   logout: () => Promise<void>;
   updateProfile: (data: Partial<UserProfile>) => Promise<void>;
   updateMembership: (tier: MembershipTier) => Promise<void>;
-  fetchTierSettings: (userId: string) => Promise<void>;
+  fetchTierSettings: (userId: string, forceRefresh?: boolean) => Promise<void>;
+  getTierSettings: () => TierSettings | null;
+  invalidateTierSettingsCache: () => Promise<void>;
   fetchUsageData: (userId: string) => Promise<void>;
   checkLimit: (actionType: string, limit: number) => boolean;
   incrementUsage: (actionType: string) => Promise<void>;
   clearError: () => void;
   clearCache: () => Promise<void>;
-  checkSession: () => Promise<void>; // Method to check/restore session on app start
-  checkNetworkConnection: () => Promise<void>; // Method to check network connectivity
+  checkSession: () => Promise<void>;
+  checkNetworkConnection: () => Promise<void>;
 }
 
 // Helper function to extract readable error message from Supabase error
@@ -131,15 +134,19 @@ const defaultUsageCache: UsageCache = {
   },
 };
 
+// Cache expiration time (24 hours in milliseconds)
+const CACHE_EXPIRATION_TIME = 24 * 60 * 60 * 1000;
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       user: null,
       tierSettings: null,
+      tierSettingsTimestamp: null,
       usageCache: null,
       isAuthenticated: false,
       isLoading: false,
-      isReady: false, // Initially false until session check is complete
+      isReady: false,
       error: null,
       networkStatus: null,
 
@@ -441,7 +448,7 @@ export const useAuthStore = create<AuthState>()(
           
           await AsyncStorage.removeItem('auth-storage');
           
-          set({ user: null, tierSettings: null, usageCache: null, isAuthenticated: false, isLoading: false });
+          set({ user: null, tierSettings: null, tierSettingsTimestamp: null, usageCache: null, isAuthenticated: false, isLoading: false });
           
           console.log('Logout successful');
           useNotificationStore.getState().addNotification({
@@ -454,7 +461,7 @@ export const useAuthStore = create<AuthState>()(
         } catch (error) {
           console.error('Logout error:', getReadableError(error));
           await AsyncStorage.removeItem('auth-storage');
-          set({ user: null, tierSettings: null, usageCache: null, isAuthenticated: false, isLoading: false });
+          set({ user: null, tierSettings: null, tierSettingsTimestamp: null, usageCache: null, isAuthenticated: false, isLoading: false });
         }
       },
 
@@ -547,7 +554,7 @@ export const useAuthStore = create<AuthState>()(
               isLoading: false,
             });
             // Refresh tier settings after membership update
-            await get().fetchTierSettings(user.id);
+            await get().fetchTierSettings(user.id, true);
           } else {
             throw new Error('Database is not configured');
           }
@@ -572,7 +579,7 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      fetchTierSettings: async (userId: string) => {
+      fetchTierSettings: async (userId: string, forceRefresh = false) => {
         // Guard clause to prevent fetching if user ID is invalid
         if (!userId || userId.trim() === '' || !isSupabaseConfigured() || !supabase) {
           console.log('Skipping tier settings fetch: Invalid user ID or database not configured', { 
@@ -584,8 +591,16 @@ export const useAuthStore = create<AuthState>()(
           return;
         }
 
+        // Check if cached settings are still valid (less than 24 hours old)
+        const { tierSettingsTimestamp } = get();
+        const now = Date.now();
+        if (!forceRefresh && tierSettingsTimestamp && (now - tierSettingsTimestamp) < CACHE_EXPIRATION_TIME) {
+          console.log('Using cached tier settings', { ageInHours: (now - tierSettingsTimestamp) / (60 * 60 * 1000) });
+          return;
+        }
+
         // Don't fetch if we're already loading
-        if (get().isLoading) {
+        if (get().isLoading && !forceRefresh) {
           console.log('Skipping tier settings fetch: Already loading');
           return;
         }
@@ -615,7 +630,11 @@ export const useAuthStore = create<AuthState>()(
             set({ tierSettings: defaultTierSettings, isLoading: false });
           } else {
             console.log('Tier settings fetched successfully:', tierSettings);
-            set({ tierSettings: tierSettings as TierSettings, isLoading: false });
+            set({ 
+              tierSettings: tierSettings as TierSettings, 
+              tierSettingsTimestamp: now,
+              isLoading: false 
+            });
           }
         } catch (error) {
           console.error('Fetch tier settings error:', JSON.stringify(error, null, 2));
@@ -625,6 +644,30 @@ export const useAuthStore = create<AuthState>()(
             isLoading: false 
           });
         }
+      },
+
+      getTierSettings: () => {
+        const { tierSettings, tierSettingsTimestamp } = get();
+        const now = Date.now();
+        if (tierSettings && tierSettingsTimestamp && (now - tierSettingsTimestamp) < CACHE_EXPIRATION_TIME) {
+          return tierSettings;
+        }
+        return defaultTierSettings;
+      },
+
+      invalidateTierSettingsCache: async () => {
+        set({ tierSettingsTimestamp: null });
+        const { user } = get();
+        if (user) {
+          await get().fetchTierSettings(user.id, true);
+        }
+        console.log('Tier settings cache invalidated');
+        useNotificationStore.getState().addNotification({
+          type: 'success',
+          message: 'Tier settings refreshed',
+          displayStyle: 'toast',
+          duration: 3000,
+        });
       },
 
       fetchUsageData: async (userId: string) => {
@@ -785,6 +828,7 @@ export const useAuthStore = create<AuthState>()(
           set({ 
             user: null, 
             tierSettings: null,
+            tierSettingsTimestamp: null,
             usageCache: null,
             isAuthenticated: false, 
             isLoading: false,

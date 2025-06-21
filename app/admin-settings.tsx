@@ -11,7 +11,7 @@ import { MembershipTier } from '@/types/user';
 
 export default function AdminSettingsScreen() {
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { user, invalidateTierSettingsCache } = useAuthStore();
   const [settingsByTier, setSettingsByTier] = useState<Record<MembershipTier, Record<string, any>>>({
     basic: {},
     bronze: {},
@@ -144,6 +144,9 @@ export default function AdminSettingsScreen() {
           }
         }
       }
+
+      // Invalidate tier settings cache after successful save
+      await invalidateTierSettingsCache();
 
       Alert.alert('Success', 'Settings updated successfully.', [{ text: 'OK' }]);
       console.log('Settings saved successfully, refreshing data...');
