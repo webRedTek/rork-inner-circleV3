@@ -18,7 +18,7 @@ export function SupabaseSetup({ onSetupComplete }: SupabaseSetupProps) {
   const [urlError, setUrlError] = useState('');
   const [keyError, setKeyError] = useState('');
   const [testStatus, setTestStatus] = useState<{success: boolean, message: string} | null>(null);
-  const [networkStatus, setNetworkStatus] = useState<{isConnected: boolean | null}>({isConnected: null});
+  const [networkStatus, setNetworkStatus] = useState<{isConnected: boolean | null, type?: string | null}>({isConnected: null});
   const [checkingNetwork, setCheckingNetwork] = useState(false);
   
   useEffect(() => {
@@ -291,7 +291,7 @@ export function SupabaseSetup({ onSetupComplete }: SupabaseSetupProps) {
           <Button
             title="Check"
             onPress={handleRetryConnection}
-            variant="text"
+            variant="ghost"
             size="small"
             icon={<RefreshCw size={14} color={Colors.dark.accent} />}
             loading={checkingNetwork}

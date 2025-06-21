@@ -141,11 +141,9 @@ export const useAuthStore = create<AuthState>()(
         try {
           const status = await checkNetworkStatus();
           set({ networkStatus: status });
-          return status;
         } catch (error) {
           console.error('Error checking network connection:', error);
           set({ networkStatus: { isConnected: null } });
-          return { isConnected: null };
         }
       },
 
@@ -441,12 +439,10 @@ export const useAuthStore = create<AuthState>()(
           
           console.log('Logout successful');
           useNotificationStore.getState().addNotification({
-            id: `logout-${Date.now()}`,
             type: 'success',
             message: 'Successfully logged out',
             displayStyle: 'toast',
             duration: 3000,
-            timestamp: Date.now()
           });
           return;
         } catch (error) {
@@ -791,12 +787,10 @@ export const useAuthStore = create<AuthState>()(
           
           console.log('Auth cache cleared successfully');
           useNotificationStore.getState().addNotification({
-            id: `cache-clear-${Date.now()}`,
             type: 'success',
             message: 'App cache cleared successfully',
             displayStyle: 'toast',
             duration: 3000,
-            timestamp: Date.now()
           });
         } catch (error) {
           console.error('Error clearing auth cache:', getReadableError(error));
@@ -805,12 +799,10 @@ export const useAuthStore = create<AuthState>()(
             isLoading: false 
           });
           useNotificationStore.getState().addNotification({
-            id: `cache-clear-error-${Date.now()}`,
             type: 'error',
             message: 'Failed to clear app cache',
             displayStyle: 'toast',
             duration: 5000,
-            timestamp: Date.now()
           });
         }
       },
