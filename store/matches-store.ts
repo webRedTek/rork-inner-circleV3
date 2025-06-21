@@ -646,12 +646,10 @@ export const useMatchesStore = create<MatchesState>()(
           
           console.log('[MatchesStore] Fresh data fetched after reset');
           useNotificationStore.getState().addNotification({
-            id: `matches-reset-${Date.now()}`,
             type: 'success',
             message: 'Matches data refreshed',
             displayStyle: 'toast',
-            duration: 3000,
-            timestamp: Date.now()
+            duration: 3000
           });
         } catch (error) {
           console.error('[MatchesStore] Error during reset and refresh:', getReadableError(error));
@@ -661,12 +659,10 @@ export const useMatchesStore = create<MatchesState>()(
             isLoading: false 
           });
           useNotificationStore.getState().addNotification({
-            id: `matches-reset-error-${Date.now()}`,
             type: 'error',
             message: 'Failed to refresh matches data',
             displayStyle: 'toast',
-            duration: 5000,
-            timestamp: Date.now()
+            duration: 5000
           });
         }
       }

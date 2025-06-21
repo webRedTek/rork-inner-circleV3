@@ -1,6 +1,6 @@
 import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import NetInfo from '@react-native-community/netinfo';
@@ -671,9 +671,10 @@ export const getAppSettings = async () => {
   if (!supabase) {
     throw new Error('Supabase client not initialized');
   }
+  const client = supabase as SupabaseClient<Database>;
   
   return retryOperation(async () => {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from('app_settings')
       .select('*')
       .limit(1);
@@ -695,9 +696,10 @@ export const updateAppSettings = async (settings: Record<string, any>) => {
   if (!supabase) {
     throw new Error('Supabase client not initialized');
   }
+  const client = supabase as SupabaseClient<Database>;
   
   return retryOperation(async () => {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from('app_settings')
       .update(settings)
       .eq('id', settings.id);
@@ -719,9 +721,10 @@ export const getUserTierSettings = async (tier: string) => {
   if (!supabase) {
     throw new Error('Supabase client not initialized');
   }
+  const client = supabase as SupabaseClient<Database>;
   
   return retryOperation(async () => {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from('app_settings')
       .select('*')
       .eq('tier', tier)
@@ -749,9 +752,10 @@ export const batchUpdateUsage = async (userId: string, updates: Array<{ action_t
   if (!supabase) {
     throw new Error('Supabase client not initialized');
   }
+  const client = supabase as SupabaseClient<Database>;
   
   return retryOperation(async () => {
-    const { data, error } = await supabase.rpc('batch_update_usage', {
+    const { data, error } = await client.rpc('batch_update_usage', {
       p_user_id: userId,
       p_updates: updates,
     });
@@ -776,10 +780,11 @@ export const logUserAction = async (userId: string, action: string, details: Rec
   if (!supabase) {
     throw new Error('Supabase client not initialized');
   }
+  const client = supabase as SupabaseClient<Database>;
   
   try {
     return await retryOperation(async () => {
-      const { error } = await supabase.rpc('log_user_action', {
+      const { error } = await client.rpc('log_user_action', {
         user_id: userId,
         action,
         details,
@@ -807,9 +812,10 @@ export const processSwipeBatch = async (swipeActions: SwipeAction[]): Promise<Sw
   if (!supabase) {
     throw new Error('Supabase client not initialized');
   }
+  const client = supabase as SupabaseClient<Database>;
   
   return retryOperation(async () => {
-    const { data, error } = await supabase.rpc('process_swipe_batch', {
+    const { data, error } = await client.rpc('process_swipe_batch', {
       p_swipe_actions: swipeActions,
     });
     
@@ -834,9 +840,10 @@ export const fetchPotentialMatches = async (userId: string, maxDistance: number 
   if (!supabase) {
     throw new Error('Supabase client not initialized');
   }
+  const client = supabase as SupabaseClient<Database>;
   
   return retryOperation(async () => {
-    const { data, error } = await supabase.rpc('fetch_potential_matches', {
+    const { data, error } = await client.rpc('fetch_potential_matches', {
       p_user_id: userId,
       p_max_distance: maxDistance,
       p_is_global_discovery: isGlobalDiscovery,
@@ -861,9 +868,10 @@ export const syncUsageCounters = async (userId: string): Promise<UsageCountersRe
   if (!supabase) {
     throw new Error('Supabase client not initialized');
   }
+  const client = supabase as SupabaseClient<Database>;
   
   return retryOperation(async () => {
-    const { data, error } = await supabase.rpc('sync_usage_counters', {
+    const { data, error } = await client.rpc('sync_usage_counters', {
       p_user_id: userId,
     });
     
@@ -885,9 +893,10 @@ export const fetchUserMatches = async (userId: string): Promise<MatchWithProfile
   if (!supabase) {
     throw new Error('Supabase client not initialized');
   }
+  const client = supabase as SupabaseClient<Database>;
   
   return retryOperation(async () => {
-    const { data, error } = await supabase.rpc('fetch_user_matches', {
+    const { data, error } = await client.rpc('fetch_user_matches', {
       p_user_id: userId,
     });
     
