@@ -167,6 +167,8 @@ export interface GroupEvent {
   endTime?: number;
   reminder?: number;
   createdAt: number;
+  recurrencePattern?: 'daily' | 'weekly' | 'monthly';
+  recurrenceEnd?: number;
 }
 
 export interface GroupEventRSVP {

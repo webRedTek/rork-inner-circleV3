@@ -74,6 +74,8 @@ const supabaseToGroupEvent = (data: Record<string, any>): GroupEvent => {
     endTime: camelCaseData.endTime ? Number(camelCaseData.endTime) : undefined,
     reminder: camelCaseData.reminder ? Number(camelCaseData.reminder) : undefined,
     createdAt: Number(camelCaseData.createdAt || Date.now()),
+    recurrencePattern: camelCaseData.recurrencePattern || undefined,
+    recurrenceEnd: camelCaseData.recurrenceEnd ? Number(camelCaseData.recurrenceEnd) : undefined,
   };
 };
 
@@ -593,7 +595,9 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           start_time: eventData.startTime || Date.now(),
           end_time: eventData.endTime,
           reminder: eventData.reminder,
-          created_at: Date.now()
+          created_at: Date.now(),
+          recurrence_pattern: eventData.recurrencePattern,
+          recurrence_end: eventData.recurrenceEnd,
         };
         
         const { data: insertedEvent, error: insertError } = await supabase
@@ -647,6 +651,8 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           location: eventData.location,
           start_time: eventData.startTime || Date.now(),
           end_time: eventData.endTime,
+          recurrence_pattern: eventData.recurrencePattern,
+          recurrence_end: eventData.recurrenceEnd,
         };
         
         const { data: updatedEventData, error: updateError } = await supabase

@@ -11,7 +11,8 @@ import {
   Modal,
   Platform,
   KeyboardAvoidingView,
-  RefreshControl
+  RefreshControl,
+  Pressable,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -31,10 +32,11 @@ import {
   Check, 
   Clock, 
   MapPin,
-  Send
+  Send,
+  ChevronDown,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { format } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { notify } from '@/store/notification-store';
 
 export default function GroupDetailScreen() {
@@ -78,11 +80,16 @@ export default function GroupDetailScreen() {
   const [eventTitle, setEventTitle] = useState('');
   const [eventDescription, setEventDescription] = useState('');
   const [eventLocation, setEventLocation] = useState('');
-  const [eventDate, setEventDate] = useState('');
-  const [eventTime, setEventTime] = useState('');
-  const [eventEndTime, setEventEndTime] = useState('');
+  const [eventDate, setEventDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+  const [eventEndDate, setEventEndDate] = useState<Date | null>(null);
   const [eventReminder, setEventReminder] = useState('30'); // minutes before
   const [eventTimezone, setEventTimezone] = useState('UTC');
+  const [recurrencePattern, setRecurrencePattern] = useState<'none' | 'daily' | 'weekly' | 'monthly'>('none');
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState<Date | null>(null);
+  const [showRecurrenceEndPicker, setShowRecurrenceEndPicker] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   
   // Group edit form state
@@ -240,35 +247,17 @@ export default function GroupDetailScreen() {
       isValid = false;
     }
     
-    if (!eventDate) {
-      errors.date = 'Date is required';
+    if (isNaN(eventDate.getTime())) {
+      errors.date = 'Valid date is required';
+      isValid = false;
+    } else if (eventDate < now) {
+      errors.date = 'Event cannot be in the past';
       isValid = false;
     }
     
-    if (!eventTime) {
-      errors.time = 'Start time is required';
+    if (eventEndDate && eventEndDate <= eventDate) {
+      errors.endDate = 'End time must be after start time';
       isValid = false;
-    }
-    
-    if (eventDate && eventTime) {
-      try {
-        const startDateTime = new Date(`${eventDate}T${eventTime}:00`);
-        if (startDateTime < now) {
-          errors.date = 'Event cannot be in the past';
-          isValid = false;
-        }
-        
-        if (eventEndTime) {
-          const endDateTime = new Date(`${eventDate}T${eventEndTime}:00`);
-          if (endDateTime <= startDateTime) {
-            errors.endTime = 'End time must be after start time';
-            isValid = false;
-          }
-        }
-      } catch (e) {
-        errors.date = 'Invalid date or time format';
-        isValid = false;
-      }
     }
     
     if (eventReminder) {
@@ -277,6 +266,11 @@ export default function GroupDetailScreen() {
         errors.reminder = 'Reminder must be a positive number';
         isValid = false;
       }
+    }
+    
+    if (recurrencePattern !== 'none' && recurrenceEndDate && recurrenceEndDate <= eventDate) {
+      errors.recurrenceEnd = 'Recurrence end date must be after start date';
+      isValid = false;
     }
     
     setFormErrors(errors);
@@ -290,14 +284,9 @@ export default function GroupDetailScreen() {
     }
     
     try {
-      // Parse date and time
-      const dateTimeString = `${eventDate}T${eventTime}:00`;
-      const startTime = new Date(dateTimeString).getTime();
-      
       let endTime: number | undefined;
-      if (eventEndTime) {
-        const endTimeString = `${eventDate}T${eventEndTime}:00`;
-        endTime = new Date(endTimeString).getTime();
+      if (eventEndDate) {
+        endTime = eventEndDate.getTime();
       }
       
       let reminder: number | undefined;
@@ -317,19 +306,22 @@ export default function GroupDetailScreen() {
         title: eventTitle,
         description: eventDescription,
         location: eventLocation,
-        startTime,
+        startTime: eventDate.getTime(),
         endTime,
-        reminder
+        reminder,
+        recurrencePattern: recurrencePattern !== 'none' ? recurrencePattern : undefined,
+        recurrenceEnd: recurrenceEndDate ? recurrenceEndDate.getTime() : undefined,
       });
       
       // Reset form
       setEventTitle('');
       setEventDescription('');
       setEventLocation('');
-      setEventDate('');
-      setEventTime('');
-      setEventEndTime('');
+      setEventDate(new Date());
+      setEventEndDate(null);
       setEventReminder('30');
+      setRecurrencePattern('none');
+      setRecurrenceEndDate(null);
       setFormErrors({});
       
       setShowCreateEventModal(false);
@@ -347,14 +339,9 @@ export default function GroupDetailScreen() {
     }
     
     try {
-      // Parse date and time
-      const dateTimeString = `${eventDate}T${eventTime}:00`;
-      const startTime = new Date(dateTimeString).getTime();
-      
       let endTime: number | undefined;
-      if (eventEndTime) {
-        const endTimeString = `${eventDate}T${eventEndTime}:00`;
-        endTime = new Date(endTimeString).getTime();
+      if (eventEndDate) {
+        endTime = eventEndDate.getTime();
       }
       
       if (Platform.OS !== 'web') {
@@ -367,8 +354,10 @@ export default function GroupDetailScreen() {
         title: eventTitle,
         description: eventDescription,
         location: eventLocation,
-        startTime,
-        endTime
+        startTime: eventDate.getTime(),
+        endTime,
+        recurrencePattern: recurrencePattern !== 'none' ? recurrencePattern : undefined,
+        recurrenceEnd: recurrenceEndDate ? recurrenceEndDate.getTime() : undefined,
       });
       
       setShowEditEventModal(false);
@@ -441,21 +430,19 @@ export default function GroupDetailScreen() {
     
     // Format date and time for the form
     const eventDate = new Date(event.startTime);
-    const formattedDate = eventDate.toISOString().split('T')[0];
-    const formattedTime = eventDate.toTimeString().substring(0, 5);
+    setEventDate(eventDate);
     
-    let formattedEndTime = '';
     if (event.endTime) {
-      const endDate = new Date(event.endTime);
-      formattedEndTime = endDate.toTimeString().substring(0, 5);
+      setEventEndDate(new Date(event.endTime));
+    } else {
+      setEventEndDate(null);
     }
     
     setEventTitle(event.title);
     setEventDescription(event.description);
     setEventLocation(event.location || '');
-    setEventDate(formattedDate);
-    setEventTime(formattedTime);
-    setEventEndTime(formattedEndTime);
+    setRecurrencePattern(event.recurrencePattern || 'none');
+    setRecurrenceEndDate(event.recurrenceEnd ? new Date(event.recurrenceEnd) : null);
     
     setShowEditEventModal(true);
   };
@@ -472,6 +459,34 @@ export default function GroupDetailScreen() {
   
   const handleTabChange = (tab: 'info' | 'messages' | 'events') => {
     setActiveTab(tab);
+  };
+  
+  const handleDateChange = (event: any, selectedDate?: Date) => {
+    setShowDatePicker(Platform.OS === 'ios');
+    if (selectedDate) {
+      setEventDate(selectedDate);
+    }
+  };
+  
+  const handleTimeChange = (event: any, selectedTime?: Date) => {
+    setShowTimePicker(Platform.OS === 'ios');
+    if (selectedTime) {
+      setEventDate(selectedTime);
+    }
+  };
+  
+  const handleEndTimeChange = (event: any, selectedTime?: Date) => {
+    setShowEndTimePicker(Platform.OS === 'ios');
+    if (selectedTime) {
+      setEventEndDate(selectedTime);
+    }
+  };
+  
+  const handleRecurrenceEndChange = (event: any, selectedDate?: Date) => {
+    setShowRecurrenceEndPicker(Platform.OS === 'ios');
+    if (selectedDate) {
+      setRecurrenceEndDate(selectedDate);
+    }
   };
   
   if (isLoading && !currentGroup) {
@@ -906,39 +921,135 @@ export default function GroupDetailScreen() {
                   </View>
                 )}
               </View>
+              <Text style={styles.inputNote}>Note: Full location autocomplete requires Google Places API integration.</Text>
               
-              <Text style={styles.inputLabel}>Date *</Text>
-              <TextInput
-                style={[styles.modalInput, formErrors.date && styles.inputError]}
-                placeholder="YYYY-MM-DD (e.g., 2025-06-20)"
-                placeholderTextColor={Colors.dark.textSecondary}
-                value={eventDate}
-                onChangeText={setEventDate}
-              />
-              <Text style={styles.inputHint}>Format: YYYY-MM-DD. In a full implementation, this would be a date picker.</Text>
+              <Text style={styles.inputLabel}>Date and Time *</Text>
+              <View style={styles.dateTimeContainer}>
+                <Pressable
+                  style={[styles.dateTimeButton, formErrors.date && styles.inputError]}
+                  onPress={() => setShowDatePicker(true)}
+                  accessible={true}
+                  accessibilityLabel="Select event date"
+                >
+                  <Text style={styles.dateTimeText}>{format(eventDate, 'MMMM d, yyyy')}</Text>
+                  <ChevronDown size={20} color={Colors.dark.textSecondary} />
+                </Pressable>
+                {showDatePicker && (
+                  <View style={styles.datePickerContainer}>
+                    {Platform.OS !== 'web' ? (
+                      // Placeholder for native DateTimePicker
+                      // Would use @react-native-community/datetimepicker if available
+                      <View>
+                        <Text style={styles.datePickerPlaceholder}>Native Date Picker (iOS/Android)</Text>
+                        <Button title="Confirm Date" onPress={() => setShowDatePicker(false)} variant="primary" size="small" />
+                      </View>
+                    ) : (
+                      // Web fallback
+                      <View>
+                        <TextInput
+                          style={styles.webDateInput}
+                          placeholder="YYYY-MM-DD"
+                          value={format(eventDate, 'yyyy-MM-dd')}
+                          onChangeText={(text) => {
+                            const parsedDate = parseISO(text);
+                            if (isValid(parsedDate)) {
+                              setEventDate(parsedDate);
+                            }
+                          }}
+                        />
+                        <Button title="Confirm Date" onPress={() => setShowDatePicker(false)} variant="primary" size="small" />
+                      </View>
+                    )}
+                  </View>
+                )}
+                
+                <Pressable
+                  style={styles.dateTimeButton}
+                  onPress={() => setShowTimePicker(true)}
+                  accessible={true}
+                  accessibilityLabel="Select event start time"
+                >
+                  <Text style={styles.dateTimeText}>{format(eventDate, 'h:mm a')}</Text>
+                  <ChevronDown size={20} color={Colors.dark.textSecondary} />
+                </Pressable>
+                {showTimePicker && (
+                  <View style={styles.datePickerContainer}>
+                    {Platform.OS !== 'web' ? (
+                      <View>
+                        <Text style={styles.datePickerPlaceholder}>Native Time Picker (iOS/Android)</Text>
+                        <Button title="Confirm Time" onPress={() => setShowTimePicker(false)} variant="primary" size="small" />
+                      </View>
+                    ) : (
+                      <View>
+                        <TextInput
+                          style={styles.webDateInput}
+                          placeholder="HH:MM"
+                          value={format(eventDate, 'HH:mm')}
+                          onChangeText={(text) => {
+                            try {
+                              const [hours, minutes] = text.split(':').map(Number);
+                              if (hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
+                                const newDate = new Date(eventDate);
+                                newDate.setHours(hours, minutes);
+                                setEventDate(newDate);
+                              }
+                            } catch (e) {
+                              // Ignore invalid input
+                            }
+                          }}
+                        />
+                        <Button title="Confirm Time" onPress={() => setShowTimePicker(false)} variant="primary" size="small" />
+                      </View>
+                    )}
+                  </View>
+                )}
+              </View>
               {formErrors.date && <Text style={styles.formErrorText}>{formErrors.date}</Text>}
               
-              <Text style={styles.inputLabel}>Start Time *</Text>
-              <TextInput
-                style={[styles.modalInput, formErrors.time && styles.inputError]}
-                placeholder="HH:MM (24-hour format, e.g., 14:30)"
-                placeholderTextColor={Colors.dark.textSecondary}
-                value={eventTime}
-                onChangeText={setEventTime}
-              />
-              <Text style={styles.inputHint}>Format: HH:MM (24-hour). In a full implementation, this would be a time picker.</Text>
-              {formErrors.time && <Text style={styles.formErrorText}>{formErrors.time}</Text>}
-              
-              <Text style={styles.inputLabel}>End Time (optional)</Text>
-              <TextInput
-                style={[styles.modalInput, formErrors.endTime && styles.inputError]}
-                placeholder="HH:MM (24-hour format, e.g., 16:30)"
-                placeholderTextColor={Colors.dark.textSecondary}
-                value={eventEndTime}
-                onChangeText={setEventEndTime}
-              />
-              <Text style={styles.inputHint}>Format: HH:MM (24-hour). In a full implementation, this would be a time picker.</Text>
-              {formErrors.endTime && <Text style={styles.formErrorText}>{formErrors.endTime}</Text>}
+              <Text style={styles.inputLabel}>End Date and Time (optional)</Text>
+              <View style={styles.dateTimeContainer}>
+                <Pressable
+                  style={[styles.dateTimeButton, formErrors.endDate && styles.inputError]}
+                  onPress={() => setShowEndTimePicker(true)}
+                  accessible={true}
+                  accessibilityLabel="Select event end time"
+                >
+                  <Text style={styles.dateTimeText}>
+                    {eventEndDate ? format(eventEndDate, 'MMMM d, yyyy h:mm a') : 'Not set'}
+                  </Text>
+                  <ChevronDown size={20} color={Colors.dark.textSecondary} />
+                </Pressable>
+                {showEndTimePicker && (
+                  <View style={styles.datePickerContainer}>
+                    {Platform.OS !== 'web' ? (
+                      <View>
+                        <Text style={styles.datePickerPlaceholder}>Native End Time Picker (iOS/Android)</Text>
+                        <Button title="Confirm End Time" onPress={() => setShowEndTimePicker(false)} variant="primary" size="small" />
+                      </View>
+                    ) : (
+                      <View>
+                        <TextInput
+                          style={styles.webDateInput}
+                          placeholder="YYYY-MM-DD HH:MM"
+                          value={eventEndDate ? format(eventEndDate, 'yyyy-MM-dd HH:mm') : ''}
+                          onChangeText={(text) => {
+                            if (!text) {
+                              setEventEndDate(null);
+                              return;
+                            }
+                            const parsedDate = parseISO(text.replace(' ', 'T'));
+                            if (isValid(parsedDate)) {
+                              setEventEndDate(parsedDate);
+                            }
+                          }}
+                        />
+                        <Button title="Confirm End Time" onPress={() => setShowEndTimePicker(false)} variant="primary" size="small" />
+                      </View>
+                    )}
+                  </View>
+                )}
+              </View>
+              {formErrors.endDate && <Text style={styles.formErrorText}>{formErrors.endDate}</Text>}
               
               <Text style={styles.inputLabel}>Reminder (minutes before)</Text>
               <TextInput
@@ -959,6 +1070,79 @@ export default function GroupDetailScreen() {
                 value={eventTimezone}
                 onChangeText={setEventTimezone}
               />
+              
+              <Text style={styles.inputLabel}>Recurrence</Text>
+              <View style={styles.recurrenceContainer}>
+                <TouchableOpacity
+                  style={[styles.recurrenceOption, recurrencePattern === 'none' && styles.recurrenceOptionSelected]}
+                  onPress={() => setRecurrencePattern('none')}
+                >
+                  <Text style={styles.recurrenceOptionText}>None</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.recurrenceOption, recurrencePattern === 'daily' && styles.recurrenceOptionSelected]}
+                  onPress={() => setRecurrencePattern('daily')}
+                >
+                  <Text style={styles.recurrenceOptionText}>Daily</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.recurrenceOption, recurrencePattern === 'weekly' && styles.recurrenceOptionSelected]}
+                  onPress={() => setRecurrencePattern('weekly')}
+                >
+                  <Text style={styles.recurrenceOptionText}>Weekly</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.recurrenceOption, recurrencePattern === 'monthly' && styles.recurrenceOptionSelected]}
+                  onPress={() => setRecurrencePattern('monthly')}
+                >
+                  <Text style={styles.recurrenceOptionText}>Monthly</Text>
+                </TouchableOpacity>
+              </View>
+              
+              {recurrencePattern !== 'none' && (
+                <>
+                  <Text style={styles.inputLabel}>Recurrence End Date</Text>
+                  <Pressable
+                    style={[styles.dateTimeButton, formErrors.recurrenceEnd && styles.inputError]}
+                    onPress={() => setShowRecurrenceEndPicker(true)}
+                  >
+                    <Text style={styles.dateTimeText}>
+                      {recurrenceEndDate ? format(recurrenceEndDate, 'MMMM d, yyyy') : 'Not set'}
+                    </Text>
+                    <ChevronDown size={20} color={Colors.dark.textSecondary} />
+                  </Pressable>
+                  {showRecurrenceEndPicker && (
+                    <View style={styles.datePickerContainer}>
+                      {Platform.OS !== 'web' ? (
+                        <View>
+                          <Text style={styles.datePickerPlaceholder}>Native Recurrence End Date Picker (iOS/Android)</Text>
+                          <Button title="Confirm End Date" onPress={() => setShowRecurrenceEndPicker(false)} variant="primary" size="small" />
+                        </View>
+                      ) : (
+                        <View>
+                          <TextInput
+                            style={styles.webDateInput}
+                            placeholder="YYYY-MM-DD"
+                            value={recurrenceEndDate ? format(recurrenceEndDate, 'yyyy-MM-dd') : ''}
+                            onChangeText={(text) => {
+                              if (!text) {
+                                setRecurrenceEndDate(null);
+                                return;
+                              }
+                              const parsedDate = parseISO(text);
+                              if (isValid(parsedDate)) {
+                                setRecurrenceEndDate(parsedDate);
+                              }
+                            }}
+                          />
+                          <Button title="Confirm End Date" onPress={() => setShowRecurrenceEndPicker(false)} variant="primary" size="small" />
+                        </View>
+                      )}
+                    </View>
+                  )}
+                  {formErrors.recurrenceEnd && <Text style={styles.formErrorText}>{formErrors.recurrenceEnd}</Text>}
+                </>
+              )}
               
               <Button
                 title="Create Event"
@@ -1040,39 +1224,205 @@ export default function GroupDetailScreen() {
                   </View>
                 )}
               </View>
+              <Text style={styles.inputNote}>Note: Full location autocomplete requires Google Places API integration.</Text>
               
-              <Text style={styles.inputLabel}>Date *</Text>
-              <TextInput
-                style={[styles.modalInput, formErrors.date && styles.inputError]}
-                placeholder="YYYY-MM-DD (e.g., 2025-06-20)"
-                placeholderTextColor={Colors.dark.textSecondary}
-                value={eventDate}
-                onChangeText={setEventDate}
-              />
-              <Text style={styles.inputHint}>Format: YYYY-MM-DD. In a full implementation, this would be a date picker.</Text>
+              <Text style={styles.inputLabel}>Date and Time *</Text>
+              <View style={styles.dateTimeContainer}>
+                <Pressable
+                  style={[styles.dateTimeButton, formErrors.date && styles.inputError]}
+                  onPress={() => setShowDatePicker(true)}
+                  accessible={true}
+                  accessibilityLabel="Select event date"
+                >
+                  <Text style={styles.dateTimeText}>{format(eventDate, 'MMMM d, yyyy')}</Text>
+                  <ChevronDown size={20} color={Colors.dark.textSecondary} />
+                </Pressable>
+                {showDatePicker && (
+                  <View style={styles.datePickerContainer}>
+                    {Platform.OS !== 'web' ? (
+                      <View>
+                        <Text style={styles.datePickerPlaceholder}>Native Date Picker (iOS/Android)</Text>
+                        <Button title="Confirm Date" onPress={() => setShowDatePicker(false)} variant="primary" size="small" />
+                      </View>
+                    ) : (
+                      <View>
+                        <TextInput
+                          style={styles.webDateInput}
+                          placeholder="YYYY-MM-DD"
+                          value={format(eventDate, 'yyyy-MM-dd')}
+                          onChangeText={(text) => {
+                            const parsedDate = parseISO(text);
+                            if (isValid(parsedDate)) {
+                              setEventDate(parsedDate);
+                            }
+                          }}
+                        />
+                        <Button title="Confirm Date" onPress={() => setShowDatePicker(false)} variant="primary" size="small" />
+                      </View>
+                    )}
+                  </View>
+                )}
+                
+                <Pressable
+                  style={styles.dateTimeButton}
+                  onPress={() => setShowTimePicker(true)}
+                  accessible={true}
+                  accessibilityLabel="Select event start time"
+                >
+                  <Text style={styles.dateTimeText}>{format(eventDate, 'h:mm a')}</Text>
+                  <ChevronDown size={20} color={Colors.dark.textSecondary} />
+                </Pressable>
+                {showTimePicker && (
+                  <View style={styles.datePickerContainer}>
+                    {Platform.OS !== 'web' ? (
+                      <View>
+                        <Text style={styles.datePickerPlaceholder}>Native Time Picker (iOS/Android)</Text>
+                        <Button title="Confirm Time" onPress={() => setShowTimePicker(false)} variant="primary" size="small" />
+                      </View>
+                    ) : (
+                      <View>
+                        <TextInput
+                          style={styles.webDateInput}
+                          placeholder="HH:MM"
+                          value={format(eventDate, 'HH:mm')}
+                          onChangeText={(text) => {
+                            try {
+                              const [hours, minutes] = text.split(':').map(Number);
+                              if (hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
+                                const newDate = new Date(eventDate);
+                                newDate.setHours(hours, minutes);
+                                setEventDate(newDate);
+                              }
+                            } catch (e) {
+                              // Ignore invalid input
+                            }
+                          }}
+                        />
+                        <Button title="Confirm Time" onPress={() => setShowTimePicker(false)} variant="primary" size="small" />
+                      </View>
+                    )}
+                  </View>
+                )}
+              </View>
               {formErrors.date && <Text style={styles.formErrorText}>{formErrors.date}</Text>}
               
-              <Text style={styles.inputLabel}>Start Time *</Text>
-              <TextInput
-                style={[styles.modalInput, formErrors.time && styles.inputError]}
-                placeholder="HH:MM (24-hour format, e.g., 14:30)"
-                placeholderTextColor={Colors.dark.textSecondary}
-                value={eventTime}
-                onChangeText={setEventTime}
-              />
-              <Text style={styles.inputHint}>Format: HH:MM (24-hour). In a full implementation, this would be a time picker.</Text>
-              {formErrors.time && <Text style={styles.formErrorText}>{formErrors.time}</Text>}
+              <Text style={styles.inputLabel}>End Date and Time (optional)</Text>
+              <View style={styles.dateTimeContainer}>
+                <Pressable
+                  style={[styles.dateTimeButton, formErrors.endDate && styles.inputError]}
+                  onPress={() => setShowEndTimePicker(true)}
+                  accessible={true}
+                  accessibilityLabel="Select event end time"
+                >
+                  <Text style={styles.dateTimeText}>
+                    {eventEndDate ? format(eventEndDate, 'MMMM d, yyyy h:mm a') : 'Not set'}
+                  </Text>
+                  <ChevronDown size={20} color={Colors.dark.textSecondary} />
+                </Pressable>
+                {showEndTimePicker && (
+                  <View style={styles.datePickerContainer}>
+                    {Platform.OS !== 'web' ? (
+                      <View>
+                        <Text style={styles.datePickerPlaceholder}>Native End Time Picker (iOS/Android)</Text>
+                        <Button title="Confirm End Time" onPress={() => setShowEndTimePicker(false)} variant="primary" size="small" />
+                      </View>
+                    ) : (
+                      <View>
+                        <TextInput
+                          style={styles.webDateInput}
+                          placeholder="YYYY-MM-DD HH:MM"
+                          value={eventEndDate ? format(eventEndDate, 'yyyy-MM-dd HH:mm') : ''}
+                          onChangeText={(text) => {
+                            if (!text) {
+                              setEventEndDate(null);
+                              return;
+                            }
+                            const parsedDate = parseISO(text.replace(' ', 'T'));
+                            if (isValid(parsedDate)) {
+                              setEventEndDate(parsedDate);
+                            }
+                          }}
+                        />
+                        <Button title="Confirm End Time" onPress={() => setShowEndTimePicker(false)} variant="primary" size="small" />
+                      </View>
+                    )}
+                  </View>
+                )}
+              </View>
+              {formErrors.endDate && <Text style={styles.formErrorText}>{formErrors.endDate}</Text>}
               
-              <Text style={styles.inputLabel}>End Time (optional)</Text>
-              <TextInput
-                style={[styles.modalInput, formErrors.endTime && styles.inputError]}
-                placeholder="HH:MM (24-hour format, e.g., 16:30)"
-                placeholderTextColor={Colors.dark.textSecondary}
-                value={eventEndTime}
-                onChangeText={setEventEndTime}
-              />
-              <Text style={styles.inputHint}>Format: HH:MM (24-hour). In a full implementation, this would be a time picker.</Text>
-              {formErrors.endTime && <Text style={styles.formErrorText}>{formErrors.endTime}</Text>}
+              <Text style={styles.inputLabel}>Recurrence</Text>
+              <View style={styles.recurrenceContainer}>
+                <TouchableOpacity
+                  style={[styles.recurrenceOption, recurrencePattern === 'none' && styles.recurrenceOptionSelected]}
+                  onPress={() => setRecurrencePattern('none')}
+                >
+                  <Text style={styles.recurrenceOptionText}>None</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.recurrenceOption, recurrencePattern === 'daily' && styles.recurrenceOptionSelected]}
+                  onPress={() => setRecurrencePattern('daily')}
+                >
+                  <Text style={styles.recurrenceOptionText}>Daily</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.recurrenceOption, recurrencePattern === 'weekly' && styles.recurrenceOptionSelected]}
+                  onPress={() => setRecurrencePattern('weekly')}
+                >
+                  <Text style={styles.recurrenceOptionText}>Weekly</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.recurrenceOption, recurrencePattern === 'monthly' && styles.recurrenceOptionSelected]}
+                  onPress={() => setRecurrencePattern('monthly')}
+                >
+                  <Text style={styles.recurrenceOptionText}>Monthly</Text>
+                </TouchableOpacity>
+              </View>
+              
+              {recurrencePattern !== 'none' && (
+                <>
+                  <Text style={styles.inputLabel}>Recurrence End Date</Text>
+                  <Pressable
+                    style={[styles.dateTimeButton, formErrors.recurrenceEnd && styles.inputError]}
+                    onPress={() => setShowRecurrenceEndPicker(true)}
+                  >
+                    <Text style={styles.dateTimeText}>
+                      {recurrenceEndDate ? format(recurrenceEndDate, 'MMMM d, yyyy') : 'Not set'}
+                    </Text>
+                    <ChevronDown size={20} color={Colors.dark.textSecondary} />
+                  </Pressable>
+                  {showRecurrenceEndPicker && (
+                    <View style={styles.datePickerContainer}>
+                      {Platform.OS !== 'web' ? (
+                        <View>
+                          <Text style={styles.datePickerPlaceholder}>Native Recurrence End Date Picker (iOS/Android)</Text>
+                          <Button title="Confirm End Date" onPress={() => setShowRecurrenceEndPicker(false)} variant="primary" size="small" />
+                        </View>
+                      ) : (
+                        <View>
+                          <TextInput
+                            style={styles.webDateInput}
+                            placeholder="YYYY-MM-DD"
+                            value={recurrenceEndDate ? format(recurrenceEndDate, 'yyyy-MM-dd') : ''}
+                            onChangeText={(text) => {
+                              if (!text) {
+                                setRecurrenceEndDate(null);
+                                return;
+                              }
+                              const parsedDate = parseISO(text);
+                              if (isValid(parsedDate)) {
+                                setRecurrenceEndDate(parsedDate);
+                              }
+                            }}
+                          />
+                          <Button title="Confirm End Date" onPress={() => setShowRecurrenceEndPicker(false)} variant="primary" size="small" />
+                        </View>
+                      )}
+                    </View>
+                  )}
+                  {formErrors.recurrenceEnd && <Text style={styles.formErrorText}>{formErrors.recurrenceEnd}</Text>}
+                </>
+              )}
               
               <Button
                 title="Update Event"
@@ -1543,6 +1893,12 @@ const styles = StyleSheet.create({
     color: Colors.dark.text,
     marginBottom: 8,
   },
+  inputNote: {
+    fontSize: 12,
+    color: Colors.dark.textSecondary,
+    marginTop: -12,
+    marginBottom: 16,
+  },
   inputHint: {
     fontSize: 12,
     color: Colors.dark.textSecondary,
@@ -1608,5 +1964,69 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 14,
     color: Colors.dark.textSecondary,
-  }
+  },
+  dateTimeContainer: {
+    marginBottom: 16,
+  },
+  dateTimeButton: {
+    backgroundColor: Colors.dark.card,
+    borderRadius: 8,
+    padding: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    marginBottom: 8,
+  },
+  dateTimeText: {
+    color: Colors.dark.text,
+    fontSize: 16,
+  },
+  datePickerContainer: {
+    backgroundColor: Colors.dark.card,
+    borderRadius: 8,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    marginBottom: 8,
+  },
+  datePickerPlaceholder: {
+    color: Colors.dark.textSecondary,
+    fontSize: 14,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  webDateInput: {
+    backgroundColor: Colors.dark.background,
+    borderRadius: 4,
+    padding: 8,
+    color: Colors.dark.text,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    marginBottom: 8,
+  },
+  recurrenceContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  recurrenceOption: {
+    flex: 1,
+    padding: 10,
+    borderRadius: 4,
+    alignItems: 'center',
+    backgroundColor: Colors.dark.card,
+    marginHorizontal: 2,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  recurrenceOptionSelected: {
+    borderColor: Colors.dark.accent,
+    backgroundColor: 'rgba(94, 114, 228, 0.2)',
+  },
+  recurrenceOptionText: {
+    color: Colors.dark.text,
+    fontSize: 14,
+  },
 });
