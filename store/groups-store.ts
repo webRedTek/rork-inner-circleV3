@@ -890,12 +890,10 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
       
       console.log('[GroupsStore] Groups cache reset complete');
       useNotificationStore.getState().addNotification({
-        id: `groups-reset-${Date.now()}`,
         type: 'success',
         message: 'Groups data refreshed',
         displayStyle: 'toast',
-        duration: 3000,
-        timestamp: Date.now()
+        duration: 3000
       });
       
       // Optionally, refetch groups data
@@ -903,12 +901,10 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     } catch (error) {
       console.error('[GroupsStore] Error resetting groups cache:', getReadableError(error));
       useNotificationStore.getState().addNotification({
-        id: `groups-reset-error-${Date.now()}`,
         type: 'error',
         message: 'Failed to reset groups data',
         displayStyle: 'toast',
-        duration: 5000,
-        timestamp: Date.now()
+        duration: 5000
       });
       set({ error: getReadableError(error) });
     }
