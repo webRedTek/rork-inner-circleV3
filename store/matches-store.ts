@@ -211,7 +211,10 @@ export const useMatchesStore = create<MatchesState>()(
         const { user, isReady } = useAuthStore.getState();
         if (!isReady || !user) return; // Silent fail if not ready or authenticated
         
-        if (get().isPrefetching || get().isLoading) return;
+        if (get().isPrefetching || get().isLoading) {
+          console.log('[MatchesStore] Prefetching skipped - already in progress or loading');
+          return;
+        }
         
         set({ isPrefetching: true, error: null });
         try {
@@ -229,7 +232,12 @@ export const useMatchesStore = create<MatchesState>()(
             const result = await retryOperation(() => fetchPotentialMatchesFromSupabase(user.id, userMaxDistance, isGlobalDiscovery, get().batchSize));
             
             if (!result || result.count === 0) {
-              throw new Error(isGlobalDiscovery ? "No additional global matches found." : "No additional matches found in your area.");
+              console.log('[MatchesStore] No additional matches found during prefetch');
+              set({ 
+                isPrefetching: false,
+                error: tierSettings?.global_discovery ? "No additional global matches found." : "No additional matches found in your area."
+              });
+              return;
             }
             
             // Convert raw matches to UserProfile type and cache

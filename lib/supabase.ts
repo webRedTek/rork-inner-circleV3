@@ -2,7 +2,7 @@ import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
-import { Constants } from 'expo-constants';
+import Constants from 'expo-constants';
 import NetInfo from '@react-native-community/netinfo';
 import { MatchWithProfile } from '@/types/user';
 
