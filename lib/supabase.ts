@@ -2,7 +2,7 @@ import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
-import Constants from 'expo-constants';
+import { Constants } from 'expo-constants';
 import NetInfo from '@react-native-community/netinfo';
 import { MatchWithProfile } from '@/types/user';
 
@@ -242,17 +242,6 @@ export type SwipeBatchResult = {
   match_limit: number;
   swipe_count: number;
   match_count: number;
-};
-
-// Define usage counters result type
-export type UsageCountersResult = {
-  swipe_count: number;
-  match_count: number;
-  swipe_limit: number;
-  match_limit: number;
-  swipe_remaining: number;
-  match_remaining: number;
-  timestamp: number;
 };
 
 // Initialize supabase client with proper typing
@@ -770,40 +759,6 @@ export const batchUpdateUsage = async (userId: string, updates: Array<{ action_t
 };
 
 /**
- * Logs a user action to Supabase for analytics
- * @param userId - The user ID performing the action
- * @param action - The action type being performed
- * @param details - Additional details about the action
- * @returns Promise with result or error
- */
-export const logUserAction = async (userId: string, action: string, details: Record<string, any> = {}) => {
-  if (!supabase) {
-    throw new Error('Supabase client not initialized');
-  }
-  const client = supabase as SupabaseClient<Database>;
-  
-  try {
-    return await retryOperation(async () => {
-      const { error } = await client.rpc('log_user_action', {
-        user_id: userId,
-        action,
-        details,
-      });
-      
-      if (error) {
-        console.warn('Failed to log user action:', error);
-        throw error;
-      }
-      
-      return true;
-    }, 2); // Only retry twice for logging actions
-  } catch (error) {
-    console.warn('Exception while logging user action:', error);
-    return false;
-  }
-};
-
-/**
  * Processes a batch of swipe actions in Supabase
  * @param swipeActions - Array of swipe actions to process
  * @returns Promise with batch processing results or error
@@ -856,31 +811,6 @@ export const fetchPotentialMatches = async (userId: string, maxDistance: number 
     }
     
     return data as PotentialMatchesResult;
-  });
-};
-
-/**
- * Syncs usage counters for a user from Supabase
- * @param userId - The user ID to sync counters for
- * @returns Promise with usage counters or error
- */
-export const syncUsageCounters = async (userId: string): Promise<UsageCountersResult | null> => {
-  if (!supabase) {
-    throw new Error('Supabase client not initialized');
-  }
-  const client = supabase as SupabaseClient<Database>;
-  
-  return retryOperation(async () => {
-    const { data, error } = await client.rpc('sync_usage_counters', {
-      p_user_id: userId,
-    });
-    
-    if (error) {
-      console.error('Error syncing usage counters:', error);
-      throw error;
-    }
-    
-    return data as UsageCountersResult;
   });
 };
 
