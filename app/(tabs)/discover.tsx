@@ -15,13 +15,12 @@ import Colors from '@/constants/colors';
 import { SwipeCards } from '@/components/SwipeCards';
 import { useMatchesStore, startBatchProcessing, stopBatchProcessing } from '@/store/matches-store';
 import { useAuthStore } from '@/store/auth-store';
-import { UserProfile } from '@/types/user';
+import { UserProfile, MatchWithProfile } from '@/types/user';
 import { Button } from '@/components/Button';
 import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
 import { ProfileDetailCard } from '@/components/ProfileDetailCard';
 import { X, ArrowLeft, RefreshCw, MapPin } from 'lucide-react-native';
-import { isSupabaseConfigured, supabase, convertToCamelCase } from '@/lib/supabase';
 import { Input } from '@/components/Input';
 
 export default function DiscoverScreen() {
@@ -100,32 +99,14 @@ export default function DiscoverScreen() {
     const checkNewMatch = async () => {
       if (newMatch && user) {
         try {
-          // Get the matched user's profile via Supabase
-          if (isSupabaseConfigured() && supabase) {
-            const matchedUserId = newMatch.userId === user.id ? newMatch.matchedUserId : newMatch.userId;
-            const { data: matchedProfile, error } = await supabase
-              .from('users')
-              .select('*')
-              .eq('id', matchedUserId)
-              .single();
-            
-            if (error) {
-              console.error('[Discover] Error fetching matched user profile:', error);
-              return;
-            }
-            
-            if (matchedProfile) {
-              const userProfile = supabaseToUserProfile(matchedProfile);
-              setMatchedUser(userProfile);
-              setShowMatchModal(true);
-              
-              if (Platform.OS !== 'web') {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              }
-            }
+          setMatchedUser(newMatch.matched_user_profile);
+          setShowMatchModal(true);
+          
+          if (Platform.OS !== 'web') {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           }
         } catch (err) {
-          console.error('[Discover] Error fetching matched user profile:', err);
+          console.error('[Discover] Error handling new match:', err);
         } finally {
           clearNewMatch(); // Clear the new match after processing
         }
@@ -528,40 +509,6 @@ export default function DiscoverScreen() {
     </SafeAreaView>
   );
 }
-
-// Helper function to convert Supabase response to UserProfile type
-const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
-  const camelCaseData = convertToCamelCase(data);
-  
-  return {
-    id: String(camelCaseData.id || ''),
-    email: String(camelCaseData.email || ''),
-    name: String(camelCaseData.name || ''),
-    bio: String(camelCaseData.bio || ''),
-    location: String(camelCaseData.location || ''),
-    zipCode: String(camelCaseData.zipCode || ''),
-    latitude: Number(camelCaseData.latitude || 0),
-    longitude: Number(camelCaseData.longitude || 0),
-    preferredDistance: Number(camelCaseData.preferredDistance || 50),
-    locationPrivacy: String(camelCaseData.locationPrivacy || 'public') as UserProfile["locationPrivacy"],
-    businessField: (String(camelCaseData.businessField || 'Technology')) as UserProfile["businessField"],
-    entrepreneurStatus: (String(camelCaseData.entrepreneurStatus || 'upcoming')) as UserProfile["entrepreneurStatus"],
-    photoUrl: String(camelCaseData.photoUrl || ''),
-    membershipTier: (String(camelCaseData.membershipTier || 'basic')) as UserProfile["membershipTier"],
-    businessVerified: Boolean(camelCaseData.businessVerified || false),
-    joinedGroups: Array.isArray(camelCaseData.joinedGroups) ? camelCaseData.joinedGroups : [],
-    createdAt: Number(camelCaseData.createdAt || Date.now()),
-    lookingFor: Array.isArray(camelCaseData.lookingFor) ? camelCaseData.lookingFor as UserProfile["lookingFor"] : [],
-    businessStage: camelCaseData.businessStage as UserProfile["businessStage"] || 'Idea Phase',
-    skillsOffered: Array.isArray(camelCaseData.skillsOffered) ? camelCaseData.skillsOffered as UserProfile["skillsOffered"] : [],
-    skillsSeeking: Array.isArray(camelCaseData.skillsSeeking) ? camelCaseData.skillsSeeking as UserProfile["skillsSeeking"] : [],
-    keyChallenge: String(camelCaseData.keyChallenge || ''),
-    industryFocus: String(camelCaseData.industryFocus || ''),
-    availabilityLevel: Array.isArray(camelCaseData.availabilityLevel) ? camelCaseData.availabilityLevel as UserProfile["availabilityLevel"] : [],
-    timezone: String(camelCaseData.timezone || ''),
-    successHighlight: String(camelCaseData.successHighlight || ''),
-  };
-};
 
 const styles = StyleSheet.create({
   container: {

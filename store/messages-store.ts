@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Message } from '@/types/user';
+import { Message, MessageWithSender } from '@/types/user';
 import { isSupabaseConfigured, supabase, convertToCamelCase, convertToSnakeCase } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
 import { useUsageStore } from './usage-store';
@@ -46,26 +46,36 @@ const supabaseToMessage = (data: Record<string, any>): Message => {
 
 interface MessagesState {
   messages: Record<string, Message[]>; // Keyed by conversationId (matchId or groupId)
-  isLoading: boolean;
-  error: string | null;
+  isLoading: Record<string, boolean>; // Loading state per conversation
+  error: Record<string, string | null>; // Error state per conversation
+  pagination: Record<string, { page: number; hasMore: boolean; lastFetched: number }>; // Pagination info per conversation
+  subscriptions: Record<string, any>; // Real-time subscription handles
   sendMessage: (conversationId: string, content: string, receiverId: string) => Promise<void>;
   sendVoiceMessage: (conversationId: string, voiceUrl: string, duration: number, receiverId: string) => Promise<void>;
-  getMessages: (conversationId: string) => Promise<void>;
+  getMessages: (conversationId: string, pageSize?: number) => Promise<void>;
+  loadMoreMessages: (conversationId: string, pageSize?: number) => Promise<void>;
   markAsRead: (conversationId: string) => Promise<void>;
-  clearError: () => void;
+  subscribeToMessages: (conversationId: string) => void;
+  unsubscribeFromMessages: (conversationId: string) => void;
+  clearError: (conversationId: string) => void;
   resetMessagesCache: () => Promise<void>;
 }
 
 export const useMessagesStore = create<MessagesState>((set, get) => ({
   messages: {},
-  isLoading: false,
-  error: null,
+  isLoading: {},
+  error: {},
+  pagination: {},
+  subscriptions: {},
 
   sendMessage: async (conversationId: string, content: string, receiverId: string) => {
     const { user, isReady, tierSettings } = useAuthStore.getState();
     if (!isReady || !user) return; // Silent fail if not ready or not authenticated
     
-    set({ isLoading: true, error: null });
+    set(state => ({ 
+      isLoading: { ...state.isLoading, [conversationId]: true },
+      error: { ...state.error, [conversationId]: null }
+    }));
     try {
       // Check message sending limit based on tier settings
       if (tierSettings) {
@@ -157,7 +167,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             ...messages, 
             [conversationId]: updatedMessages 
           }, 
-          isLoading: false 
+          isLoading: { ...get().isLoading, [conversationId]: false }
         });
       } else {
         throw new Error('Supabase is not configured');
@@ -165,8 +175,8 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     } catch (error) {
       console.error('Error sending message:', getReadableError(error));
       set({ 
-        error: getReadableError(error), 
-        isLoading: false 
+        error: { ...get().error, [conversationId]: getReadableError(error) }, 
+        isLoading: { ...get().isLoading, [conversationId]: false }
       });
     }
   },
@@ -175,7 +185,10 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     const { user, isReady, tierSettings } = useAuthStore.getState();
     if (!isReady || !user) return; // Silent fail if not ready or not authenticated
     
-    set({ isLoading: true, error: null });
+    set(state => ({ 
+      isLoading: { ...state.isLoading, [conversationId]: true },
+      error: { ...state.error, [conversationId]: null }
+    }));
     try {
       // Check message sending limit based on tier settings
       if (tierSettings) {
@@ -270,7 +283,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             ...messages, 
             [conversationId]: updatedMessages 
           }, 
-          isLoading: false 
+          isLoading: { ...get().isLoading, [conversationId]: false }
         });
       } else {
         throw new Error('Supabase is not configured');
@@ -278,30 +291,34 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     } catch (error) {
       console.error('Error sending voice message:', getReadableError(error));
       set({ 
-        error: getReadableError(error), 
-        isLoading: false 
+        error: { ...get().error, [conversationId]: getReadableError(error) }, 
+        isLoading: { ...get().isLoading, [conversationId]: false }
       });
     }
   },
 
-  getMessages: async (conversationId: string) => {
+  getMessages: async (conversationId: string, pageSize = 20) => {
     const { user, isReady } = useAuthStore.getState();
     if (!isReady || !user) return; // Silent fail if not ready or not authenticated
     
-    set({ isLoading: true, error: null });
+    set(state => ({ 
+      isLoading: { ...state.isLoading, [conversationId]: true },
+      error: { ...state.error, [conversationId]: null }
+    }));
     try {
       if (isSupabaseConfigured() && supabase) {
-        // Get messages from Supabase
+        // Get messages from Supabase with pagination
         const { data: messagesData, error: messagesError } = await supabase
           .from('messages')
           .select('*')
           .eq('conversation_id', conversationId)
-          .order('created_at', { ascending: true });
+          .order('created_at', { ascending: false })
+          .range(0, pageSize - 1);
           
         if (messagesError) throw messagesError;
         
         // Convert Supabase response to Message objects
-        const conversationMessages = (messagesData || []).map(supabaseToMessage);
+        const conversationMessages = (messagesData || []).map(supabaseToMessage).reverse();
         
         // Log the action
         try {
@@ -337,13 +354,21 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           }
         }
         
-        // Update state
+        // Update state with pagination info
         set({ 
           messages: { 
             ...get().messages, 
             [conversationId]: conversationMessages 
           }, 
-          isLoading: false 
+          isLoading: { ...get().isLoading, [conversationId]: false },
+          pagination: {
+            ...get().pagination,
+            [conversationId]: {
+              page: 1,
+              hasMore: conversationMessages.length === pageSize,
+              lastFetched: Date.now()
+            }
+          }
         });
       } else {
         throw new Error('Supabase is not configured');
@@ -351,8 +376,70 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     } catch (error) {
       console.error('Error getting messages:', getReadableError(error));
       set({ 
-        error: getReadableError(error), 
-        isLoading: false 
+        error: { ...get().error, [conversationId]: getReadableError(error) }, 
+        isLoading: { ...get().isLoading, [conversationId]: false }
+      });
+    }
+  },
+
+  loadMoreMessages: async (conversationId: string, pageSize = 20) => {
+    const { user, isReady } = useAuthStore.getState();
+    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    
+    const currentPagination = get().pagination[conversationId];
+    if (!currentPagination || !currentPagination.hasMore) return;
+    
+    set(state => ({ 
+      isLoading: { ...state.isLoading, [conversationId]: true },
+      error: { ...state.error, [conversationId]: null }
+    }));
+    try {
+      if (isSupabaseConfigured() && supabase) {
+        const nextPage = currentPagination.page + 1;
+        const startIndex = nextPage * pageSize;
+        const endIndex = startIndex + pageSize - 1;
+        
+        // Get more messages from Supabase with pagination
+        const { data: messagesData, error: messagesError } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', conversationId)
+          .order('created_at', { ascending: false })
+          .range(startIndex, endIndex);
+          
+        if (messagesError) throw messagesError;
+        
+        // Convert Supabase response to Message objects
+        const additionalMessages = (messagesData || []).map(supabaseToMessage).reverse();
+        
+        // Get existing messages for this conversation
+        const { messages } = get();
+        const conversationMessages = messages[conversationId] || [];
+        
+        // Update state with pagination info
+        set({ 
+          messages: { 
+            ...messages, 
+            [conversationId]: [...additionalMessages, ...conversationMessages]
+          }, 
+          isLoading: { ...get().isLoading, [conversationId]: false },
+          pagination: {
+            ...get().pagination,
+            [conversationId]: {
+              page: nextPage,
+              hasMore: additionalMessages.length === pageSize,
+              lastFetched: Date.now()
+            }
+          }
+        });
+      } else {
+        throw new Error('Supabase is not configured');
+      }
+    } catch (error) {
+      console.error('Error loading more messages:', getReadableError(error));
+      set({ 
+        error: { ...get().error, [conversationId]: getReadableError(error) }, 
+        isLoading: { ...get().isLoading, [conversationId]: false }
       });
     }
   },
@@ -423,36 +510,128 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     }
   },
 
-  clearError: () => set({ error: null }),
+  subscribeToMessages: (conversationId: string) => {
+    if (!isSupabaseConfigured() || !supabase) return;
+    
+    const { user } = useAuthStore.getState();
+    if (!user) return;
+    
+    // Check if already subscribed
+    if (get().subscriptions[conversationId]) return;
+    
+    const subscription = supabase
+      .channel(`messages:${conversationId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `conversation_id=eq.${conversationId}`
+      }, (payload) => {
+        const newMessage = supabaseToMessage(payload.new);
+        console.log('[MessagesStore] New message received:', newMessage);
+        
+        // Update messages for this conversation
+        set(state => {
+          const conversationMessages = state.messages[conversationId] || [];
+          return {
+            messages: {
+              ...state.messages,
+              [conversationId]: [...conversationMessages, newMessage]
+            }
+          };
+        });
+        
+        // If the message is for the current user, log it
+        if (newMessage.receiverId === user.id) {
+          useNotificationStore.getState().addNotification({
+            type: 'info',
+            message: 'New message received',
+            displayStyle: 'toast',
+            duration: 3000
+          });
+          
+          try {
+            supabase.rpc('log_user_action', {
+              user_id: user.id,
+              action: 'receive_message',
+              details: { 
+                conversation_id: conversationId,
+                sender_id: newMessage.senderId,
+                message_type: newMessage.type
+              }
+            });
+            useUsageStore.getState().incrementUsage('receive_message');
+          } catch (logError) {
+            console.warn('Failed to log receive_message action:', getReadableError(logError));
+          }
+        }
+      })
+      .subscribe();
+      
+    set(state => ({
+      subscriptions: {
+        ...state.subscriptions,
+        [conversationId]: subscription
+      }
+    }));
+    console.log(`[MessagesStore] Subscribed to messages for conversation ${conversationId}`);
+  },
+
+  unsubscribeFromMessages: (conversationId: string) => {
+    const subscription = get().subscriptions[conversationId];
+    if (subscription) {
+      if (isSupabaseConfigured() && supabase) {
+        supabase.removeChannel(subscription);
+        set(state => {
+          const newSubscriptions = { ...state.subscriptions };
+          delete newSubscriptions[conversationId];
+          return { subscriptions: newSubscriptions };
+        });
+        console.log(`[MessagesStore] Unsubscribed from messages for conversation ${conversationId}`);
+      }
+    }
+  },
+
+  clearError: (conversationId: string) => set(state => ({ 
+    error: { ...state.error, [conversationId]: null }
+  })),
 
   resetMessagesCache: async () => {
     try {
       console.log('[MessagesStore] Resetting messages cache');
+      // Unsubscribe from all real-time updates
+      const subscriptions = get().subscriptions;
+      if (isSupabaseConfigured() && supabase) {
+        Object.values(subscriptions).forEach(subscription => {
+          supabase.removeChannel(subscription);
+        });
+      }
+      
       set({
         messages: {},
-        error: null,
-        isLoading: false
+        error: {},
+        isLoading: {},
+        pagination: {},
+        subscriptions: {}
       });
       console.log('[MessagesStore] Messages cache reset successfully');
       useNotificationStore.getState().addNotification({
-        id: `messages-reset-${Date.now()}`,
         type: 'success',
         message: 'Messages data cleared',
         displayStyle: 'toast',
-        duration: 3000,
-        timestamp: Date.now()
+        duration: 3000
       });
     } catch (error) {
       console.error('[MessagesStore] Error resetting messages cache:', getReadableError(error));
       useNotificationStore.getState().addNotification({
-        id: `messages-reset-error-${Date.now()}`,
         type: 'error',
         message: 'Failed to reset messages data',
         displayStyle: 'toast',
-        duration: 5000,
-        timestamp: Date.now()
+        duration: 5000
       });
-      set({ error: getReadableError(error) });
+      set(state => ({ 
+        error: { ...state.error, global: getReadableError(error) }
+      }));
     }
   }
 }));

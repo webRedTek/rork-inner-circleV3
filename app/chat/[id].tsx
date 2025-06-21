@@ -26,7 +26,7 @@ export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user, isReady } = useAuthStore();
-  const { messages, sendMessage, getMessages, markAsRead } = useMessagesStore();
+  const { messages, sendMessage, getMessages, loadMoreMessages, markAsRead, subscribeToMessages, unsubscribeFromMessages, isLoading } = useMessagesStore();
   
   const [otherUser, setOtherUser] = useState<UserProfile | null>(null);
   const [matchId, setMatchId] = useState<string | null>(null);
@@ -45,6 +45,26 @@ export default function ChatScreen() {
       setInitialLoad(false);
     }
   }, [isReady, user, id]);
+  
+  useEffect(() => {
+    if (matchId) {
+      // Subscribe to real-time message updates
+      subscribeToMessages(matchId);
+      
+      // Fetch initial messages if not already loaded
+      if (!messages[matchId] || messages[matchId].length === 0) {
+        getMessages(matchId);
+      }
+      
+      // Mark messages as read
+      markAsRead(matchId);
+      
+      return () => {
+        // Unsubscribe from real-time updates when component unmounts
+        unsubscribeFromMessages(matchId);
+      };
+    }
+  }, [matchId, getMessages, markAsRead, subscribeToMessages, unsubscribeFromMessages, messages]);
   
   const fetchData = async () => {
     if (!user || !id) return; // Silent fail if no user or id
@@ -120,15 +140,6 @@ export default function ChatScreen() {
     }
   };
   
-  useEffect(() => {
-    if (matchId) {
-      getMessages(matchId);
-      
-      // Mark messages as read
-      markAsRead(matchId);
-    }
-  }, [matchId, getMessages, markAsRead]);
-  
   const handleSend = async () => {
     if (!messageText.trim() || !matchId || !otherUser) return;
     
@@ -159,6 +170,12 @@ export default function ChatScreen() {
     }
   };
   
+  const handleLoadMore = () => {
+    if (matchId && !isLoading[matchId]) {
+      loadMoreMessages(matchId);
+    }
+  };
+  
   if (loading || initialLoad || !isReady) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
@@ -183,6 +200,7 @@ export default function ChatScreen() {
   }
   
   const chatMessages = matchId ? messages[matchId] || [] : [];
+  const isLoadingMessages = matchId ? isLoading[matchId] || false : false;
   
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -212,6 +230,9 @@ export default function ChatScreen() {
                 profile={otherUser}
                 onPress={() => router.push(`/profile/${otherUser.id}`)}
               />
+              {isLoadingMessages && (
+                <ActivityIndicator size="small" color={Colors.dark.accent} style={styles.loadingMore} />
+              )}
             </View>
           )}
           renderItem={({ item }) => (
@@ -223,6 +244,8 @@ export default function ChatScreen() {
             />
           )}
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.1}
         />
         
         <View style={styles.inputContainer}>
@@ -410,5 +433,10 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     padding: 4,
+  },
+  loadingMore: {
+    marginTop: 10,
+    marginBottom: 10,
+    alignSelf: 'center',
   },
 });

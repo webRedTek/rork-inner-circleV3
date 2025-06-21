@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -6,23 +6,24 @@ import {
   FlatList, 
   TouchableOpacity, 
   Image,
-  ActivityIndicator
+  ActivityIndicator,
+  RefreshControl
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import Colors from '@/constants/colors';
 import { useAuthStore } from '@/store/auth-store';
-import { Match, Message, UserProfile } from '@/types/user';
+import { MatchWithProfile, UserProfile } from '@/types/user';
 import { useMatchesStore } from '@/store/matches-store';
 import { useMessagesStore } from '@/store/messages-store';
-import { isSupabaseConfigured, supabase, convertToCamelCase } from '@/lib/supabase';
 import { Button } from '@/components/Button';
 
 interface ChatPreview {
   id: string;
   user: UserProfile;
-  lastMessage?: Message;
+  lastMessage?: any;
   unreadCount: number;
+  lastMessageTime: number;
 }
 
 export default function MessagesScreen() {
@@ -33,6 +34,7 @@ export default function MessagesScreen() {
   
   const [chatPreviews, setChatPreviews] = useState<ChatPreview[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
   
   useEffect(() => {
@@ -42,93 +44,61 @@ export default function MessagesScreen() {
     }
   }, [isReady, user]);
   
+  useFocusEffect(
+    useCallback(() => {
+      if (isReady && user) {
+        loadData();
+      }
+    }, [isReady, user])
+  );
+  
   const loadData = async () => {
     if (!user) return; // Silent fail if no user
     
     setLoading(true);
     await getMatches();
-    
-    // Load messages for each match
-    if (matches.length > 0) {
-      for (const match of matches) {
-        await getMessages(match.id);
-      }
-    }
-    
     setLoading(false);
+  };
+  
+  const onRefresh = async () => {
+    if (!user) return;
+    
+    setRefreshing(true);
+    await getMatches();
+    setRefreshing(false);
   };
   
   useEffect(() => {
     if (!user || !isReady) return; // Silent fail if not ready or not authenticated
     
-    const loadChatPreviews = async () => {
-      try {
-        if (isSupabaseConfigured() && supabase) {
-          // Get all matched user IDs
-          const matchedUserIds = matches.map(match => 
-            match.userId === user.id ? match.matchedUserId : match.userId
-          );
-          
-          // Fetch user profiles from Supabase
-          const { data: usersData, error } = await supabase
-            .from('users')
-            .select('*')
-            .in('id', matchedUserIds);
-          
-          if (error) {
-            console.error('Error fetching user profiles:', error);
-            return;
-          }
-          
-          const users = usersData.map(user => supabaseToUserProfile(user));
-          
-          // Create chat previews
-          const previews = matches.map(match => {
-            // Determine the other user in the match
-            const otherUserId = match.userId === user.id ? match.matchedUserId : match.userId;
-            
-            // Find the other user's profile
-            const otherUser = users.find(u => u.id === otherUserId);
-            if (!otherUser) return null;
-            
-            // Get messages for this match
-            const matchMessages = messages[match.id] || [];
-            
-            // Get last message
-            const lastMessage = matchMessages.length > 0 
-              ? matchMessages[matchMessages.length - 1] 
-              : undefined;
-            
-            // Count unread messages
-            const unreadCount = matchMessages.filter(
-              msg => msg.receiverId === user.id && !msg.read
-            ).length;
-            
-            return {
-              id: match.id,
-              user: otherUser,
-              lastMessage,
-              unreadCount
-            } as ChatPreview;
-          });
-          
-          // Filter out null values and sort by last message time (newest first)
-          const validPreviews = previews
-            .filter((preview): preview is ChatPreview => preview !== null)
-            .sort((a, b) => {
-              const timeA = a?.lastMessage?.createdAt || 0;
-              const timeB = b?.lastMessage?.createdAt || 0;
-              return timeB - timeA;
-            });
-          
-          setChatPreviews(validPreviews);
-        }
-      } catch (error) {
-        console.error('Failed to load chat previews', error);
-      }
-    };
+    // Create chat previews from matches
+    const previews = matches.map(match => {
+      // Get messages for this match
+      const matchMessages = messages[match.match_id] || [];
+      
+      // Get last message
+      const lastMessage = matchMessages.length > 0 
+        ? matchMessages[matchMessages.length - 1] 
+        : undefined;
+      
+      // Count unread messages
+      const unreadCount = matchMessages.filter(
+        msg => msg.receiverId === user.id && !msg.read
+      ).length;
+      
+      return {
+        id: match.match_id,
+        user: match.matched_user_profile,
+        lastMessage,
+        unreadCount,
+        lastMessageTime: match.last_message_at || match.created_at
+      } as ChatPreview;
+    });
     
-    loadChatPreviews();
+    // Sort by last message time (newest first)
+    const sortedPreviews = previews.sort((a, b) => b.lastMessageTime - a.lastMessageTime);
+    
+    setChatPreviews(sortedPreviews);
   }, [user, isReady, matches, messages]);
   
   const formatTime = (timestamp: number) => {
@@ -150,11 +120,19 @@ export default function MessagesScreen() {
     return messageDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
   };
   
+  const handleChatPress = (matchId: string, userId: string) => {
+    // Fetch messages only when conversation is opened (lazy loading)
+    if (!messages[matchId] || messages[matchId].length === 0) {
+      getMessages(matchId);
+    }
+    router.push(`/chat/${userId}`);
+  };
+  
   const renderChatPreview = ({ item }: { item: ChatPreview }) => {
     return (
       <TouchableOpacity
         style={styles.chatPreview}
-        onPress={() => router.push(`/chat/${item.user.id}`)}
+        onPress={() => handleChatPress(item.id, item.user.id)}
       >
         <Image
           source={{ 
@@ -234,6 +212,14 @@ export default function MessagesScreen() {
           renderItem={renderChatPreview}
           keyExtractor={item => item.id}
           contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={Colors.dark.accent}
+              colors={[Colors.dark.accent]}
+            />
+          }
         />
       ) : (
         <View style={styles.emptyContainer}>
@@ -252,36 +238,6 @@ export default function MessagesScreen() {
     </SafeAreaView>
   );
 }
-
-// Helper function to convert Supabase response to UserProfile type
-const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
-  const camelCaseData = convertToCamelCase(data);
-  
-  return {
-    id: String(camelCaseData.id || ''),
-    email: String(camelCaseData.email || ''),
-    name: String(camelCaseData.name || ''),
-    bio: String(camelCaseData.bio || ''),
-    location: String(camelCaseData.location || ''),
-    zipCode: String(camelCaseData.zipCode || ''),
-    businessField: (String(camelCaseData.businessField || 'Technology')) as UserProfile["businessField"],
-    entrepreneurStatus: (String(camelCaseData.entrepreneurStatus || 'upcoming')) as UserProfile["entrepreneurStatus"],
-    photoUrl: String(camelCaseData.photoUrl || ''),
-    membershipTier: (String(camelCaseData.membershipTier || 'basic')) as UserProfile["membershipTier"],
-    businessVerified: Boolean(camelCaseData.businessVerified || false),
-    joinedGroups: Array.isArray(camelCaseData.joinedGroups) ? camelCaseData.joinedGroups : [],
-    createdAt: Number(camelCaseData.createdAt || Date.now()),
-    lookingFor: Array.isArray(camelCaseData.lookingFor) ? camelCaseData.lookingFor as UserProfile["lookingFor"] : [],
-    businessStage: camelCaseData.businessStage as UserProfile["businessStage"] || 'Idea Phase',
-    skillsOffered: Array.isArray(camelCaseData.skillsOffered) ? camelCaseData.skillsOffered as UserProfile["skillsOffered"] : [],
-    skillsSeeking: Array.isArray(camelCaseData.skillsSeeking) ? camelCaseData.skillsSeeking as UserProfile["skillsSeeking"] : [],
-    keyChallenge: String(camelCaseData.keyChallenge || ''),
-    industryFocus: String(camelCaseData.industryFocus || ''),
-    availabilityLevel: Array.isArray(camelCaseData.availabilityLevel) ? camelCaseData.availabilityLevel as UserProfile["availabilityLevel"] : [],
-    timezone: String(camelCaseData.timezone || ''),
-    successHighlight: String(camelCaseData.successHighlight || ''),
-  };
-};
 
 const styles = StyleSheet.create({
   container: {

@@ -111,15 +111,6 @@ export interface PortfolioItem {
   link?: string;
 }
 
-export interface Match {
-  id: string;
-  userId: string;
-  matchedUserId: string;
-  createdAt: number;
-  lastMessageAt?: number;
-  [key: string]: any; // Add index signature to allow any string key
-}
-
 export interface MatchWithProfile {
   match_id: string;
   matched_user_id: string;
@@ -138,6 +129,20 @@ export interface Message {
   voiceDuration?: number;
   imageUrl?: string;
   createdAt: number;
+  read: boolean;
+}
+
+export interface MessageWithSender {
+  id: string;
+  sender_id: string;
+  sender_profile: UserProfile;
+  receiver_id: string;
+  content: string;
+  type: 'text' | 'voice' | 'image';
+  voice_url?: string;
+  voice_duration?: number;
+  image_url?: string;
+  created_at: number;
   read: boolean;
 }
 

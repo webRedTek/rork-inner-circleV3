@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { Match, UserProfile, MembershipTier, MatchWithProfile } from '@/types/user';
+import { UserProfile, MembershipTier, MatchWithProfile } from '@/types/user';
 import { isSupabaseConfigured, supabase, convertToCamelCase, SwipeAction, fetchPotentialMatches as fetchPotentialMatchesFromSupabase, processSwipeBatch as processSwipeBatchFromSupabase, syncUsageCounters as syncUsageCountersFromSupabase, fetchUserMatches as fetchUserMatchesFromSupabase } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
 import { notifyError } from '@/utils/notify';
@@ -26,19 +26,6 @@ const getReadableError = (error: any): string => {
   } catch (e) {
     return 'An error occurred';
   }
-};
-
-// Helper function to convert Supabase response to Match type
-const supabaseToMatch = (data: Record<string, any>): Match => {
-  const camelCaseData = convertToCamelCase(data);
-  
-  return {
-    id: String(camelCaseData.id || ''),
-    userId: String(camelCaseData.userId || ''),
-    matchedUserId: String(camelCaseData.matchedUserId || ''),
-    createdAt: Number(camelCaseData.createdAt || Date.now()),
-    lastMessageAt: camelCaseData.lastMessageAt,
-  };
 };
 
 // Helper function to convert Supabase response to UserProfile type
@@ -118,12 +105,12 @@ interface MatchesState {
   isLoading: boolean;
   isPrefetching: boolean;
   error: string | null;
-  newMatch: Match | null;
+  newMatch: MatchWithProfile | null;
   swipeLimitReached: boolean;
   matchLimitReached: boolean;
   fetchPotentialMatches: (maxDistance?: number, forceRefresh?: boolean) => Promise<void>;
   prefetchNextBatch: (maxDistance?: number) => Promise<void>;
-  likeUser: (userId: string) => Promise<Match | null>;
+  likeUser: (userId: string) => Promise<MatchWithProfile | null>;
   passUser: (userId: string) => Promise<void>;
   queueSwipe: (userId: string, direction: 'left' | 'right') => Promise<void>;
   processSwipeBatch: () => Promise<void>;
@@ -433,7 +420,13 @@ export const useMatchesStore = create<MatchesState>()(
             
             // Update matches if any new ones were created
             if (result.new_matches.length > 0) {
-              const typedMatches = result.new_matches.map((match: Record<string, any>) => supabaseToMatch(match));
+              const typedMatches = result.new_matches.map((match: Record<string, any>) => ({
+                match_id: String(match.id || ''),
+                matched_user_id: String(match.matched_user_id || ''),
+                matched_user_profile: supabaseToUserProfile(match.matched_user_profile || {}),
+                created_at: Number(match.created_at || Date.now()),
+                last_message_at: match.last_message_at ? Number(match.last_message_at) : null
+              })) as MatchWithProfile[];
               
               set(state => ({
                 matches: [...state.matches, ...typedMatches],
