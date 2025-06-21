@@ -110,7 +110,7 @@ const retryOperation = async <T>(operation: () => Promise<T>, maxRetries: number
 interface MatchesState {
   potentialMatches: UserProfile[];
   cachedMatches: UserProfile[];
-  matches: Match[];
+  matches: MatchWithProfile[];
   swipeQueue: SwipeAction[];
   batchSize: number;
   prefetchThreshold: number;
@@ -478,6 +478,14 @@ export const useMatchesStore = create<MatchesState>()(
             // Apply rate limiting
             await rateLimitedQuery();
             
+            // First check persisted matches
+            const { matches } = get();
+            if (matches.length > 0) {
+              console.log('[MatchesStore] Using cached matches', { count: matches.length });
+              set({ isLoading: false });
+              return;
+            }
+            
             // Get matches from Supabase using the new fetch_user_matches function
             const result = await retryOperation(() => fetchUserMatchesFromSupabase(user.id));
             
@@ -485,34 +493,15 @@ export const useMatchesStore = create<MatchesState>()(
               throw new Error('Failed to fetch user matches');
             }
             
-            // Convert to Match type
-            const typedMatches: Match[] = result.map((match: MatchWithProfile) => ({
-              id: match.match_id,
-              userId: user.id,
-              matchedUserId: match.matched_user_id,
-              createdAt: match.created_at,
-              lastMessageAt: match.last_message_at || undefined,
-            }));
+            // Store the complete MatchWithProfile objects
+            set({ matches: result, isLoading: false });
             
             // Cache user profiles
             result.forEach((match: MatchWithProfile) => {
               userProfileCache.set(match.matched_user_id, match.matched_user_profile);
             });
             
-            // Log the action
-            try {
-              await supabase.rpc('log_user_action', {
-                user_id: user.id,
-                action: 'view_matches',
-                details: { count: typedMatches.length }
-              });
-            } catch (logError) {
-              console.warn('[MatchesStore] Failed to log view_matches action:', getReadableError(logError));
-              notifyError('Failed to log view matches action: ' + getReadableError(logError));
-            }
-            
-            console.log('[MatchesStore] Fetched user matches', { count: typedMatches.length });
-            set({ matches: typedMatches, isLoading: false });
+            console.log('[MatchesStore] Fetched user matches', { count: result.length });
           } else {
             throw new Error('Supabase is not configured');
           }
@@ -670,6 +659,9 @@ export const useMatchesStore = create<MatchesState>()(
     {
       name: 'matches-storage',
       storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({
+        matches: state.matches, // Only persist the matches
+      }),
     }
   )
 );
