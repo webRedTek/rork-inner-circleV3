@@ -100,7 +100,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             }
           }
         } else {
-          throw new Error('Supabase is not configured');
+          throw new Error('Database is not configured');
         }
       }
       
@@ -170,7 +170,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           isLoading: { ...get().isLoading, [conversationId]: false }
         });
       } else {
-        throw new Error('Supabase is not configured');
+        throw new Error('Database is not configured');
       }
     } catch (error) {
       console.error('Error sending message:', getReadableError(error));
@@ -213,7 +213,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             }
           }
         } else {
-          throw new Error('Supabase is not configured');
+          throw new Error('Database is not configured');
         }
       }
       
@@ -286,7 +286,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           isLoading: { ...get().isLoading, [conversationId]: false }
         });
       } else {
-        throw new Error('Supabase is not configured');
+        throw new Error('Database is not configured');
       }
     } catch (error) {
       console.error('Error sending voice message:', getReadableError(error));
@@ -371,7 +371,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           }
         });
       } else {
-        throw new Error('Supabase is not configured');
+        throw new Error('Database is not configured');
       }
     } catch (error) {
       console.error('Error getting messages:', getReadableError(error));
@@ -433,7 +433,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           }
         });
       } else {
-        throw new Error('Supabase is not configured');
+        throw new Error('Database is not configured');
       }
     } catch (error) {
       console.error('Error loading more messages:', getReadableError(error));
@@ -503,7 +503,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           console.warn('Failed to log mark_messages_read action:', getReadableError(logError));
         }
       } else {
-        throw new Error('Supabase is not configured');
+        throw new Error('Database is not configured');
       }
     } catch (error) {
       console.error('Failed to mark messages as read:', getReadableError(error));
@@ -511,7 +511,10 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   },
 
   subscribeToMessages: (conversationId: string) => {
-    if (!isSupabaseConfigured() || !supabase) return;
+    if (!isSupabaseConfigured() || !supabase) {
+      console.warn('Supabase not initialized for message subscription');
+      return;
+    }
     
     const { user } = useAuthStore.getState();
     if (!user) return;
@@ -588,6 +591,9 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           return { subscriptions: newSubscriptions };
         });
         console.log(`[MessagesStore] Unsubscribed from messages for conversation ${conversationId}`);
+      } else {
+        console.warn('Supabase not initialized for unsubscribe');
+        return;
       }
     }
   },

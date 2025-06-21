@@ -6,7 +6,7 @@ import Colors from '@/constants/colors';
 import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
 import { useAuthStore } from '@/store/auth-store';
-import { checkNetworkStatus } from '@/lib/supabase';
+import NetInfo from '@react-native-community/netinfo';
 import { WifiOff, RefreshCw } from 'lucide-react-native';
 
 export default function LoginScreen() {
@@ -35,10 +35,11 @@ export default function LoginScreen() {
   const checkNetwork = async () => {
     setCheckingNetwork(true);
     try {
-      const status = await checkNetworkStatus();
-      setNetworkStatus(status);
+      const state = await NetInfo.fetch();
+      setNetworkStatus({ isConnected: state.isConnected });
     } catch (error) {
       console.error('Error checking network:', error);
+      setNetworkStatus({ isConnected: null });
     } finally {
       setCheckingNetwork(false);
     }
@@ -46,17 +47,9 @@ export default function LoginScreen() {
   
   useEffect(() => {
     if (error) {
-      // Check if it's a network-related error
-      if (error.includes('Failed to fetch') || 
-          error.includes('Network') || 
-          error.includes('offline') ||
-          error.includes('AuthRetryableFetchError')) {
-        setLoginError('Network error: Please check your internet connection and try again.');
-        checkNetwork(); // Re-check network status
-      } else {
-        setLoginError(error);
-      }
+      setLoginError('An error occurred. Please check your credentials or internet connection.');
       clearError();
+      checkNetwork();
     }
   }, [error, clearError]);
   
@@ -87,12 +80,11 @@ export default function LoginScreen() {
   const handleLogin = async () => {
     if (validateForm()) {
       try {
-        // Check network status before attempting login
-        const status = await checkNetworkStatus();
-        setNetworkStatus(status);
+        const state = await NetInfo.fetch();
+        setNetworkStatus({ isConnected: state.isConnected });
         
-        if (status.isConnected === false) {
-          setLoginError('Network error: Please check your internet connection and try again.');
+        if (state.isConnected === false) {
+          setLoginError('No internet connection. Please check your network and try again.');
           return;
         }
         
@@ -103,26 +95,11 @@ export default function LoginScreen() {
       } catch (err) {
         console.error('Login error in component:', 
           err instanceof Error ? err.message : 'Unknown error');
-        
-        // Check if it's a network-related error
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        if (errorMsg.includes('Failed to fetch') || 
-            errorMsg.includes('Network') || 
-            errorMsg.includes('offline') ||
-            errorMsg.includes('AuthRetryableFetchError')) {
-          setLoginError('Network error: Please check your internet connection and try again.');
-          checkNetwork(); // Re-check network status
-        } else {
-          setLoginError('Login failed. Please check your credentials or network connection.');
-        }
-        
+        setLoginError('Login failed. Please check your credentials or internet connection.');
         setLocalLoading(false);
+        checkNetwork();
       }
     }
-  };
-  
-  const handleSupabaseSetup = () => {
-    router.push('/supabase-setup');
   };
   
   const handleRetryConnection = async () => {
@@ -195,7 +172,7 @@ export default function LoginScreen() {
             <View style={styles.errorContainer}>
               <Text style={styles.errorText}>{loginError}</Text>
               
-              {(loginError.includes('Network') || loginError.includes('Failed to fetch') || loginError.includes('offline')) && (
+              {loginError.includes("internet connection") && (
                 <TouchableOpacity 
                   style={styles.errorRetryButton}
                   onPress={handleRetryConnection}
@@ -230,14 +207,6 @@ export default function LoginScreen() {
             loading={isLoading || localLoading}
             style={styles.button}
             disabled={networkStatus.isConnected === false}
-          />
-          
-          <Button
-            title="Configure Supabase"
-            onPress={handleSupabaseSetup}
-            variant="outline"
-            size="medium"
-            style={styles.configButton}
           />
         </View>
         
@@ -289,9 +258,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   button: {
-    marginBottom: 16,
-  },
-  configButton: {
     marginBottom: 16,
   },
   footer: {

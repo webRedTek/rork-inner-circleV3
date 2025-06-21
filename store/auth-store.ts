@@ -2,9 +2,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { UserProfile, MembershipTier, TierSettings, UserRole, UsageCache } from '@/types/user';
-import { isSupabaseConfigured, supabase, initSupabase, convertToCamelCase, convertToSnakeCase, retryOperation, checkNetworkStatus } from '@/lib/supabase';
+import { isSupabaseConfigured, supabase, initSupabase, convertToCamelCase, convertToSnakeCase, retryOperation } from '@/lib/supabase';
 import { Platform } from 'react-native';
 import { useNotificationStore } from './notification-store';
+import NetInfo from '@react-native-community/netinfo';
 
 interface AuthState {
   user: UserProfile | null;
@@ -32,20 +33,25 @@ interface AuthState {
 
 // Helper function to extract readable error message from Supabase error
 const getReadableError = (error: any): string => {
-  if (!error) return 'Unknown error occurred';
+  if (!error) return 'An error occurred. Please try again.';
   
   if (typeof error === 'string') return error;
   
-  if (error.message) return error.message;
+  if (error.message) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('Network') || error.message.includes('offline') || error.message.includes('AuthRetryableFetchError')) {
+      return 'Unable to connect. Please check your internet connection and try again.';
+    }
+    return error.message;
+  }
   
   if (error.details || error.hint || error.code) {
-    return `Supabase Error: ${error.code || 'N/A'} - ${error.details || error.message || 'Unknown'} ${error.hint ? `(Hint: ${error.hint})` : ''}`;
+    return `Error: ${error.code || 'Unknown'} - ${error.details || error.message || 'Something went wrong.'}`;
   }
   
   try {
     return JSON.stringify(error, null, 2);
   } catch (e) {
-    return 'An error occurred, but it could not be parsed';
+    return 'An error occurred, but it could not be parsed. Please try again.';
   }
 };
 
@@ -139,8 +145,8 @@ export const useAuthStore = create<AuthState>()(
 
       checkNetworkConnection: async () => {
         try {
-          const status = await checkNetworkStatus();
-          set({ networkStatus: status });
+          const state = await NetInfo.fetch();
+          set({ networkStatus: { isConnected: state.isConnected, type: state.type } });
         } catch (error) {
           console.error('Error checking network connection:', error);
           set({ networkStatus: { isConnected: null } });
@@ -153,17 +159,17 @@ export const useAuthStore = create<AuthState>()(
           console.log('Login attempt with email:', email);
           
           // Check network connectivity first
-          const networkStatus = await checkNetworkStatus();
-          set({ networkStatus });
+          const state = await NetInfo.fetch();
+          set({ networkStatus: { isConnected: state.isConnected, type: state.type } });
           
-          if (networkStatus.isConnected === false) {
-            throw new Error('Network appears to be offline. Please check your internet connection and try again.');
+          if (state.isConnected === false) {
+            throw new Error('No internet connection. Please check your network and try again.');
           }
           
           await initSupabase();
           
           if (isSupabaseConfigured() && supabase) {
-            console.log('Using Supabase for login');
+            console.log('Using database for login');
             
             // Use retry operation for login
             const { data, error } = await retryOperation(async () => {
@@ -174,11 +180,11 @@ export const useAuthStore = create<AuthState>()(
             });
 
             if (error) {
-              console.error('Supabase login error:', error);
+              console.error('Login error:', error);
               throw error;
             }
 
-            console.log('Supabase login successful, fetching profile...');
+            console.log('Login successful, fetching profile...');
             
             // Use retry operation for profile fetch
             const { data: profileData, error: profileError } = await retryOperation(async () => {
@@ -224,7 +230,7 @@ export const useAuthStore = create<AuthState>()(
                 
                 const profileRecord = convertToSnakeCase(newProfile);
                 
-                console.log('Creating new profile in Supabase...');
+                console.log('Creating new profile in database...');
                 
                 // Use retry operation for profile creation
                 const { error: insertError } = await retryOperation(async () => {
@@ -263,7 +269,7 @@ export const useAuthStore = create<AuthState>()(
               await get().fetchUsageData(data.user.id);
             }
           } else {
-            throw new Error('Supabase is not configured');
+            throw new Error('Authentication service is not configured');
           }
         } catch (error) {
           console.error('Login error:', getReadableError(error));
@@ -275,8 +281,8 @@ export const useAuthStore = create<AuthState>()(
               errorMsg.includes('offline') ||
               errorMsg.includes('AuthRetryableFetchError')) {
             // Re-check network status
-            const networkStatus = await checkNetworkStatus();
-            set({ networkStatus });
+            const state = await NetInfo.fetch();
+            set({ networkStatus: { isConnected: state.isConnected, type: state.type } });
           }
           
           set({ 
@@ -290,11 +296,11 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           // Check network connectivity first
-          const networkStatus = await checkNetworkStatus();
-          set({ networkStatus });
+          const state = await NetInfo.fetch();
+          set({ networkStatus: { isConnected: state.isConnected, type: state.type } });
           
-          if (networkStatus.isConnected === false) {
-            throw new Error('Network appears to be offline. Please check your internet connection and try again.');
+          if (state.isConnected === false) {
+            throw new Error('No internet connection. Please check your network and try again.');
           }
           
           await initSupabase();
@@ -303,10 +309,10 @@ export const useAuthStore = create<AuthState>()(
             try {
               await new Promise(resolve => setTimeout(resolve, 2000));
               
-              console.log('Attempting Supabase signup with email:', userData.email);
+              console.log('Attempting signup with email:', userData.email);
               
               if (!supabase.auth) {
-                throw new Error('Supabase auth is not initialized properly');
+                throw new Error('Authentication service is not initialized properly');
               }
               
               // Use retry operation for signup
@@ -323,7 +329,7 @@ export const useAuthStore = create<AuthState>()(
               });
 
               if (error) {
-                console.error('Supabase signup error details:', getReadableError(error));
+                console.error('Signup error details:', getReadableError(error));
                 throw error;
               }
 
@@ -360,7 +366,7 @@ export const useAuthStore = create<AuthState>()(
 
               const profileRecord = convertToSnakeCase(newUser);
               
-              console.log('Creating user profile in Supabase:', profileRecord);
+              console.log('Creating user profile in database:', profileRecord);
               
               // Use retry operation for profile creation
               const { error: profileError } = await retryOperation(async () => {
@@ -370,11 +376,11 @@ export const useAuthStore = create<AuthState>()(
               });
 
               if (profileError) {
-                console.error('Error creating user profile in Supabase:', getReadableError(profileError));
+                console.error('Error creating user profile in database:', getReadableError(profileError));
                 throw profileError;
               }
               
-              console.log('User profile created successfully in Supabase');
+              console.log('User profile created successfully in database');
               set({
                 user: newUser,
                 isAuthenticated: true,
@@ -385,12 +391,12 @@ export const useAuthStore = create<AuthState>()(
                 await get().fetchTierSettings(data.user.id);
                 await get().fetchUsageData(data.user.id);
               }
-            } catch (supabaseError) {
-              console.error('Supabase signup error:', getReadableError(supabaseError));
-              throw new Error('Signup failed with Supabase');
+            } catch (authError) {
+              console.error('Signup error:', getReadableError(authError));
+              throw new Error('Signup failed. Please try again.');
             }
           } else {
-            throw new Error('Supabase is not configured');
+            throw new Error('Authentication service is not configured');
           }
         } catch (error) {
           console.error('Signup error:', getReadableError(error));
@@ -402,8 +408,8 @@ export const useAuthStore = create<AuthState>()(
               errorMsg.includes('offline') ||
               errorMsg.includes('AuthRetryableFetchError')) {
             // Re-check network status
-            const networkStatus = await checkNetworkStatus();
-            set({ networkStatus });
+            const state = await NetInfo.fetch();
+            set({ networkStatus: { isConnected: state.isConnected, type: state.type } });
           }
           
           set({ 
@@ -426,10 +432,10 @@ export const useAuthStore = create<AuthState>()(
               }, 2); // Only retry twice for logout
               
               if (error) {
-                console.warn('Supabase signOut error:', getReadableError(error));
+                console.warn('Sign out error:', getReadableError(error));
               }
             } catch (error) {
-              console.warn('Error during Supabase signOut:', getReadableError(error));
+              console.warn('Error during sign out:', getReadableError(error));
             }
           }
           
@@ -459,11 +465,11 @@ export const useAuthStore = create<AuthState>()(
           if (!user) throw new Error('Not authenticated');
           
           // Check network connectivity first
-          const networkStatus = await checkNetworkStatus();
-          set({ networkStatus });
+          const state = await NetInfo.fetch();
+          set({ networkStatus: { isConnected: state.isConnected, type: state.type } });
           
-          if (networkStatus.isConnected === false) {
-            throw new Error('Network appears to be offline. Please check your internet connection and try again.');
+          if (state.isConnected === false) {
+            throw new Error('No internet connection. Please check your network and try again.');
           }
           
           await initSupabase();
@@ -486,7 +492,7 @@ export const useAuthStore = create<AuthState>()(
               isLoading: false,
             });
           } else {
-            throw new Error('Supabase is not configured');
+            throw new Error('Database is not configured');
           }
         } catch (error) {
           console.error('Update profile error:', getReadableError(error));
@@ -498,8 +504,8 @@ export const useAuthStore = create<AuthState>()(
               errorMsg.includes('offline') ||
               errorMsg.includes('AuthRetryableFetchError')) {
             // Re-check network status
-            const networkStatus = await checkNetworkStatus();
-            set({ networkStatus });
+            const state = await NetInfo.fetch();
+            set({ networkStatus: { isConnected: state.isConnected, type: state.type } });
           }
           
           set({ 
@@ -516,11 +522,11 @@ export const useAuthStore = create<AuthState>()(
           if (!user) throw new Error('Not authenticated');
           
           // Check network connectivity first
-          const networkStatus = await checkNetworkStatus();
-          set({ networkStatus });
+          const state = await NetInfo.fetch();
+          set({ networkStatus: { isConnected: state.isConnected, type: state.type } });
           
-          if (networkStatus.isConnected === false) {
-            throw new Error('Network appears to be offline. Please check your internet connection and try again.');
+          if (state.isConnected === false) {
+            throw new Error('No internet connection. Please check your network and try again.');
           }
           
           await initSupabase();
@@ -543,7 +549,7 @@ export const useAuthStore = create<AuthState>()(
             // Refresh tier settings after membership update
             await get().fetchTierSettings(user.id);
           } else {
-            throw new Error('Supabase is not configured');
+            throw new Error('Database is not configured');
           }
         } catch (error) {
           console.error('Update membership error:', getReadableError(error));
@@ -555,8 +561,8 @@ export const useAuthStore = create<AuthState>()(
               errorMsg.includes('offline') ||
               errorMsg.includes('AuthRetryableFetchError')) {
             // Re-check network status
-            const networkStatus = await checkNetworkStatus();
-            set({ networkStatus });
+            const state = await NetInfo.fetch();
+            set({ networkStatus: { isConnected: state.isConnected, type: state.type } });
           }
           
           set({ 
@@ -569,7 +575,7 @@ export const useAuthStore = create<AuthState>()(
       fetchTierSettings: async (userId: string) => {
         // Guard clause to prevent fetching if user ID is invalid
         if (!userId || userId.trim() === '' || !isSupabaseConfigured() || !supabase) {
-          console.log('Skipping tier settings fetch: Invalid user ID or Supabase not configured', { 
+          console.log('Skipping tier settings fetch: Invalid user ID or database not configured', { 
             userId, 
             supabaseConfigured: isSupabaseConfigured(),
             hasSupabase: !!supabase
@@ -587,10 +593,10 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           // Check network connectivity first
-          const networkStatus = await checkNetworkStatus();
-          set({ networkStatus });
+          const state = await NetInfo.fetch();
+          set({ networkStatus: { isConnected: state.isConnected, type: state.type } });
           
-          if (networkStatus.isConnected === false) {
+          if (state.isConnected === false) {
             console.warn('Network appears to be offline. Using default tier settings.');
             set({ tierSettings: defaultTierSettings, isLoading: false });
             return;
@@ -623,7 +629,7 @@ export const useAuthStore = create<AuthState>()(
 
       fetchUsageData: async (userId: string) => {
         if (!userId || userId.trim() === '' || !isSupabaseConfigured() || !supabase) {
-          console.log('Skipping usage data fetch: Invalid user ID or Supabase not configured', { 
+          console.log('Skipping usage data fetch: Invalid user ID or database not configured', { 
             userId, 
             supabaseConfigured: isSupabaseConfigured(),
             hasSupabase: !!supabase
@@ -635,10 +641,10 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           // Check network connectivity first
-          const networkStatus = await checkNetworkStatus();
-          set({ networkStatus });
+          const state = await NetInfo.fetch();
+          set({ networkStatus: { isConnected: state.isConnected, type: state.type } });
           
-          if (networkStatus.isConnected === false) {
+          if (state.isConnected === false) {
             console.warn('Network appears to be offline. Using default usage cache.');
             set({ usageCache: defaultUsageCache, isLoading: false });
             return;
@@ -749,9 +755,9 @@ export const useAuthStore = create<AuthState>()(
         if (isSupabaseConfigured() && supabase) {
           try {
             // Check network connectivity first
-            const networkStatus = await checkNetworkStatus();
+            const state = await NetInfo.fetch();
             
-            if (networkStatus.isConnected === false) {
+            if (state.isConnected === false) {
               console.warn('Network appears to be offline. Usage action will be logged locally only.');
               return;
             }
@@ -811,10 +817,10 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           // Check network connectivity first
-          const networkStatus = await checkNetworkStatus();
-          set({ networkStatus });
+          const state = await NetInfo.fetch();
+          set({ networkStatus: { isConnected: state.isConnected, type: state.type } });
           
-          if (networkStatus.isConnected === false) {
+          if (state.isConnected === false) {
             console.warn('Network appears to be offline. Session check may fail.');
           }
           
@@ -874,8 +880,8 @@ export const useAuthStore = create<AuthState>()(
               errorMsg.includes('offline') ||
               errorMsg.includes('AuthRetryableFetchError')) {
             // Re-check network status
-            const networkStatus = await checkNetworkStatus();
-            set({ networkStatus });
+            const state = await NetInfo.fetch();
+            set({ networkStatus: { isConnected: state.isConnected, type: state.type } });
           }
           
           set({ 
