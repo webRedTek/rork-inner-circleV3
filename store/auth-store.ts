@@ -134,6 +134,7 @@ export const useAuthStore = create<AuthState>()(
             
             // Use retry operation for login
             const { data, error } = await retryOperation(async () => {
+              if (!supabase) throw new Error('Supabase client is not initialized');
               return await supabase.auth.signInWithPassword({
                 email,
                 password,
@@ -149,6 +150,7 @@ export const useAuthStore = create<AuthState>()(
             
             // Use retry operation for profile fetch
             const { data: profileData, error: profileError } = await retryOperation(async () => {
+              if (!supabase) throw new Error('Supabase client is not initialized');
               return await supabase
                 .from('users')
                 .select('*')
@@ -194,6 +196,7 @@ export const useAuthStore = create<AuthState>()(
                 
                 // Use retry operation for profile creation
                 const { error: insertError } = await retryOperation(async () => {
+                  if (!supabase) throw new Error('Supabase client is not initialized');
                   return await supabase
                     .from('users')
                     .insert(profileRecord);
@@ -682,6 +685,7 @@ export const useAuthStore = create<AuthState>()(
           if (isSupabaseConfigured() && supabase) {
             // Use retry operation for session check
             const { data, error } = await retryOperation(async () => {
+              if (!supabase) throw new Error('Supabase client is not initialized');
               return await supabase.auth.getSession();
             });
             
@@ -694,6 +698,7 @@ export const useAuthStore = create<AuthState>()(
             if (data.session && data.session.user) {
               // Use retry operation for profile fetch
               const { data: profileData, error: profileError } = await retryOperation(async () => {
+                if (!supabase) throw new Error('Supabase client is not initialized');
                 return await supabase
                   .from('users')
                   .select('*')
