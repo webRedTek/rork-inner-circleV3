@@ -270,8 +270,8 @@ CREATE TABLE public.affiliate_clicks (
   CONSTRAINT affiliate_clicks_link_id_fkey FOREIGN KEY (link_id) REFERENCES public.affiliate_links(id)
 );
 
--- Create usage_tracking table
-CREATE TABLE public.usage_tracking (
+-- Create user_daily_usage table
+CREATE TABLE public.user_daily_usage (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   user_id uuid NOT NULL,
   action_type text NOT NULL CHECK (action_type = ANY (ARRAY['swipe', 'match', 'message', 'group_join', 'group_create', 'portfolio_feature', 'event_create', 'direct_intro', 'boost_use', 'rewind_use', 'virtual_meeting'])),
@@ -295,8 +295,8 @@ CREATE TABLE public.usage_tracking (
   premium_features_used jsonb,
   last_tier_change_timestamp bigint,
   tier_history jsonb,
-  CONSTRAINT usage_tracking_pkey PRIMARY KEY (id),
-  CONSTRAINT usage_tracking_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+  CONSTRAINT user_daily_usage_pkey PRIMARY KEY (id),
+  CONSTRAINT user_daily_usage_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
 
 -- Enable RLS on all affiliate tables
@@ -554,18 +554,18 @@ begin
 
   -- Update usage tracking for swipes and matches
   if v_swipe_count > 0 then
-    insert into public.usage_tracking (user_id, action_type, first_action_timestamp, last_action_timestamp, current_count, reset_timestamp)
+    insert into public.user_daily_usage (user_id, action_type, first_action_timestamp, last_action_timestamp, current_count, reset_timestamp)
     values (v_swiper_id, 'swipe', extract(epoch from now()) * 1000, extract(epoch from now()) * 1000, v_swipe_count, extract(epoch from (current_date + interval '1 day')) * 1000)
     on conflict (user_id, action_type) do update
-    set current_count = usage_tracking.current_count + v_swipe_count,
+    set current_count = user_daily_usage.current_count + v_swipe_count,
         last_action_timestamp = extract(epoch from now()) * 1000;
   end if;
 
   if v_match_count > 0 then
-    insert into public.usage_tracking (user_id, action_type, first_action_timestamp, last_action_timestamp, current_count, reset_timestamp)
+    insert into public.user_daily_usage (user_id, action_type, first_action_timestamp, last_action_timestamp, current_count, reset_timestamp)
     values (v_swiper_id, 'match', extract(epoch from now()) * 1000, extract(epoch from now()) * 1000, v_match_count, extract(epoch from (current_date + interval '1 day')) * 1000)
     on conflict (user_id, action_type) do update
-    set current_count = usage_tracking.current_count + v_match_count,
+    set current_count = user_daily_usage.current_count + v_match_count,
         last_action_timestamp = extract(epoch from now()) * 1000;
   end if;
 
@@ -749,7 +749,7 @@ begin
   
   -- If there's a count change and action is allowed, update usage tracking
   if p_count_change > 0 and v_is_allowed then
-    insert into public.usage_tracking (
+    insert into public.user_daily_usage (
       user_id, 
       action_type, 
       first_action_timestamp, 
@@ -766,7 +766,7 @@ begin
       extract(epoch from (current_date + interval '1 day')) * 1000
     )
     on conflict (user_id, action_type) do update
-    set current_count = usage_tracking.current_count + p_count_change,
+    set current_count = user_daily_usage.current_count + p_count_change,
         last_action_timestamp = extract(epoch from now()) * 1000;
   end if;
   
@@ -779,7 +779,7 @@ begin
       
       -- Update usage tracking for batch action
       if v_batch_count_change > 0 then
-        insert into public.usage_tracking (
+        insert into public.user_daily_usage (
           user_id, 
           action_type, 
           first_action_timestamp, 
@@ -796,7 +796,7 @@ begin
           extract(epoch from (current_date + interval '1 day')) * 1000
         )
         on conflict (user_id, action_type) do update
-        set current_count = usage_tracking.current_count + v_batch_count_change,
+        set current_count = user_daily_usage.current_count + v_batch_count_change,
             last_action_timestamp = extract(epoch from now()) * 1000;
       end if;
       
