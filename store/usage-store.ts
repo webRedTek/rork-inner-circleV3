@@ -114,7 +114,7 @@ export const useUsageStore = create<UsageState>()(
         try {
           console.log('Initializing usage data for user:', userId);
           const { data: usageData, error: usageError } = await supabase
-            .from('usage_tracking')
+            .from('user_daily_usage')
             .select('*')
             .eq('user_id', userId);
 
@@ -303,45 +303,90 @@ export const useUsageStore = create<UsageState>()(
         });
       },
 
-      syncUsageData: async (force = false) => {
+      syncUsageData: async (force?: boolean) => {
         const { user } = useAuthStore.getState();
-        const { batchUpdates, usageCache, syncStrategy, isSyncing } = get();
-        if (!user || isSyncing || batchUpdates.length === 0) return;
+        const { usageCache, batchUpdates, syncStrategy, cacheConfig, retryStrategy } = get();
+        const { showNotification } = useNotificationStore.getState();
 
-        const now = Date.now();
-        if (!force && usageCache && usageCache.lastSyncTimestamp + syncStrategy.critical.interval > now) {
-          console.log('Skipping sync: Too soon since last sync');
+        if (!user || !isSupabaseConfigured() || !supabase) {
+          console.warn('Cannot sync usage data: User not authenticated or Supabase not configured');
           return;
         }
 
-        set({ isSyncing: true, lastSyncError: null });
+        if (!force && get().isSyncing) {
+          console.log('Usage sync already in progress, skipping...');
+          return;
+        }
+
+        set({ isSyncing: true });
+
         try {
-          if (isSupabaseConfigured() && supabase) {
-            for (const batch of batchUpdates) {
-              const { error } = await supabase.rpc('batch_update_usage', {
-                p_user_id: batch.user_id,
-                p_updates: batch.updates,
-              });
+          // Fetch current usage data from server
+          const { data: serverData, error: fetchError } = await supabase
+            .from('user_daily_usage')
+            .select('*')
+            .eq('user_id', user.id);
 
-              if (error) {
-                console.error('Error syncing batch update:', error);
-                throw error;
-              }
-            }
-
-            // Clear batch updates after successful sync
-            set({
-              batchUpdates: [],
-              usageCache: usageCache ? { ...usageCache, lastSyncTimestamp: now } : usageCache,
-              isSyncing: false,
-            });
-            console.log('Usage data synced successfully');
-          } else {
-            throw new Error('Supabase is not configured');
+          if (fetchError) {
+            throw new Error(`Failed to fetch usage data: ${getReadableError(fetchError)}`);
           }
+
+          // Process batch updates if any
+          if (batchUpdates.length > 0) {
+            const { error: batchError } = await supabase.rpc('handle_user_usage', {
+              p_user_id: user.id,
+              p_action_type: 'batch',
+              p_batch_updates: batchUpdates
+            });
+
+            if (batchError) {
+              throw new Error(`Failed to process batch updates: ${getReadableError(batchError)}`);
+            }
+          }
+
+          // Update local cache with server data
+          const updatedCache: UsageCache = {
+            lastSyncTimestamp: Date.now(),
+            usageData: {},
+            premiumFeatures: usageCache?.premiumFeatures || {
+              boostMinutesRemaining: 0,
+              boostUsesRemaining: 0,
+            },
+            analytics: usageCache?.analytics || {
+              profileViews: 0,
+              searchAppearances: 0,
+            },
+          };
+
+          serverData?.forEach(entry => {
+            updatedCache.usageData[entry.action_type] = {
+              currentCount: entry.current_count,
+              firstActionTimestamp: entry.first_action_timestamp,
+              lastActionTimestamp: entry.last_action_timestamp,
+              resetTimestamp: entry.reset_timestamp,
+            };
+          });
+
+          set({
+            usageCache: updatedCache,
+            batchUpdates: [],
+            isSyncing: false,
+            lastSyncError: null,
+          });
+
+          console.log('Usage data synced successfully:', updatedCache);
         } catch (error) {
           console.error('Error syncing usage data:', getReadableError(error));
-          set({ lastSyncError: getReadableError(error), isSyncing: false });
+          set({
+            isSyncing: false,
+            lastSyncError: getReadableError(error),
+          });
+
+          showNotification({
+            title: 'Usage Sync Error',
+            message: 'Failed to sync usage data. Will retry automatically.',
+            type: 'error',
+          });
         }
       },
 
