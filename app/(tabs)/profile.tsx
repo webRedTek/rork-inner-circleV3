@@ -15,6 +15,7 @@ import { useUsageStore } from '@/store/usage-store';
 import { useGroupsStore } from '@/store/groups-store';
 import { useMessagesStore } from '@/store/messages-store';
 import { useAffiliateStore } from '@/store/affiliate-store';
+import { CacheViewModal } from '@/components/CacheViewModal';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -25,6 +26,7 @@ export default function ProfileScreen() {
   const { resetMessagesCache } = useMessagesStore();
   const { resetAffiliateCache } = useAffiliateStore();
   const [isSupabaseReady, setIsSupabaseReady] = useState<boolean | null>(null);
+  const [isCacheModalVisible, setIsCacheModalVisible] = useState(false);
 
   useEffect(() => {
     checkSupabaseStatus();
@@ -105,6 +107,10 @@ export default function ProfileScreen() {
         },
       ]
     );
+  };
+
+  const handleViewCache = () => {
+    setIsCacheModalVisible(true);
   };
 
   if (!user) {
@@ -244,6 +250,14 @@ export default function ProfileScreen() {
               style={styles.adminButton}
             />
             <Button
+              title="View Cache"
+              onPress={handleViewCache}
+              variant="outline"
+              size="large"
+              icon={<Database size={18} color={Colors.dark.text} />}
+              style={styles.adminButton}
+            />
+            <Button
               title="Admin Settings"
               onPress={handleAdminSettings}
               variant="outline"
@@ -301,6 +315,7 @@ export default function ProfileScreen() {
           />
         </View>
       </ScrollView>
+      <CacheViewModal visible={isCacheModalVisible} onClose={() => setIsCacheModalVisible(false)} />
     </SafeAreaView>
   );
 }
