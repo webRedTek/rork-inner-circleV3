@@ -24,18 +24,22 @@ const getReadableError = (error: any): string => {
 interface UsageState {
   usageCache: UsageCache | null;
   batchUpdates: BatchUpdate[];
-  syncStrategy: SyncStrategy;
+  isSyncing: boolean;
+  lastSyncError: string | null;
+  saveStrategy: {
+    critical: {
+      interval: number;
+      features: string[];
+    };
+  };
+  initializeUsage: (userId: string) => Promise<void>;
+  syncUsageData: (force?: boolean) => Promise<void>;
+  trackUsage: (options: UsageTrackingOptions) => Promise<UsageResult>;
+  getUsageStats: () => UsageStats | null;
+  queueBatchUpdate: (actionType: string, count: number) => void;
   rateLimits: RateLimits;
   cacheConfig: CacheConfig;
   retryStrategy: RetryStrategy;
-  isSyncing: boolean;
-  lastSyncError: string | null;
-  initializeUsage: (userId: string) => Promise<void>;
-  trackUsage: (options: UsageTrackingOptions) => Promise<UsageResult>;
-  getUsageStats: () => UsageStats | null;
-  queueBatchUpdate: (actionType: string, countChange: number) => void;
-  syncUsageData: (force?: boolean) => Promise<void>;
-  checkLimit: (actionType: string, limit: number) => boolean;
   resetUsage: (actionType?: string) => void;
   clearError: () => void;
   resetUsageCache: () => Promise<void>;
@@ -98,12 +102,17 @@ export const useUsageStore = create<UsageState>()(
     (set, get) => ({
       usageCache: null,
       batchUpdates: [],
-      syncStrategy: defaultSyncStrategy,
+      isSyncing: false,
+      lastSyncError: null,
+      saveStrategy: {
+        critical: {
+          interval: 30 * 1000, // 30 seconds
+          features: ['swipes', 'matches', 'messages'],
+        },
+      },
       rateLimits: defaultRateLimits,
       cacheConfig: defaultCacheConfig,
       retryStrategy: defaultRetryStrategy,
-      isSyncing: false,
-      lastSyncError: null,
 
       initializeUsage: async (userId: string) => {
         if (!userId || !isSupabaseConfigured() || !supabase) {
@@ -286,90 +295,48 @@ export const useUsageStore = create<UsageState>()(
 
       syncUsageData: async (force?: boolean) => {
         const { user } = useAuthStore.getState();
-        const { usageCache, batchUpdates, syncStrategy, cacheConfig, retryStrategy } = get();
-        const notificationStore = useNotificationStore.getState();
+        const { usageCache, batchUpdates } = get();
 
         if (!user || !isSupabaseConfigured() || !supabase) {
-          console.warn('Cannot sync usage data: User not authenticated or Supabase not configured');
+          console.warn('Cannot save usage data: User not authenticated or Supabase not configured');
           return;
         }
 
         if (!force && get().isSyncing) {
-          console.log('Usage sync already in progress, skipping...');
+          console.log('Usage save already in progress, skipping...');
           return;
         }
 
         set({ isSyncing: true });
 
         try {
-          // Fetch current usage data from server
-          const { data: serverData, error: fetchError } = await supabase
-            .from('user_daily_usage')
-            .select('*')
-            .eq('user_id', user.id);
-
-          if (fetchError) {
-            throw new Error(`Failed to fetch usage data: ${getReadableError(fetchError)}`);
-          }
-
-          // Process batch updates if any
+          // Only process batch updates if any exist
           if (batchUpdates.length > 0) {
             const { error: batchError } = await supabase.rpc('handle_user_usage', {
               p_user_id: user.id,
-              p_action_type: 'batch',
-              p_batch_updates: batchUpdates
+              p_updates: batchUpdates
             });
 
             if (batchError) {
-              throw new Error(`Failed to process batch updates: ${getReadableError(batchError)}`);
+              throw batchError;
             }
+
+            // Clear processed batch updates
+            set(state => ({
+              ...state,
+              batchUpdates: [],
+              lastSyncTimestamp: Date.now()
+            }));
           }
 
-          // Update local cache with server data
-          const updatedCache: UsageCache = {
-            lastSyncTimestamp: Date.now(),
-            usageData: {},
-            premiumFeatures: usageCache?.premiumFeatures || {
-              boostMinutesRemaining: 0,
-              boostUsesRemaining: 0,
-            },
-            analytics: usageCache?.analytics || {
-              profileViews: 0,
-              searchAppearances: 0,
-            },
-          };
-
-          serverData?.forEach(entry => {
-            updatedCache.usageData[entry.action_type] = {
-              currentCount: entry.current_count,
-              firstActionTimestamp: entry.first_action_timestamp,
-              lastActionTimestamp: entry.last_action_timestamp,
-              resetTimestamp: entry.reset_timestamp,
-            };
-          });
-
-          set({
-            usageCache: updatedCache,
-            batchUpdates: [],
-            isSyncing: false,
-            lastSyncError: null,
-          });
-
-          console.log('Usage data synced successfully:', updatedCache);
+          set({ isSyncing: false, lastSyncError: null });
         } catch (error) {
-          console.error('Error syncing usage data:', getReadableError(error));
-          set({
+          console.error('Error saving usage data:', error);
+          set({ 
             isSyncing: false,
-            lastSyncError: getReadableError(error),
+            lastSyncError: getReadableError(error)
           });
-
-          notificationStore.addNotification({
-            title: 'Usage Sync Error',
-            message: 'Failed to sync usage data. Will retry automatically.',
-            type: 'error',
-            displayStyle: 'toast',
-            duration: 5000
-          });
+          throw error;
         }
       },
 
@@ -477,33 +444,33 @@ export const useUsageStore = create<UsageState>()(
   )
 );
 
-// Set up periodic sync for usage data
-let syncIntervalId: number | null = null;
+// Set up periodic save for usage data
+let saveIntervalId: number | null = null;
 
 export const startUsageSync = () => {
-  if (syncIntervalId !== null) {
-    console.log('Usage sync already active');
+  if (saveIntervalId !== null) {
+    console.log('Usage save already active');
     return;
   }
 
-  const intervalMs = useUsageStore.getState().syncStrategy.critical.interval;
-  syncIntervalId = setInterval(async () => {
+  const intervalMs = useUsageStore.getState().saveStrategy.critical.interval;
+  saveIntervalId = setInterval(async () => {
     const { user } = useAuthStore.getState();
     if (!user) return; // Silent fail if not authenticated
 
     await useUsageStore.getState().syncUsageData();
   }, intervalMs) as unknown as number;
 
-  console.log('Usage data sync started');
+  console.log('Usage data save started');
 };
 
 export const stopUsageSync = () => {
-  if (syncIntervalId === null) {
-    console.log('Usage sync not active');
+  if (saveIntervalId === null) {
+    console.log('Usage save not active');
     return;
   }
 
-  clearInterval(syncIntervalId);
-  syncIntervalId = null;
-  console.log('Usage data sync stopped');
+  clearInterval(saveIntervalId);
+  saveIntervalId = null;
+  console.log('Usage data save stopped');
 };
