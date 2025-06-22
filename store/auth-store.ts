@@ -279,6 +279,7 @@ export const useAuthStore = create<AuthState>()(
               
               // Use retry operation for signup
               const { data, error } = await retryOperation(async () => {
+                if (!supabase) throw new Error('Supabase client is not initialized');
                 return await supabase.auth.signUp({
                   email: userData.email!,
                   password,
@@ -331,6 +332,7 @@ export const useAuthStore = create<AuthState>()(
               
               // Use retry operation for profile creation
               const { error: profileError } = await retryOperation(async () => {
+                if (!supabase) throw new Error('Supabase client is not initialized');
                 return await supabase
                   .from('users')
                   .insert(profileRecord);
@@ -390,6 +392,7 @@ export const useAuthStore = create<AuthState>()(
             try {
               // Use retry operation for logout
               const { error } = await retryOperation(async () => {
+                if (!supabase) throw new Error('Supabase client is not initialized');
                 return await supabase.auth.signOut();
               }, 2); // Only retry twice for logout
               
@@ -441,6 +444,7 @@ export const useAuthStore = create<AuthState>()(
             
             // Use retry operation for profile update
             const { error } = await retryOperation(async () => {
+              if (!supabase) throw new Error('Supabase client is not initialized');
               return await supabase
                 .from('users')
                 .update(profileRecord)
@@ -496,6 +500,7 @@ export const useAuthStore = create<AuthState>()(
           if (isSupabaseConfigured() && supabase) {
             // Use retry operation for membership update
             const { error } = await retryOperation(async () => {
+              if (!supabase) throw new Error('Supabase client is not initialized');
               return await supabase
                 .from('users')
                 .update({ membership_tier: tier })
@@ -574,6 +579,7 @@ export const useAuthStore = create<AuthState>()(
           
           // Use retry operation for tier settings fetch
           const { data: tierSettings, error: tierError } = await retryOperation(async () => {
+            if (!supabase) throw new Error('Supabase client is not initialized');
             return await supabase
               .rpc('get_user_tier_settings', { p_user_id: userId });
           });
