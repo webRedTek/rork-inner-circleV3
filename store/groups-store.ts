@@ -172,21 +172,6 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           !group.memberIds.includes(user.id)
         );
         
-        // Log the action
-        try {
-          await supabase.rpc('log_user_action', {
-            user_id: user.id,
-            action: 'view_groups',
-            details: { 
-              user_groups_count: userGroups.length,
-              available_groups_count: availableGroups.length
-            }
-          });
-          useUsageStore.getState().incrementUsage('view_groups');
-        } catch (logError) {
-          console.warn('Failed to log view_groups action:', getReadableError(logError));
-        }
-        
         set({ 
           groups: typedGroups, 
           userGroups, 
@@ -258,17 +243,8 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           
         if (userUpdateError) throw userUpdateError;
         
-        // Log the action
-        try {
-          await supabase.rpc('log_user_action', {
-            user_id: user.id,
-            action: 'join_group',
-            details: { group_id: groupId, group_name: group.name }
-          });
-          useUsageStore.getState().incrementUsage('join_group');
-        } catch (logError) {
-          console.warn('Failed to log join_group action:', getReadableError(logError));
-        }
+        // Log the action using usage store
+        useUsageStore.getState().trackUsage({ actionType: 'join_group', batchProcess: true });
         
         // Update auth store
         const authStorage = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}');
@@ -335,17 +311,8 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           
         if (userUpdateError) throw userUpdateError;
         
-        // Log the action
-        try {
-          await supabase.rpc('log_user_action', {
-            user_id: user.id,
-            action: 'leave_group',
-            details: { group_id: groupId, group_name: group.name }
-          });
-          useUsageStore.getState().incrementUsage('leave_group');
-        } catch (logError) {
-          console.warn('Failed to log leave_group action:', getReadableError(logError));
-        }
+        // Log the action using usage store
+        useUsageStore.getState().trackUsage({ actionType: 'leave_group', batchProcess: true });
         
         // Update auth store
         const authStorage = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}');
@@ -425,17 +392,8 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           
         if (userUpdateError) throw userUpdateError;
         
-        // Log the action
-        try {
-          await supabase.rpc('log_user_action', {
-            user_id: user.id,
-            action: 'create_group',
-            details: { group_id: createdGroup.id, group_name: newGroup.name }
-          });
-          useUsageStore.getState().incrementUsage('create_group');
-        } catch (logError) {
-          console.warn('Failed to log create_group action:', getReadableError(logError));
-        }
+        // Log the action using usage store
+        useUsageStore.getState().trackUsage({ actionType: 'create_group', batchProcess: true });
         
         // Update auth store
         const authStorage = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}');
@@ -517,16 +475,8 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           
         if (insertError) throw insertError;
         
-        // Log the action
-        try {
-          await supabase.rpc('log_user_action', {
-            user_id: user.id,
-            action: 'send_group_message',
-            details: { group_id: groupId, message_type: type }
-          });
-        } catch (logError) {
-          console.warn('Failed to log send_group_message action:', getReadableError(logError));
-        }
+        // Log the action using usage store
+        useUsageStore.getState().trackUsage({ actionType: 'send_group_message', batchProcess: true });
         
         // Refresh messages
         await get().fetchGroupMessages(groupId);
@@ -612,17 +562,8 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           
         if (insertError) throw insertError;
         
-        // Log the action
-        try {
-          await supabase.rpc('log_user_action', {
-            user_id: user.id,
-            action: 'create_group_event',
-            details: { group_id: eventData.groupId, event_title: newEvent.title }
-          });
-          useUsageStore.getState().incrementUsage('event_create');
-        } catch (logError) {
-          console.warn('Failed to log create_group_event action:', getReadableError(logError));
-        }
+        // Log the action using usage store
+        useUsageStore.getState().trackUsage({ actionType: 'event_create', batchProcess: true });
         
         // Refresh events
         if (eventData.groupId) {
@@ -668,16 +609,8 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           
         if (updateError) throw updateError;
         
-        // Log the action
-        try {
-          await supabase.rpc('log_user_action', {
-            user_id: user.id,
-            action: 'update_group_event',
-            details: { group_id: eventData.groupId, event_id: eventData.id, event_title: updatedEvent.title }
-          });
-        } catch (logError) {
-          console.warn('Failed to log update_group_event action:', getReadableError(logError));
-        }
+        // Log the action using usage store
+        useUsageStore.getState().trackUsage({ actionType: 'update_group_event', batchProcess: true });
         
         // Refresh events
         if (eventData.groupId) {
@@ -789,16 +722,8 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           if (insertError) throw insertError;
         }
         
-        // Log the action
-        try {
-          await supabase.rpc('log_user_action', {
-            user_id: user.id,
-            action: 'rsvp_event',
-            details: { event_id: eventId, response }
-          });
-        } catch (logError) {
-          console.warn('Failed to log rsvp_event action:', getReadableError(logError));
-        }
+        // Log the action using usage store
+        useUsageStore.getState().trackUsage({ actionType: 'rsvp_event', batchProcess: true });
         
         // Refresh RSVPs (assuming groupId is available from current context)
         const groupId = get().groupEvents.find(event => event.id === eventId)?.groupId;
@@ -840,16 +765,8 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           
         if (updateError) throw updateError;
         
-        // Log the action
-        try {
-          await supabase.rpc('log_user_action', {
-            user_id: user.id,
-            action: 'update_group',
-            details: { group_id: groupData.id, group_name: groupData.name }
-          });
-        } catch (logError) {
-          console.warn('Failed to log update_group action:', getReadableError(logError));
-        }
+        // Log the action using usage store
+        useUsageStore.getState().trackUsage({ actionType: 'update_group', batchProcess: true });
         
         // Refresh group details
         if (groupData.id) {

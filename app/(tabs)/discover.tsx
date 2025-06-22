@@ -22,7 +22,6 @@ import { Platform } from 'react-native';
 import { ProfileDetailCard } from '@/components/ProfileDetailCard';
 import { X, ArrowLeft, RefreshCw, MapPin } from 'lucide-react-native';
 import { Input } from '@/components/Input';
-import { useUsageStore } from '@/store/usage-store';
 
 export default function DiscoverScreen() {
   const router = useRouter();

@@ -326,11 +326,9 @@ export const useUsageStore = create<UsageState>()(
         try {
           if (isSupabaseConfigured() && supabase) {
             for (const batch of batchUpdates) {
-              const { error } = await supabase.rpc('handle_user_usage', {
+              const { error } = await supabase.rpc('batch_update_usage', {
                 p_user_id: batch.user_id,
-                p_action_type: 'batch',
-                p_count_change: 0,
-                p_batch_updates: batch.updates,
+                p_updates: batch.updates,
               });
 
               if (error) {

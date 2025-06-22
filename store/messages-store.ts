@@ -80,30 +80,9 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     }));
     try {
       // Check message sending limit based on tier settings
-      if (tierSettings) {
-        const dailyMessageLimit = tierSettings.message_sending_limit || 20;
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const todayTimestamp = today.getTime();
-        
-        if (isSupabaseConfigured() && supabase) {
-          const { data: messagesData, error } = await supabase
-            .from('messages')
-            .select('id, created_at')
-            .eq('sender_id', user.id)
-            .gte('created_at', todayTimestamp);
-            
-          if (error) {
-            console.error('Error checking message limit:', error);
-          } else {
-            const todayMessages = messagesData ? messagesData.length : 0;
-            if (todayMessages >= dailyMessageLimit) {
-              throw new Error('Daily message limit reached. Upgrade your plan for more messages.');
-            }
-          }
-        } else {
-          throw new Error('Database is not configured');
-        }
+      const result = await useUsageStore.getState().trackUsage({ actionType: 'message', batchProcess: true });
+      if (!result.isAllowed) {
+        throw new Error('Daily message limit reached. Upgrade your plan for more messages.');
       }
       
       if (isSupabaseConfigured() && supabase) {
@@ -140,22 +119,6 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           }
         }
         
-        // Log the action
-        try {
-          await supabase.rpc('log_user_action', {
-            user_id: user.id,
-            action: 'send_message',
-            details: { 
-              conversation_id: conversationId,
-              receiver_id: receiverId,
-              message_type: 'text'
-            }
-          });
-          useUsageStore.getState().incrementUsage('send_message');
-        } catch (logError) {
-          console.warn('Failed to log send_message action:', getReadableError(logError));
-        }
-        
         // Get existing messages for this conversation
         const { messages } = get();
         const conversationMessages = messages[conversationId] || [];
@@ -187,38 +150,15 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     const { user, isReady } = useAuthStore.getState();
     if (!isReady || !user) return; // Silent fail if not ready or not authenticated
     
-    const tierSettings = useAuthStore.getState().getTierSettings();
-    
     set(state => ({ 
       isLoading: { ...state.isLoading, [conversationId]: true },
       error: { ...state.error, [conversationId]: null }
     }));
     try {
-      // Check message sending limit based on tier settings
-      if (tierSettings) {
-        const dailyMessageLimit = tierSettings.message_sending_limit || 20;
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const todayTimestamp = today.getTime();
-        
-        if (isSupabaseConfigured() && supabase) {
-          const { data: messagesData, error } = await supabase
-            .from('messages')
-            .select('id, created_at')
-            .eq('sender_id', user.id)
-            .gte('created_at', todayTimestamp);
-            
-          if (error) {
-            console.error('Error checking message limit:', error);
-          } else {
-            const todayMessages = messagesData ? messagesData.length : 0;
-            if (todayMessages >= dailyMessageLimit) {
-              throw new Error('Daily message limit reached. Upgrade your plan for more messages.');
-            }
-          }
-        } else {
-          throw new Error('Database is not configured');
-        }
+      // Check message sending limit using usage store
+      const result = await useUsageStore.getState().trackUsage({ actionType: 'message', batchProcess: true });
+      if (!result.isAllowed) {
+        throw new Error('Daily message limit reached. Upgrade your plan for more messages.');
       }
       
       if (isSupabaseConfigured() && supabase) {
@@ -255,23 +195,6 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           if (updateMatchError) {
             console.warn('Failed to update match last_message_at:', getReadableError(updateMatchError));
           }
-        }
-        
-        // Log the action
-        try {
-          await supabase.rpc('log_user_action', {
-            user_id: user.id,
-            action: 'send_message',
-            details: { 
-              conversation_id: conversationId,
-              receiver_id: receiverId,
-              message_type: 'voice',
-              duration
-            }
-          });
-          useUsageStore.getState().incrementUsage('send_message');
-        } catch (logError) {
-          console.warn('Failed to log send_message action:', getReadableError(logError));
         }
         
         // Get existing messages for this conversation
@@ -323,40 +246,6 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         
         // Convert Supabase response to Message objects
         const conversationMessages = (messagesData || []).map(supabaseToMessage).reverse();
-        
-        // Log the action
-        try {
-          await supabase.rpc('log_user_action', {
-            user_id: user.id,
-            action: 'view_messages',
-            details: { 
-              conversation_id: conversationId,
-              message_count: conversationMessages.length
-            }
-          });
-          useUsageStore.getState().incrementUsage('view_messages');
-        } catch (logError) {
-          console.warn('Failed to log view_messages action:', getReadableError(logError));
-        }
-        
-        // Log received messages
-        const receivedMessages = conversationMessages.filter(msg => msg.receiverId === user.id);
-        for (const msg of receivedMessages) {
-          try {
-            await supabase.rpc('log_user_action', {
-              user_id: user.id,
-              action: 'receive_message',
-              details: { 
-                conversation_id: conversationId,
-                sender_id: msg.senderId,
-                message_type: msg.type
-              }
-            });
-            useUsageStore.getState().incrementUsage('receive_message');
-          } catch (logError) {
-            console.warn('Failed to log receive_message action:', getReadableError(logError));
-          }
-        }
         
         // Update state with pagination info
         set({ 
@@ -491,21 +380,6 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             [conversationId]: updatedMessages 
           }
         });
-        
-        // Log the action
-        try {
-          await supabase.rpc('log_user_action', {
-            user_id: user.id,
-            action: 'mark_messages_read',
-            details: { 
-              conversation_id: conversationId,
-              count: unreadMessageIds.length
-            }
-          });
-          useUsageStore.getState().incrementUsage('mark_messages_read');
-        } catch (logError) {
-          console.warn('Failed to log mark_messages_read action:', getReadableError(logError));
-        }
       } else {
         throw new Error('Database is not configured');
       }
@@ -556,23 +430,6 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             displayStyle: 'toast',
             duration: 3000
           });
-          
-          try {
-            if (supabase) {
-              supabase.rpc('log_user_action', {
-                user_id: user.id,
-                action: 'receive_message',
-                details: { 
-                  conversation_id: conversationId,
-                  sender_id: newMessage.senderId,
-                  message_type: newMessage.type
-                }
-              });
-              useUsageStore.getState().incrementUsage('receive_message');
-            }
-          } catch (logError) {
-            console.warn('Failed to log receive_message action:', getReadableError(logError));
-          }
         }
       })
       .subscribe();

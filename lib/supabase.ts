@@ -177,7 +177,7 @@ export type Database = {
           id: string;
           user_id: string;
           action_type: string;
-          count: number;
+          current_count: number;
           first_action_timestamp: number;
           last_action_timestamp: number;
           reset_timestamp: number;
@@ -187,7 +187,7 @@ export type Database = {
           id?: string;
           user_id: string;
           action_type: string;
-          count: number;
+          current_count: number;
           first_action_timestamp: number;
           last_action_timestamp: number;
           reset_timestamp: number;
@@ -197,7 +197,7 @@ export type Database = {
           id?: string;
           user_id?: string;
           action_type?: string;
-          count?: number;
+          current_count?: number;
           first_action_timestamp?: number;
           last_action_timestamp?: number;
           reset_timestamp?: number;
