@@ -125,7 +125,9 @@ export const useUsageStore = create<UsageState>()(
           const { data: usageData, error: usageError } = await supabase
             .from('user_daily_usage')
             .select('*')
-            .eq('user_id', userId);
+            .eq('user_id', userId)
+            .eq('date', new Date().toISOString().split('T')[0])
+            .single();
 
           if (usageError) {
             console.error('Error initializing usage data:', usageError);
@@ -133,7 +135,26 @@ export const useUsageStore = create<UsageState>()(
           } else {
             const usageCache: UsageCache = {
               lastSyncTimestamp: Date.now(),
-              usageData: {},
+              usageData: {
+                swipe: {
+                  currentCount: usageData?.swipe_count || 0,
+                  firstActionTimestamp: usageData?.created_at ? new Date(usageData.created_at).getTime() : Date.now(),
+                  lastActionTimestamp: usageData?.last_updated ? new Date(usageData.last_updated).getTime() : Date.now(),
+                  resetTimestamp: usageData?.daily_reset_at ? new Date(usageData.daily_reset_at).getTime() : Date.now() + 24 * 60 * 60 * 1000,
+                },
+                match: {
+                  currentCount: usageData?.match_count || 0,
+                  firstActionTimestamp: usageData?.created_at ? new Date(usageData.created_at).getTime() : Date.now(),
+                  lastActionTimestamp: usageData?.last_updated ? new Date(usageData.last_updated).getTime() : Date.now(),
+                  resetTimestamp: usageData?.daily_reset_at ? new Date(usageData.daily_reset_at).getTime() : Date.now() + 24 * 60 * 60 * 1000,
+                },
+                message: {
+                  currentCount: usageData?.message_count || 0,
+                  firstActionTimestamp: usageData?.created_at ? new Date(usageData.created_at).getTime() : Date.now(),
+                  lastActionTimestamp: usageData?.last_updated ? new Date(usageData.last_updated).getTime() : Date.now(),
+                  resetTimestamp: usageData?.daily_reset_at ? new Date(usageData.daily_reset_at).getTime() : Date.now() + 24 * 60 * 60 * 1000,
+                }
+              },
               premiumFeatures: {
                 boostMinutesRemaining: 0,
                 boostUsesRemaining: 0,
@@ -143,15 +164,6 @@ export const useUsageStore = create<UsageState>()(
                 searchAppearances: 0,
               },
             };
-
-            usageData?.forEach(entry => {
-              usageCache.usageData[entry.action_type] = {
-                currentCount: entry.current_count,
-                firstActionTimestamp: entry.first_action_timestamp || Date.now(),
-                lastActionTimestamp: entry.last_action_timestamp || Date.now(),
-                resetTimestamp: entry.reset_timestamp || Date.now() + 24 * 60 * 60 * 1000,
-              };
-            });
 
             console.log('Usage data initialized successfully:', usageCache);
             set({ usageCache });
@@ -312,13 +324,41 @@ export const useUsageStore = create<UsageState>()(
         try {
           // Only process batch updates if any exist
           if (batchUpdates.length > 0) {
-            const { error: batchError } = await supabase.rpc('handle_user_usage', {
-              p_user_id: user.id,
-              p_updates: batchUpdates
+            // Aggregate counts by type
+            const counts = {
+              swipe_count: 0,
+              match_count: 0,
+              message_count: 0
+            };
+
+            batchUpdates[0].updates.forEach(update => {
+              switch (update.action_type) {
+                case 'swipe':
+                  counts.swipe_count += update.count_change;
+                  break;
+                case 'match':
+                  counts.match_count += update.count_change;
+                  break;
+                case 'message':
+                  counts.message_count += update.count_change;
+                  break;
+              }
             });
 
-            if (batchError) {
-              throw batchError;
+            // Update the daily usage record
+            const { error: updateError } = await supabase
+              .from('user_daily_usage')
+              .upsert({
+                user_id: user.id,
+                date: new Date().toISOString().split('T')[0],
+                ...counts,
+                last_updated: new Date().toISOString()
+              }, {
+                onConflict: 'user_id,date'
+              });
+
+            if (updateError) {
+              throw updateError;
             }
 
             // Clear processed batch updates
