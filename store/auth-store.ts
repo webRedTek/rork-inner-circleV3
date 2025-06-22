@@ -722,6 +722,7 @@ export const useAuthStore = create<AuthState>()(
               });
               // Fetch tier settings only after confirming session and user ID
               await get().fetchTierSettings(data.session.user.id);
+							await useUsageStore.getState().initializeUsage(data.session.user.id);
             } else {
               set({ isReady: true, isLoading: false, isAuthenticated: false });
             }
