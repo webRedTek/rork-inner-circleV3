@@ -155,7 +155,7 @@ export const useUsageStore = create<UsageState>()(
       },
 
       trackUsage: async (options: UsageTrackingOptions): Promise<UsageResult> => {
-        const { actionType, count = 1, batchProcess = false, forceSync = false } = options;
+        const { actionType, count = 1 } = options;
         const { user } = useAuthStore.getState();
         const { usageCache } = get();
         
@@ -202,27 +202,8 @@ export const useUsageStore = create<UsageState>()(
             },
           });
 
-          // Queue for batch update if not forced sync
-          if (!forceSync && batchProcess) {
-            get().queueBatchUpdate(actionType, count);
-          } else if (isSupabaseConfigured() && supabase) {
-            try {
-              const { error } = await supabase.rpc('handle_user_usage', {
-                p_user_id: user.id,
-                p_action_type: actionType,
-                p_count_change: count,
-              });
-
-              if (error) {
-                console.error(`Error tracking ${actionType} usage:`, error);
-                set({ lastSyncError: getReadableError(error) });
-              }
-            } catch (error) {
-              console.error(`Exception tracking ${actionType} usage:`, error);
-              set({ lastSyncError: getReadableError(error) });
-              get().queueBatchUpdate(actionType, count); // Queue for later sync on error
-            }
-          }
+          // Always queue for batch update
+          get().queueBatchUpdate(actionType, count);
         }
 
         return {
