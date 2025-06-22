@@ -6,7 +6,7 @@ import { isSupabaseConfigured, supabase, initSupabase, convertToCamelCase, conve
 import { Platform } from 'react-native';
 import { useNotificationStore } from './notification-store';
 import NetInfo from '@react-native-community/netinfo';
-import { useUsageStore } from './usage-store';
+import { useUsageStore, startUsageSync, stopUsageSync } from './usage-store';
 
 interface AuthState {
   user: UserProfile | null;
@@ -221,40 +221,31 @@ export const useAuthStore = create<AuthState>()(
                 throw profileError;
               }
             } else {
-              const userProfile = supabaseToUserProfile(profileData);
-              console.log('Profile fetched successfully:', userProfile.name);
+              const userProfile = supabaseToUserProfile(profileData || {});
               
+              // Initialize usage tracking
+              const usageStore = useUsageStore.getState();
+              await usageStore.initializeUsage(userProfile.id);
+
               set({
                 user: userProfile,
                 isAuthenticated: true,
                 isLoading: false,
+                error: null,
               });
-              // Fetch tier settings after login
-              await get().fetchTierSettings(data.user.id);
-              // Initialize usage tracking
-              await useUsageStore.getState().initializeUsage(data.user.id);
+
+              console.log('Login and profile setup complete');
             }
           } else {
             throw new Error('Authentication service is not configured');
           }
         } catch (error) {
-          console.error('Login error:', getReadableError(error));
-          
-          // Check if it's a network-related error
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          if (errorMsg.includes('Failed to fetch') || 
-              errorMsg.includes('Network') || 
-              errorMsg.includes('offline') ||
-              errorMsg.includes('AuthRetryableFetchError')) {
-            // Re-check network status
-            const state = await NetInfo.fetch();
-            set({ networkStatus: { isConnected: state.isConnected, type: state.type } });
-          }
-          
-          set({ 
-            error: getReadableError(error), 
-            isLoading: false 
+          console.error('Login process error:', error);
+          set({
+            isLoading: false,
+            error: getReadableError(error),
           });
+          throw error;
         }
       },
 
@@ -388,42 +379,29 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: async () => {
-        set({ isLoading: true, error: null });
+        set({ isLoading: true });
         try {
-          const { user } = get();
-          
-          if (isSupabaseConfigured() && supabase && user) {
-            try {
-              // Use retry operation for logout
-              const { error } = await retryOperation(async () => {
-                if (!supabase) throw new Error('Supabase client is not initialized');
-                return await supabase.auth.signOut();
-              }, 2); // Only retry twice for logout
-              
-              if (error) {
-                console.warn('Sign out error:', getReadableError(error));
-              }
-            } catch (error) {
-              console.warn('Error during sign out:', getReadableError(error));
-            }
+          if (isSupabaseConfigured() && supabase) {
+            await supabase.auth.signOut();
+            stopUsageSync();
           }
           
-          await AsyncStorage.removeItem('auth-storage');
-          
-          set({ user: null, tierSettings: null, tierSettingsTimestamp: null, isAuthenticated: false, isLoading: false });
-          
-          console.log('Logout successful');
-          useNotificationStore.getState().addNotification({
-            type: 'success',
-            message: 'Successfully logged out',
-            displayStyle: 'toast',
-            duration: 3000,
+          set({
+            user: null,
+            tierSettings: null,
+            tierSettingsTimestamp: null,
+            isAuthenticated: false,
+            isLoading: false,
+            error: null,
           });
-          return;
+          
+          await get().clearCache();
         } catch (error) {
-          console.error('Logout error:', getReadableError(error));
-          await AsyncStorage.removeItem('auth-storage');
-          set({ user: null, tierSettings: null, tierSettingsTimestamp: null, isAuthenticated: false, isLoading: false });
+          console.error('Logout error:', error);
+          set({
+            isLoading: false,
+            error: getReadableError(error),
+          });
         }
       },
 
@@ -671,83 +649,48 @@ export const useAuthStore = create<AuthState>()(
       },
 
       checkSession: async () => {
-        set({ isLoading: true, error: null });
         try {
-          // Check network connectivity first
-          const state = await NetInfo.fetch();
-          set({ networkStatus: { isConnected: state.isConnected, type: state.type } });
-          
-          if (state.isConnected === false) {
-            console.warn('Network appears to be offline. Session check may fail.');
-          }
-          
           await initSupabase();
           
           if (isSupabaseConfigured() && supabase) {
-            // Use retry operation for session check
-            const { data, error } = await retryOperation(async () => {
-              if (!supabase) throw new Error('Supabase client is not initialized');
-              return await supabase.auth.getSession();
-            });
+            const { data: { session }, error } = await supabase.auth.getSession();
             
             if (error) {
-              console.error('Error checking session:', error);
-              set({ isReady: true, isLoading: false, isAuthenticated: false });
-              return;
+              throw error;
             }
-
-            if (data.session && data.session.user) {
-              // Use retry operation for profile fetch
-              const { data: profileData, error: profileError } = await retryOperation(async () => {
-                if (!supabase) throw new Error('Supabase client is not initialized');
-                return await supabase
-                  .from('users')
-                  .select('*')
-                  .eq('id', data.session.user.id)
-                  .single();
-              });
-
+            
+            if (session?.user) {
+              const { data: profileData, error: profileError } = await supabase
+                .from('users')
+                .select('*')
+                .eq('id', session.user.id)
+                .single();
+                
               if (profileError) {
-                console.error('Error fetching user profile on session check:', profileError);
-                set({ isReady: true, isLoading: false, isAuthenticated: false });
-                return;
+                throw profileError;
               }
-
-              const userProfile = supabaseToUserProfile(profileData);
+              
+              const userProfile = supabaseToUserProfile(profileData || {});
+              
+              // Initialize usage tracking
+              const usageStore = useUsageStore.getState();
+              await usageStore.initializeUsage(userProfile.id);
+              startUsageSync();
+              
               set({
                 user: userProfile,
                 isAuthenticated: true,
                 isReady: true,
-                isLoading: false,
               });
-              // Fetch tier settings only after confirming session and user ID
-              await get().fetchTierSettings(data.session.user.id);
-							await useUsageStore.getState().initializeUsage(data.session.user.id);
             } else {
-              set({ isReady: true, isLoading: false, isAuthenticated: false });
+              set({ isReady: true });
             }
-          } else {
-            set({ isReady: true, isLoading: false, isAuthenticated: false });
           }
         } catch (error) {
-          console.error('Session check error:', getReadableError(error));
-          
-          // Check if it's a network-related error
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          if (errorMsg.includes('Failed to fetch') || 
-              errorMsg.includes('Network') || 
-              errorMsg.includes('offline') ||
-              errorMsg.includes('AuthRetryableFetchError')) {
-            // Re-check network status
-            const state = await NetInfo.fetch();
-            set({ networkStatus: { isConnected: state.isConnected, type: state.type } });
-          }
-          
-          set({ 
-            error: getReadableError(error), 
+          console.error('Session check error:', error);
+          set({
+            error: getReadableError(error),
             isReady: true,
-            isLoading: false,
-            isAuthenticated: false
           });
         }
       }
