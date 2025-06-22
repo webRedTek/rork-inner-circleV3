@@ -88,33 +88,6 @@ const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
   };
 };
 
-// Default tier settings for fallback
-const defaultTierSettings: TierSettings = {
-  daily_swipe_limit: 10,
-  daily_match_limit: 5,
-  message_sending_limit: 20,
-  can_see_who_liked_you: false,
-  can_rewind_last_swipe: false,
-  boost_duration: 0,
-  boost_frequency: 0,
-  profile_visibility_control: false,
-  priority_listing: false,
-  premium_filters_access: false,
-  global_discovery: false,
-  groups_limit: 0,
-  groups_creation_limit: 0,
-  featured_portfolio_limit: 0,
-  events_per_month: 0,
-  can_create_groups: false,
-  has_business_verification: false,
-  has_advanced_analytics: false,
-  has_priority_inbox: false,
-  can_send_direct_intro: false,
-  has_virtual_meeting_room: false,
-  has_custom_branding: false,
-  has_dedicated_support: false,
-};
-
 // Cache expiration time (24 hours in milliseconds)
 const CACHE_EXPIRATION_TIME = 24 * 60 * 60 * 1000;
 
@@ -562,8 +535,7 @@ export const useAuthStore = create<AuthState>()(
             supabaseConfigured: isSupabaseConfigured(),
             hasSupabase: !!supabase
           });
-          set({ tierSettings: defaultTierSettings, isLoading: false });
-          return;
+          throw new Error('Cannot fetch tier settings: Invalid user ID or Supabase not configured');
         }
 
         // Check if cached settings are still valid (less than 24 hours old)
@@ -587,9 +559,8 @@ export const useAuthStore = create<AuthState>()(
           set({ networkStatus: { isConnected: state.isConnected, type: state.type } });
           
           if (state.isConnected === false) {
-            console.warn('Network appears to be offline. Using default tier settings.');
-            set({ tierSettings: defaultTierSettings, isLoading: false });
-            return;
+            console.warn('Network appears to be offline. Cannot fetch tier settings.');
+            throw new Error('Network appears to be offline. Cannot fetch tier settings.');
           }
           
           console.log('Fetching tier settings for user:', userId);
@@ -602,7 +573,7 @@ export const useAuthStore = create<AuthState>()(
             
           if (tierError) {
             console.error('Error fetching tier settings:', JSON.stringify(tierError, null, 2));
-            set({ tierSettings: defaultTierSettings, isLoading: false });
+            throw new Error(`Failed to fetch tier settings: ${getReadableError(tierError)}`);
           } else {
             console.log('Tier settings fetched successfully:', tierSettings);
             set({ 
@@ -614,10 +585,10 @@ export const useAuthStore = create<AuthState>()(
         } catch (error) {
           console.error('Fetch tier settings error:', JSON.stringify(error, null, 2));
           set({ 
-            tierSettings: defaultTierSettings,
             error: getReadableError(error), 
             isLoading: false 
           });
+          throw new Error(`Error fetching tier settings: ${getReadableError(error)}`);
         }
       },
 
@@ -627,7 +598,7 @@ export const useAuthStore = create<AuthState>()(
         if (tierSettings && tierSettingsTimestamp && (now - tierSettingsTimestamp) < CACHE_EXPIRATION_TIME) {
           return tierSettings;
         }
-        return defaultTierSettings;
+        throw new Error('Tier settings not available or cache expired');
       },
 
       invalidateTierSettingsCache: async () => {

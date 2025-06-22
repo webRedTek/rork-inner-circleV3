@@ -147,7 +147,9 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
 
   fetchGroups: async () => {
     const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    if (!isReady || !user) {
+      throw new Error('User not ready or authenticated for fetching groups');
+    }
     
     set({ isLoading: true, error: null });
     try {
@@ -192,19 +194,24 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
 
   joinGroup: async (groupId: string) => {
     const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    if (!isReady || !user) {
+      throw new Error('User not ready or authenticated for joining group');
+    }
     
     const tierSettings = useAuthStore.getState().getTierSettings();
+    if (!tierSettings) {
+      throw new Error('Tier settings not available for group limit check');
+    }
     
     set({ isLoading: true, error: null });
     try {
       // Check membership tier restrictions using tier settings
-      if (!tierSettings || tierSettings.groups_limit <= 0) {
+      if (tierSettings.groups_limit <= 0) {
         throw new Error('Basic/Bronze members cannot join groups. Please upgrade to Silver or Gold.');
       }
       
       const userGroups = get().userGroups;
-      const groupsLimit = tierSettings.groups_limit || 0;
+      const groupsLimit = tierSettings.groups_limit;
       if (userGroups.length >= groupsLimit) {
         const nextTier = tierSettings.groups_limit <= 3 ? 'Gold' : 'Gold';
         throw new Error(`You have reached your group limit (${userGroups.length} of ${groupsLimit} groups). Upgrade to ${nextTier} to join more groups.`);
@@ -274,7 +281,9 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
 
   leaveGroup: async (groupId: string) => {
     const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    if (!isReady || !user) {
+      throw new Error('User not ready or authenticated for leaving group');
+    }
     
     set({ isLoading: true, error: null });
     try {
@@ -342,19 +351,24 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
 
   createGroup: async (groupData: Partial<Group>) => {
     const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    if (!isReady || !user) {
+      throw new Error('User not ready or authenticated for creating group');
+    }
     
     const tierSettings = useAuthStore.getState().getTierSettings();
+    if (!tierSettings) {
+      throw new Error('Tier settings not available for group creation limit check');
+    }
     
     set({ isLoading: true, error: null });
     try {
       // Check membership tier restrictions using tier settings
-      if (!tierSettings || !tierSettings.can_create_groups) {  // Basic or Bronze tier (based on swipe limit)
+      if (!tierSettings.can_create_groups) {
         throw new Error('Basic/Bronze members cannot create groups. Please upgrade to Silver or Gold.');
       }
       
       const userGroups = get().userGroups;
-      const groupsLimit = tierSettings.groups_limit || 0;
+      const groupsLimit = tierSettings.groups_limit;
       if (userGroups.length >= groupsLimit) {
         const nextTier = tierSettings.groups_creation_limit <= 1 ? 'Gold' : 'Gold';
         throw new Error(`You have reached your group creation limit (${userGroups.length} of ${groupsLimit} groups). Upgrade to ${nextTier} to create more groups.`);
@@ -423,7 +437,9 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
 
   fetchGroupDetails: async (groupId: string) => {
     const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    if (!isReady || !user) {
+      throw new Error('User not ready or authenticated for fetching group details');
+    }
     
     set({ isLoading: true, error: null });
     try {
@@ -453,7 +469,9 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
 
   sendGroupMessage: async (groupId: string, content: string, type: 'text' | 'image' = 'text', imageUrl?: string) => {
     const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    if (!isReady || !user) {
+      throw new Error('User not ready or authenticated for sending group message');
+    }
     
     set({ isLoading: true, error: null });
     try {
@@ -496,7 +514,9 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
 
   fetchGroupMessages: async (groupId: string, page: number = 1) => {
     const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    if (!isReady || !user) {
+      throw new Error('User not ready or authenticated for fetching group messages');
+    }
     
     set({ isMessagesLoading: true, error: null });
     try {
@@ -535,7 +555,9 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
 
   createGroupEvent: async (eventData: Partial<GroupEvent>) => {
     const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    if (!isReady || !user) {
+      throw new Error('User not ready or authenticated for creating group event');
+    }
     
     set({ isLoading: true, error: null });
     try {
@@ -585,7 +607,9 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
 
   updateGroupEvent: async (eventData: Partial<GroupEvent>) => {
     const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    if (!isReady || !user) {
+      throw new Error('User not ready or authenticated for updating group event');
+    }
     
     set({ isLoading: true, error: null });
     try {
@@ -632,7 +656,9 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
 
   fetchGroupEvents: async (groupId: string, page: number = 1) => {
     const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    if (!isReady || !user) {
+      throw new Error('User not ready or authenticated for fetching group events');
+    }
     
     set({ isEventsLoading: true, error: null });
     try {
@@ -683,7 +709,9 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
 
   rsvpToEvent: async (eventId: string, response: 'yes' | 'no' | 'maybe') => {
     const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    if (!isReady || !user) {
+      throw new Error('User not ready or authenticated for RSVPing to event');
+    }
     
     set({ isLoading: true, error: null });
     try {
@@ -746,7 +774,9 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
 
   updateGroup: async (groupData: Partial<Group>) => {
     const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    if (!isReady || !user) {
+      throw new Error('User not ready or authenticated for updating group');
+    }
     
     set({ isLoading: true, error: null });
     try {

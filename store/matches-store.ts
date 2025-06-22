@@ -142,7 +142,9 @@ export const useMatchesStore = create<MatchesState>()(
       noMoreProfiles: false,
       fetchPotentialMatches: async (maxDistance = 50, forceRefresh = false) => {
         const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) return; // Silent fail if not ready or authenticated
+        if (!isReady || !user) {
+          throw new Error('User not ready or authenticated for fetching matches');
+        }
         
         if (get().isLoading && !forceRefresh) return;
         
@@ -166,7 +168,10 @@ export const useMatchesStore = create<MatchesState>()(
           if (isSupabaseConfigured() && supabase) {
             // Use cached tier settings for global discovery
             const tierSettings = useAuthStore.getState().getTierSettings();
-            const isGlobalDiscovery = tierSettings?.global_discovery || false;
+            if (!tierSettings) {
+              throw new Error('Tier settings not available for global discovery check');
+            }
+            const isGlobalDiscovery = tierSettings.global_discovery;
             // Use user's preferred distance if available
             const userMaxDistance = user.preferredDistance || maxDistance;
             
@@ -214,7 +219,9 @@ export const useMatchesStore = create<MatchesState>()(
 
       prefetchNextBatch: async (maxDistance = 50) => {
         const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) return; // Silent fail if not ready or authenticated
+        if (!isReady || !user) {
+          throw new Error('User not ready or authenticated for prefetching matches');
+        }
         
         if (get().isPrefetching || get().isLoading || get().noMoreProfiles) {
           console.log('[MatchesStore] Prefetching skipped - already in progress, loading, or no more profiles');
@@ -226,7 +233,10 @@ export const useMatchesStore = create<MatchesState>()(
         try {
           // Use cached tier settings for global discovery
           const tierSettings = useAuthStore.getState().getTierSettings();
-          const isGlobalDiscovery = tierSettings?.global_discovery || false;
+          if (!tierSettings) {
+            throw new Error('Tier settings not available for global discovery check');
+          }
+          const isGlobalDiscovery = tierSettings.global_discovery;
           // Use user's preferred distance if available
           const userMaxDistance = user.preferredDistance || maxDistance;
           
@@ -242,7 +252,7 @@ export const useMatchesStore = create<MatchesState>()(
               set({ 
                 isPrefetching: false,
                 noMoreProfiles: true,
-                error: tierSettings?.global_discovery ? "No additional global matches found." : "No additional matches found in your area."
+                error: tierSettings.global_discovery ? "No additional global matches found." : "No additional matches found in your area."
               });
               return;
             }
@@ -276,7 +286,9 @@ export const useMatchesStore = create<MatchesState>()(
 
       likeUser: async (userId: string) => {
         const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) return null; // Silent fail if not ready or authenticated
+        if (!isReady || !user) {
+          throw new Error('User not ready or authenticated for liking user');
+        }
         
         set({ isLoading: true, error: null });
         try {
@@ -290,7 +302,10 @@ export const useMatchesStore = create<MatchesState>()(
 
           // Check match limits
           const matchStats = useUsageStore.getState().getUsageStats();
-          if (matchStats && matchStats.matchCount >= matchStats.matchLimit) {
+          if (!matchStats) {
+            throw new Error('Usage stats not available for match limit check');
+          }
+          if (matchStats.matchCount >= matchStats.matchLimit) {
             set({ matchLimitReached: true, isLoading: false });
             notifyError('Daily match limit reached');
             throw new Error('Daily match limit reached');
@@ -335,7 +350,9 @@ export const useMatchesStore = create<MatchesState>()(
 
       passUser: async (userId: string) => {
         const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) return; // Silent fail if not ready or authenticated
+        if (!isReady || !user) {
+          throw new Error('User not ready or authenticated for passing user');
+        }
         
         set({ isLoading: true, error: null });
         try {
@@ -382,7 +399,9 @@ export const useMatchesStore = create<MatchesState>()(
 
       queueSwipe: async (userId: string, direction: 'left' | 'right') => {
         const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) return; // Silent fail if not ready or authenticated
+        if (!isReady || !user) {
+          throw new Error('User not ready or authenticated for queuing swipe');
+        }
         
         try {
           const swipeAction: SwipeAction = {
@@ -411,7 +430,9 @@ export const useMatchesStore = create<MatchesState>()(
 
       processSwipeBatch: async () => {
         const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) return; // Silent fail if not ready or authenticated
+        if (!isReady || !user) {
+          throw new Error('User not ready or authenticated for processing swipe batch');
+        }
         
         set({ isLoading: true, error: null });
         try {
@@ -452,28 +473,24 @@ export const useMatchesStore = create<MatchesState>()(
               
               // Update match limit status using usage store
               const matchStats = useUsageStore.getState().getUsageStats();
-              if (matchStats) {
-                set({ matchLimitReached: matchStats.matchCount >= matchStats.matchLimit });
+              if (!matchStats) {
+                throw new Error('Usage stats not available for match limit update');
               }
+              set({ matchLimitReached: matchStats.matchCount >= matchStats.matchLimit });
               
               console.log(`[MatchesStore] Batch processing created ${typedMatches.length} new matches`);
             }
             
             // Update swipe limit reached status
             const swipeStats = useUsageStore.getState().getUsageStats();
-            if (swipeStats) {
-              set({ 
-                swipeLimitReached: swipeStats.swipeCount >= swipeStats.swipeLimit,
-                swipeQueue: [], 
-                isLoading: false 
-              });
-            } else {
-              set({ 
-                swipeLimitReached: result.swipe_count >= result.swipe_limit,
-                swipeQueue: [], 
-                isLoading: false 
-              });
+            if (!swipeStats) {
+              throw new Error('Usage stats not available for swipe limit update');
             }
+            set({ 
+              swipeLimitReached: swipeStats.swipeCount >= swipeStats.swipeLimit,
+              swipeQueue: [], 
+              isLoading: false 
+            });
           } else {
             throw new Error('Supabase is not configured');
           }
@@ -489,7 +506,9 @@ export const useMatchesStore = create<MatchesState>()(
 
       getMatches: async () => {
         const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) return; // Silent fail if not ready or authenticated
+        if (!isReady || !user) {
+          throw new Error('User not ready or authenticated for getting matches');
+        }
         
         set({ isLoading: true, error: null });
         try {
@@ -536,7 +555,9 @@ export const useMatchesStore = create<MatchesState>()(
 
       refreshCandidates: async () => {
         const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) return; // Silent fail if not ready or authenticated
+        if (!isReady || !user) {
+          throw new Error('User not ready or authenticated for refreshing candidates');
+        }
         
         console.log('[MatchesStore] Refreshing candidates - clearing current matches');
         set({ potentialMatches: [], cachedMatches: [], noMoreProfiles: false });
@@ -549,7 +570,9 @@ export const useMatchesStore = create<MatchesState>()(
 
       resetCacheAndState: async () => {
         const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) return; // Silent fail if not ready or authenticated
+        if (!isReady || !user) {
+          throw new Error('User not ready or authenticated for resetting cache and state');
+        }
         
         try {
           console.log('[MatchesStore] Resetting cache and state');
@@ -576,12 +599,13 @@ export const useMatchesStore = create<MatchesState>()(
           
           // Update limits from usage store
           const stats = useUsageStore.getState().getUsageStats();
-          if (stats) {
-            set({
-              swipeLimitReached: stats.swipeCount >= stats.swipeLimit,
-              matchLimitReached: stats.matchCount >= stats.matchLimit
-            });
+          if (!stats) {
+            throw new Error('Usage stats not available for limit update after reset');
           }
+          set({
+            swipeLimitReached: stats.swipeCount >= stats.swipeLimit,
+            matchLimitReached: stats.matchCount >= stats.matchLimit
+          });
           
           console.log('[MatchesStore] Fresh data fetched after reset');
           useNotificationStore.getState().addNotification({
@@ -629,7 +653,9 @@ export const startBatchProcessing = () => {
   const { batchProcessingInterval: intervalMs } = useMatchesStore.getState();
   batchProcessingIntervalId = setInterval(async () => {
     const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) return; // Silent fail if not ready or authenticated
+    if (!isReady || !user) {
+      throw new Error('User not ready or authenticated for batch processing');
+    }
     
     const { swipeQueue } = useMatchesStore.getState();
     if (swipeQueue.length > 0) {

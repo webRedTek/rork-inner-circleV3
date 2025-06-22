@@ -108,8 +108,7 @@ export const useUsageStore = create<UsageState>()(
       initializeUsage: async (userId: string) => {
         if (!userId || !isSupabaseConfigured() || !supabase) {
           console.log('Skipping usage initialization: Invalid user ID or Supabase not configured');
-          set({ usageCache: defaultUsageCache });
-          return;
+          throw new Error('Cannot initialize usage: Invalid user ID or Supabase not configured');
         }
 
         try {
@@ -121,7 +120,7 @@ export const useUsageStore = create<UsageState>()(
 
           if (usageError) {
             console.error('Error initializing usage data:', usageError);
-            set({ usageCache: defaultUsageCache });
+            throw new Error(`Failed to initialize usage data: ${getReadableError(usageError)}`);
           } else {
             const usageCache: UsageCache = {
               lastSyncTimestamp: Date.now(),
@@ -150,7 +149,8 @@ export const useUsageStore = create<UsageState>()(
           }
         } catch (error) {
           console.error('Error initializing usage:', getReadableError(error));
-          set({ usageCache: defaultUsageCache, lastSyncError: getReadableError(error) });
+          set({ lastSyncError: getReadableError(error) });
+          throw new Error(`Usage initialization failed: ${getReadableError(error)}`);
         }
       },
 
@@ -160,35 +160,23 @@ export const useUsageStore = create<UsageState>()(
         const { usageCache } = get();
         
         if (!user) {
-          return {
-            isAllowed: false,
-            actionType,
-            currentCount: 0,
-            limit: 0,
-            remaining: 0,
-            timestamp: Date.now(),
-            error: 'User not authenticated',
-          };
+          throw new Error('User not authenticated for usage tracking');
         }
 
         if (!usageCache) {
-          return {
-            isAllowed: false,
-            actionType,
-            currentCount: 0,
-            limit: 0,
-            remaining: 0,
-            timestamp: Date.now(),
-            error: 'Usage cache not initialized',
-          };
+          throw new Error('Usage cache not initialized for tracking');
         }
 
         const tierSettings = useAuthStore.getState().getTierSettings();
+        if (!tierSettings) {
+          throw new Error('Tier settings not available for usage limits');
+        }
+
         const limit = actionType === 'swipe' 
-          ? tierSettings?.daily_swipe_limit || 10 
+          ? tierSettings.daily_swipe_limit
           : actionType === 'match' 
-            ? tierSettings?.daily_match_limit || 5 
-            : tierSettings?.message_sending_limit || 20;
+            ? tierSettings.daily_match_limit
+            : tierSettings.message_sending_limit;
 
         const now = Date.now();
         const usageData = usageCache.usageData[actionType];
@@ -251,7 +239,9 @@ export const useUsageStore = create<UsageState>()(
         const { usageCache } = get();
         const tierSettings = useAuthStore.getState().getTierSettings();
         
-        if (!usageCache || !tierSettings) return null;
+        if (!usageCache || !tierSettings) {
+          throw new Error('Usage cache or tier settings not available for stats');
+        }
 
         const swipeData = usageCache.usageData['swipe'] || { currentCount: 0 };
         const matchData = usageCache.usageData['match'] || { currentCount: 0 };
@@ -273,7 +263,9 @@ export const useUsageStore = create<UsageState>()(
 
       queueBatchUpdate: (actionType: string, countChange: number) => {
         const { user } = useAuthStore.getState();
-        if (!user) return;
+        if (!user) {
+          throw new Error('User not authenticated for batch update');
+        }
 
         const now = Date.now();
         set(state => {
@@ -356,7 +348,7 @@ export const useUsageStore = create<UsageState>()(
       checkLimit: (actionType: string, limit: number) => {
         const { usageCache } = get();
         if (!usageCache || !usageCache.usageData[actionType]) {
-          return true; // Allow action if no usage data is available
+          throw new Error(`Usage data not available for action type: ${actionType}`);
         }
 
         const now = Date.now();
@@ -384,7 +376,9 @@ export const useUsageStore = create<UsageState>()(
 
       resetUsage: (actionType?: string) => {
         const { usageCache } = get();
-        if (!usageCache) return;
+        if (!usageCache) {
+          throw new Error('Usage cache not available for reset');
+        }
 
         const now = Date.now();
         if (actionType) {

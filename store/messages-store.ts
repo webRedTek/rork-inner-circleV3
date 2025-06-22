@@ -70,9 +70,9 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
   sendMessage: async (conversationId: string, content: string, receiverId: string) => {
     const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
-    
-    const tierSettings = useAuthStore.getState().getTierSettings();
+    if (!isReady || !user) {
+      throw new Error('User not ready or authenticated for sending message');
+    }
     
     set(state => ({ 
       isLoading: { ...state.isLoading, [conversationId]: true },
@@ -148,7 +148,9 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
   sendVoiceMessage: async (conversationId: string, voiceUrl: string, duration: number, receiverId: string) => {
     const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    if (!isReady || !user) {
+      throw new Error('User not ready or authenticated for sending voice message');
+    }
     
     set(state => ({ 
       isLoading: { ...state.isLoading, [conversationId]: true },
@@ -226,7 +228,9 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
   getMessages: async (conversationId: string, pageSize = 20) => {
     const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    if (!isReady || !user) {
+      throw new Error('User not ready or authenticated for getting messages');
+    }
     
     set(state => ({ 
       isLoading: { ...state.isLoading, [conversationId]: true },
@@ -277,10 +281,14 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
   loadMoreMessages: async (conversationId: string, pageSize = 20) => {
     const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    if (!isReady || !user) {
+      throw new Error('User not ready or authenticated for loading more messages');
+    }
     
     const currentPagination = get().pagination[conversationId];
-    if (!currentPagination || !currentPagination.hasMore) return;
+    if (!currentPagination || !currentPagination.hasMore) {
+      throw new Error('No more messages to load or pagination data not available');
+    }
     
     set(state => ({ 
       isLoading: { ...state.isLoading, [conversationId]: true },
@@ -339,7 +347,9 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
   markAsRead: async (conversationId: string) => {
     const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) return; // Silent fail if not ready or not authenticated
+    if (!isReady || !user) {
+      throw new Error('User not ready or authenticated for marking messages as read');
+    }
     
     try {
       const { messages } = get();
@@ -362,7 +372,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           
         if (updateError) {
           console.warn('Failed to mark messages as read:', getReadableError(updateError));
-          return;
+          throw updateError;
         }
         
         // Update local state
@@ -385,17 +395,19 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       }
     } catch (error) {
       console.error('Failed to mark messages as read:', getReadableError(error));
+      throw new Error(`Failed to mark messages as read: ${getReadableError(error)}`);
     }
   },
 
   subscribeToMessages: (conversationId: string) => {
     if (!isSupabaseConfigured() || !supabase) {
-      console.warn('Supabase not initialized for message subscription');
-      return;
+      throw new Error('Supabase not initialized for message subscription');
     }
     
     const { user } = useAuthStore.getState();
-    if (!user) return;
+    if (!user) {
+      throw new Error('User not authenticated for message subscription');
+    }
     
     // Check if already subscribed
     if (get().subscriptions[conversationId]) return;
@@ -455,8 +467,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         });
         console.log(`[MessagesStore] Unsubscribed from messages for conversation ${conversationId}`);
       } else {
-        console.warn('Supabase not initialized for unsubscribe');
-        return;
+        throw new Error('Supabase not initialized for unsubscribe');
       }
     }
   },
