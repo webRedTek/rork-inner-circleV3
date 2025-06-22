@@ -63,6 +63,7 @@ const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
     id: String(camelCaseData.id || ''),
     email: String(camelCaseData.email || ''),
     name: String(camelCaseData.name || ''),
+		role: String(camelCaseData.role || 'member') as UserRole,
     bio: String(camelCaseData.bio || ''),
     location: String(camelCaseData.location || ''),
     zipCode: String(camelCaseData.zipCode || ''),
