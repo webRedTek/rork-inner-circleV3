@@ -6,6 +6,7 @@ import { isSupabaseConfigured, supabase, initSupabase, convertToCamelCase, conve
 import { Platform } from 'react-native';
 import { useNotificationStore } from './notification-store';
 import NetInfo from '@react-native-community/netinfo';
+import { useUsageStore } from './usage-store';
 
 interface AuthState {
   user: UserProfile | null;
@@ -210,6 +211,8 @@ export const useAuthStore = create<AuthState>()(
                 });
                 // Fetch tier settings after creating profile
                 await get().fetchTierSettings(data.user.id);
+                // Initialize usage tracking
+                await useUsageStore.getState().initializeUsage(data.user.id);
               } else {
                 throw profileError;
               }
@@ -224,6 +227,8 @@ export const useAuthStore = create<AuthState>()(
               });
               // Fetch tier settings after login
               await get().fetchTierSettings(data.user.id);
+              // Initialize usage tracking
+              await useUsageStore.getState().initializeUsage(data.user.id);
             }
           } else {
             throw new Error('Authentication service is not configured');
@@ -345,6 +350,8 @@ export const useAuthStore = create<AuthState>()(
               // Fetch tier settings after signup
               if (data.user?.id) {
                 await get().fetchTierSettings(data.user.id);
+                // Initialize usage tracking
+                await useUsageStore.getState().initializeUsage(data.user.id);
               }
             } catch (authError) {
               console.error('Signup error:', getReadableError(authError));
