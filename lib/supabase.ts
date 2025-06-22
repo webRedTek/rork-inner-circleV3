@@ -172,7 +172,7 @@ export type Database = {
           has_dedicated_support?: boolean;
         };
       };
-      usage_tracking: {
+      user_daily_usage: {
         Row: {
           id: string;
           user_id: string;
@@ -182,6 +182,22 @@ export type Database = {
           last_action_timestamp: number;
           reset_timestamp: number;
           created_at: string;
+          boost_minutes_remaining?: number;
+          boost_uses_remaining?: number;
+          events_created_this_month?: number;
+          events_month_reset_timestamp?: number;
+          direct_intros_sent?: number;
+          virtual_meetings_hosted?: number;
+          groups_joined?: number;
+          groups_created?: number;
+          featured_portfolios_count?: number;
+          messages_sent_count?: number;
+          priority_messages_sent?: number;
+          profile_views_received?: number;
+          search_appearances?: number;
+          premium_features_used?: any;
+          last_tier_change_timestamp?: number;
+          tier_history?: any;
         };
         Insert: {
           id?: string;
@@ -192,6 +208,22 @@ export type Database = {
           last_action_timestamp: number;
           reset_timestamp: number;
           created_at?: string;
+          boost_minutes_remaining?: number;
+          boost_uses_remaining?: number;
+          events_created_this_month?: number;
+          events_month_reset_timestamp?: number;
+          direct_intros_sent?: number;
+          virtual_meetings_hosted?: number;
+          groups_joined?: number;
+          groups_created?: number;
+          featured_portfolios_count?: number;
+          messages_sent_count?: number;
+          priority_messages_sent?: number;
+          profile_views_received?: number;
+          search_appearances?: number;
+          premium_features_used?: any;
+          last_tier_change_timestamp?: number;
+          tier_history?: any;
         };
         Update: {
           id?: string;
@@ -201,6 +233,23 @@ export type Database = {
           first_action_timestamp?: number;
           last_action_timestamp?: number;
           reset_timestamp?: number;
+          created_at?: string;
+          boost_minutes_remaining?: number;
+          boost_uses_remaining?: number;
+          events_created_this_month?: number;
+          events_month_reset_timestamp?: number;
+          direct_intros_sent?: number;
+          virtual_meetings_hosted?: number;
+          groups_joined?: number;
+          groups_created?: number;
+          featured_portfolios_count?: number;
+          messages_sent_count?: number;
+          priority_messages_sent?: number;
+          profile_views_received?: number;
+          search_appearances?: number;
+          premium_features_used?: any;
+          last_tier_change_timestamp?: number;
+          tier_history?: any;
         };
       };
     };
