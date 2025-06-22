@@ -676,6 +676,9 @@ export const useAuthStore = create<AuthState>()(
               const usageStore = useUsageStore.getState();
               await usageStore.initializeUsage(userProfile.id);
               startUsageSync();
+
+              // Fetch tier settings before setting user as ready
+              await get().fetchTierSettings(userProfile.id);
               
               set({
                 user: userProfile,
@@ -683,14 +686,20 @@ export const useAuthStore = create<AuthState>()(
                 isReady: true,
               });
             } else {
-              set({ isReady: true });
+              set({
+                user: null,
+                isAuthenticated: false,
+                isReady: true,
+              });
             }
           }
         } catch (error) {
           console.error('Session check error:', error);
           set({
-            error: getReadableError(error),
+            user: null,
+            isAuthenticated: false,
             isReady: true,
+            error: getReadableError(error),
           });
         }
       }
