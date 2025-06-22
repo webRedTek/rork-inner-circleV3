@@ -122,40 +122,33 @@ import { create } from 'zustand';
 
           try {
             console.log('Initializing usage data for user:', userId);
+            const now = Date.now();
             
-            // Get the user's usage record
+            // Get the user's single usage record
             const { data: usageData, error: usageError } = await supabase
               .from('user_daily_usage')
               .select('*')
               .eq('user_id', userId)
               .single();
 
-            const now = Date.now();
-            const today = new Date().toISOString().split('T')[0];
-            
-            // Check if we need to reset the daily counts
-            const needsReset = !usageData || 
-              (usageData.daily_reset_at && new Date(usageData.daily_reset_at).getTime() < now);
-
-            if (needsReset) {
-              // Reset or create the record with new daily counts
-              const { data: resetData, error: resetError } = await supabase
+            // If no record exists, create one
+            if (usageError || !usageData) {
+              const { data: newData, error: createError } = await supabase
                 .from('user_daily_usage')
-                .upsert({
+                .insert({
                   user_id: userId,
-                  date: today,
                   swipe_count: 0,
                   match_count: 0,
                   message_count: 0,
                   daily_reset_at: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
-                  last_updated: new Date().toISOString(),
-                  ...(usageData ? {} : { created_at: new Date().toISOString() })
+                  created_at: new Date().toISOString(),
+                  last_updated: new Date().toISOString()
                 })
                 .select()
                 .single();
 
-              if (resetError) {
-                throw new Error(`Failed to reset usage record: ${getReadableError(resetError)}`);
+              if (createError) {
+                throw new Error(`Failed to create usage record: ${getReadableError(createError)}`);
               }
 
               const usageCache: UsageCache = {
@@ -190,44 +183,102 @@ import { create } from 'zustand';
                 },
               };
 
-              console.log('Usage data reset for new day:', usageCache);
+              console.log('New usage record created:', usageCache);
               set({ usageCache });
             } else {
-              // Use existing record with current counts
-              const usageCache: UsageCache = {
-                lastSyncTimestamp: now,
-                usageData: {
-                  swipe: {
-                    currentCount: usageData.swipe_count || 0,
-                    firstActionTimestamp: usageData.created_at ? new Date(usageData.created_at).getTime() : now,
-                    lastActionTimestamp: usageData.last_updated ? new Date(usageData.last_updated).getTime() : now,
-                    resetTimestamp: usageData.daily_reset_at ? new Date(usageData.daily_reset_at).getTime() : now + 24 * 60 * 60 * 1000,
-                  },
-                  match: {
-                    currentCount: usageData.match_count || 0,
-                    firstActionTimestamp: usageData.created_at ? new Date(usageData.created_at).getTime() : now,
-                    lastActionTimestamp: usageData.last_updated ? new Date(usageData.last_updated).getTime() : now,
-                    resetTimestamp: usageData.daily_reset_at ? new Date(usageData.daily_reset_at).getTime() : now + 24 * 60 * 60 * 1000,
-                  },
-                  message: {
-                    currentCount: usageData.message_count || 0,
-                    firstActionTimestamp: usageData.created_at ? new Date(usageData.created_at).getTime() : now,
-                    lastActionTimestamp: usageData.last_updated ? new Date(usageData.last_updated).getTime() : now,
-                    resetTimestamp: usageData.daily_reset_at ? new Date(usageData.daily_reset_at).getTime() : now + 24 * 60 * 60 * 1000,
-                  }
-                },
-                premiumFeatures: {
-                  boostMinutesRemaining: 0,
-                  boostUsesRemaining: 0,
-                },
-                analytics: {
-                  profileViews: 0,
-                  searchAppearances: 0,
-                },
-              };
+              // Check if we need to reset counts (24 hours passed)
+              const shouldReset = usageData.daily_reset_at && new Date(usageData.daily_reset_at).getTime() < now;
+              
+              if (shouldReset) {
+                // Reset counts and update reset timestamp
+                const { data: resetData, error: resetError } = await supabase
+                  .from('user_daily_usage')
+                  .update({
+                    swipe_count: 0,
+                    match_count: 0,
+                    message_count: 0,
+                    daily_reset_at: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
+                    last_updated: new Date().toISOString()
+                  })
+                  .eq('user_id', userId)
+                  .select()
+                  .single();
 
-              console.log('Usage data initialized from current record:', usageCache);
-              set({ usageCache });
+                if (resetError) {
+                  throw new Error(`Failed to reset usage counts: ${getReadableError(resetError)}`);
+                }
+
+                const usageCache: UsageCache = {
+                  lastSyncTimestamp: now,
+                  usageData: {
+                    swipe: {
+                      currentCount: 0,
+                      firstActionTimestamp: now,
+                      lastActionTimestamp: now,
+                      resetTimestamp: now + 24 * 60 * 60 * 1000,
+                    },
+                    match: {
+                      currentCount: 0,
+                      firstActionTimestamp: now,
+                      lastActionTimestamp: now,
+                      resetTimestamp: now + 24 * 60 * 60 * 1000,
+                    },
+                    message: {
+                      currentCount: 0,
+                      firstActionTimestamp: now,
+                      lastActionTimestamp: now,
+                      resetTimestamp: now + 24 * 60 * 60 * 1000,
+                    }
+                  },
+                  premiumFeatures: {
+                    boostMinutesRemaining: 0,
+                    boostUsesRemaining: 0,
+                  },
+                  analytics: {
+                    profileViews: 0,
+                    searchAppearances: 0,
+                  },
+                };
+
+                console.log('Usage counts reset after 24 hours:', usageCache);
+                set({ usageCache });
+              } else {
+                // Use existing counts
+                const usageCache: UsageCache = {
+                  lastSyncTimestamp: now,
+                  usageData: {
+                    swipe: {
+                      currentCount: usageData.swipe_count || 0,
+                      firstActionTimestamp: usageData.created_at ? new Date(usageData.created_at).getTime() : now,
+                      lastActionTimestamp: usageData.last_updated ? new Date(usageData.last_updated).getTime() : now,
+                      resetTimestamp: usageData.daily_reset_at ? new Date(usageData.daily_reset_at).getTime() : now + 24 * 60 * 60 * 1000,
+                    },
+                    match: {
+                      currentCount: usageData.match_count || 0,
+                      firstActionTimestamp: usageData.created_at ? new Date(usageData.created_at).getTime() : now,
+                      lastActionTimestamp: usageData.last_updated ? new Date(usageData.last_updated).getTime() : now,
+                      resetTimestamp: usageData.daily_reset_at ? new Date(usageData.daily_reset_at).getTime() : now + 24 * 60 * 60 * 1000,
+                    },
+                    message: {
+                      currentCount: usageData.message_count || 0,
+                      firstActionTimestamp: usageData.created_at ? new Date(usageData.created_at).getTime() : now,
+                      lastActionTimestamp: usageData.last_updated ? new Date(usageData.last_updated).getTime() : now,
+                      resetTimestamp: usageData.daily_reset_at ? new Date(usageData.daily_reset_at).getTime() : now + 24 * 60 * 60 * 1000,
+                    }
+                  },
+                  premiumFeatures: {
+                    boostMinutesRemaining: 0,
+                    boostUsesRemaining: 0,
+                  },
+                  analytics: {
+                    profileViews: 0,
+                    searchAppearances: 0,
+                  },
+                };
+
+                console.log('Using existing usage record:', usageCache);
+                set({ usageCache });
+              }
             }
           } catch (error) {
             console.error('Error initializing usage:', getReadableError(error));
@@ -406,17 +457,14 @@ import { create } from 'zustand';
                 }
               });
 
-              // Update the daily usage record
+              // Update the user's single usage record
               const { error: updateError } = await supabase
                 .from('user_daily_usage')
-                .upsert({
-                  user_id: user.id,
-                  date: new Date().toISOString().split('T')[0],
+                .update({
                   ...counts,
                   last_updated: new Date().toISOString()
-                }, {
-                  onConflict: 'user_id,date'
-                });
+                })
+                .eq('user_id', user.id);
 
               if (updateError) {
                 throw updateError;
