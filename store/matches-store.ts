@@ -109,6 +109,7 @@ interface MatchesState {
   newMatch: MatchWithProfile | null;
   swipeLimitReached: boolean;
   matchLimitReached: boolean;
+  noMoreProfiles: boolean;
   fetchPotentialMatches: (maxDistance?: number, forceRefresh?: boolean) => Promise<void>;
   prefetchNextBatch: (maxDistance?: number) => Promise<void>;
   likeUser: (userId: string) => Promise<MatchWithProfile | null>;
@@ -138,6 +139,7 @@ export const useMatchesStore = create<MatchesState>()(
       newMatch: null,
       swipeLimitReached: false,
       matchLimitReached: false,
+      noMoreProfiles: false,
       fetchPotentialMatches: async (maxDistance = 50, forceRefresh = false) => {
         const { user, isReady } = useAuthStore.getState();
         if (!isReady || !user) return; // Silent fail if not ready or authenticated
@@ -155,7 +157,8 @@ export const useMatchesStore = create<MatchesState>()(
             set({ 
               potentialMatches: batchToShow, 
               cachedMatches: remainingCache, 
-              isLoading: false 
+              isLoading: false,
+              noMoreProfiles: false
             });
             return;
           }
@@ -192,7 +195,8 @@ export const useMatchesStore = create<MatchesState>()(
             set({ 
               potentialMatches: batchToShow, 
               cachedMatches: remainingCache, 
-              isLoading: false 
+              isLoading: false,
+              noMoreProfiles: false
             });
           } else {
             throw new Error('Supabase is not configured');
@@ -202,7 +206,8 @@ export const useMatchesStore = create<MatchesState>()(
           notifyError('Error fetching matches: ' + getReadableError(error));
           set({ 
             error: tierSettings?.global_discovery ? "No global matches found. Try adjusting your preferences." : "No matches found in your area. Try increasing your distance.",
-            isLoading: false 
+            isLoading: false,
+            noMoreProfiles: true
           });
         }
       },
@@ -211,8 +216,9 @@ export const useMatchesStore = create<MatchesState>()(
         const { user, isReady } = useAuthStore.getState();
         if (!isReady || !user) return; // Silent fail if not ready or authenticated
         
-        if (get().isPrefetching || get().isLoading) {
-          console.log('[MatchesStore] Prefetching skipped - already in progress or loading');
+        if (get().isPrefetching || get().isLoading || get().noMoreProfiles) {
+          console.log('[MatchesStore] Prefetching skipped - already in progress, loading, or no more profiles');
+          set({ isPrefetching: false });
           return;
         }
         
@@ -235,6 +241,7 @@ export const useMatchesStore = create<MatchesState>()(
               console.log('[MatchesStore] No additional matches found during prefetch');
               set({ 
                 isPrefetching: false,
+                noMoreProfiles: true,
                 error: tierSettings?.global_discovery ? "No additional global matches found." : "No additional matches found in your area."
               });
               return;
@@ -250,7 +257,8 @@ export const useMatchesStore = create<MatchesState>()(
             console.log('[MatchesStore] Prefetched additional matches', { count: potentialMatches.length });
             set({ 
               cachedMatches: [...get().cachedMatches, ...potentialMatches].slice(0, 50), 
-              isPrefetching: false 
+              isPrefetching: false,
+              noMoreProfiles: false
             });
           } else {
             throw new Error('Supabase is not configured');
@@ -260,7 +268,8 @@ export const useMatchesStore = create<MatchesState>()(
           notifyError('Error prefetching matches: ' + getReadableError(error));
           set({ 
             error: tierSettings?.global_discovery ? "No additional global matches found." : "No additional matches found in your area.",
-            isPrefetching: false 
+            isPrefetching: false,
+            noMoreProfiles: true
           });
         }
       },
@@ -530,7 +539,7 @@ export const useMatchesStore = create<MatchesState>()(
         if (!isReady || !user) return; // Silent fail if not ready or authenticated
         
         console.log('[MatchesStore] Refreshing candidates - clearing current matches');
-        set({ potentialMatches: [], cachedMatches: [] });
+        set({ potentialMatches: [], cachedMatches: [], noMoreProfiles: false });
         await get().fetchPotentialMatches(50, true);
       },
 
@@ -554,7 +563,8 @@ export const useMatchesStore = create<MatchesState>()(
             swipeLimitReached: false,
             matchLimitReached: false,
             isLoading: false,
-            isPrefetching: false
+            isPrefetching: false,
+            noMoreProfiles: false
           });
           
           // Clear in-memory cache

@@ -34,7 +34,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const position = useRef(new Animated.ValueXY()).current;
-  const { prefetchNextBatch, prefetchThreshold, isPrefetching } = useMatchesStore();
+  const { prefetchNextBatch, prefetchThreshold, isPrefetching, noMoreProfiles } = useMatchesStore();
   
   const rotate = position.x.interpolate({
     inputRange: [-SCREEN_WIDTH * 1.5, 0, SCREEN_WIDTH * 1.5],
@@ -75,14 +75,16 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   }, [profiles.length]);
   
   useEffect(() => {
-    // Trigger prefetch if we're running low on profiles, but only if not already prefetching
-    if (profiles.length - currentIndex <= prefetchThreshold && !isPrefetching) {
+    // Trigger prefetch if we're running low on profiles, but only if not already prefetching and there are more profiles to load
+    if (profiles.length - currentIndex <= prefetchThreshold && !isPrefetching && !noMoreProfiles) {
       console.log('[SwipeCards] Triggering prefetch due to low profiles', { currentIndex, profilesCount: profiles.length, threshold: prefetchThreshold });
       prefetchNextBatch();
     } else if (isPrefetching) {
       console.log('[SwipeCards] Prefetch skipped - already in progress', { currentIndex, profilesCount: profiles.length });
+    } else if (noMoreProfiles) {
+      console.log('[SwipeCards] Prefetch skipped - no more profiles to load', { currentIndex, profilesCount: profiles.length });
     }
-  }, [currentIndex, profiles.length, isPrefetching, prefetchThreshold, prefetchNextBatch]);
+  }, [currentIndex, profiles.length, isPrefetching, noMoreProfiles, prefetchThreshold, prefetchNextBatch]);
   
   useEffect(() => {
     console.log('[SwipeCards] Profiles or index updated', { currentIndex, profilesCount: profiles.length });
