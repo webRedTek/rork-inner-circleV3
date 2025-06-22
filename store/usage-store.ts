@@ -306,7 +306,7 @@ export const useUsageStore = create<UsageState>()(
       syncUsageData: async (force?: boolean) => {
         const { user } = useAuthStore.getState();
         const { usageCache, batchUpdates, syncStrategy, cacheConfig, retryStrategy } = get();
-        const { showNotification } = useNotificationStore.getState();
+        const notificationStore = useNotificationStore.getState();
 
         if (!user || !isSupabaseConfigured() || !supabase) {
           console.warn('Cannot sync usage data: User not authenticated or Supabase not configured');
@@ -382,10 +382,12 @@ export const useUsageStore = create<UsageState>()(
             lastSyncError: getReadableError(error),
           });
 
-          showNotification({
+          notificationStore.addNotification({
             title: 'Usage Sync Error',
             message: 'Failed to sync usage data. Will retry automatically.',
             type: 'error',
+            displayStyle: 'toast',
+            duration: 5000
           });
         }
       },
@@ -471,22 +473,18 @@ export const useUsageStore = create<UsageState>()(
           });
           console.log('Usage cache reset successfully');
           useNotificationStore.getState().addNotification({
-            id: `usage-reset-${Date.now()}`,
             type: 'success',
             message: 'Usage data reset successfully',
             displayStyle: 'toast',
-            duration: 3000,
-            timestamp: Date.now()
+            duration: 3000
           });
         } catch (error) {
           console.error('Error resetting usage cache:', getReadableError(error));
           useNotificationStore.getState().addNotification({
-            id: `usage-reset-error-${Date.now()}`,
             type: 'error',
             message: 'Failed to reset usage data',
             displayStyle: 'toast',
-            duration: 5000,
-            timestamp: Date.now()
+            duration: 5000
           });
         }
       }
