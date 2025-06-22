@@ -95,6 +95,11 @@ const retryOperation = async <T>(operation: () => Promise<T>, maxRetries: number
   return null;
 };
 
+interface PassedUser {
+  id: string;
+  timestamp: number;
+}
+
 interface MatchesState {
   potentialMatches: UserProfile[];
   cachedMatches: UserProfile[];
@@ -110,6 +115,8 @@ interface MatchesState {
   swipeLimitReached: boolean;
   matchLimitReached: boolean;
   noMoreProfiles: boolean;
+  passedUsers: PassedUser[];
+  pendingLikes: Set<string>;
   fetchPotentialMatches: (maxDistance?: number, forceRefresh?: boolean) => Promise<void>;
   prefetchNextBatch: (maxDistance?: number) => Promise<void>;
   likeUser: (userId: string) => Promise<MatchWithProfile | null>;
@@ -121,7 +128,12 @@ interface MatchesState {
   clearError: () => void;
   clearNewMatch: () => void;
   resetCacheAndState: () => Promise<void>;
+  cleanupExpiredPasses: () => Promise<void>;
 }
+
+// Constants
+const PASS_EXPIRY_DAYS = 3;
+const PASSED_USERS_KEY = 'passed_users';
 
 export const useMatchesStore = create<MatchesState>()(
   persist(
@@ -140,6 +152,8 @@ export const useMatchesStore = create<MatchesState>()(
       swipeLimitReached: false,
       matchLimitReached: false,
       noMoreProfiles: false,
+      passedUsers: [],
+      pendingLikes: new Set(),
       fetchPotentialMatches: async (maxDistance = 50, forceRefresh = false) => {
         const { user, isReady } = useAuthStore.getState();
         if (!isReady || !user) {
@@ -150,11 +164,23 @@ export const useMatchesStore = create<MatchesState>()(
         
         set({ isLoading: true, error: null });
         try {
+          // Clean up expired passes first
+          await get().cleanupExpiredPasses();
+          
+          // Get current passed users and pending likes
+          const passedUserIds = get().passedUsers.map(pass => pass.id);
+          const pendingLikeIds = Array.from(get().pendingLikes);
+          
           // If we have cached matches and not forcing refresh, use them
           if (!forceRefresh && get().cachedMatches.length > 0) {
             const { cachedMatches } = get();
-            const batchToShow = cachedMatches.slice(0, get().batchSize);
-            const remainingCache = cachedMatches.slice(get().batchSize);
+            // Filter out passed users and pending likes from cached matches
+            const filteredCache = cachedMatches.filter(match => 
+              !passedUserIds.includes(match.id) && 
+              !pendingLikeIds.includes(match.id)
+            );
+            const batchToShow = filteredCache.slice(0, get().batchSize);
+            const remainingCache = filteredCache.slice(get().batchSize);
             console.log('[MatchesStore] Using cached matches', { batchToShow: batchToShow.length, remainingCache: remainingCache.length });
             set({ 
               potentialMatches: batchToShow, 
@@ -192,11 +218,17 @@ export const useMatchesStore = create<MatchesState>()(
               return profile;
             });
             
-            // Split into potential and cached
-            const batchToShow = potentialMatches.slice(0, get().batchSize);
-            const remainingCache = potentialMatches.slice(get().batchSize);
+            // After fetching new matches, filter out passed users and pending likes
+            const filteredMatches = potentialMatches.filter(match => 
+              !passedUserIds.includes(match.id) && 
+              !pendingLikeIds.includes(match.id)
+            );
             
-            console.log('[MatchesStore] Fetched potential matches', { total: potentialMatches.length, batchToShow: batchToShow.length, cached: remainingCache.length });
+            // Split into potential and cached
+            const batchToShow = filteredMatches.slice(0, get().batchSize);
+            const remainingCache = filteredMatches.slice(get().batchSize);
+            
+            console.log('[MatchesStore] Fetched potential matches', { total: filteredMatches.length, batchToShow: batchToShow.length, cached: remainingCache.length });
             set({ 
               potentialMatches: batchToShow, 
               cachedMatches: remainingCache, 
@@ -209,6 +241,7 @@ export const useMatchesStore = create<MatchesState>()(
         } catch (error) {
           console.error('[MatchesStore] Error fetching potential matches:', getReadableError(error));
           notifyError('Error fetching matches: ' + getReadableError(error));
+          const tierSettings = useAuthStore.getState().getTierSettings();
           set({ 
             error: tierSettings?.global_discovery ? "No global matches found. Try adjusting your preferences." : "No matches found in your area. Try increasing your distance.",
             isLoading: false,
@@ -276,6 +309,7 @@ export const useMatchesStore = create<MatchesState>()(
         } catch (error) {
           console.error('[MatchesStore] Error prefetching potential matches:', getReadableError(error));
           notifyError('Error prefetching matches: ' + getReadableError(error));
+          const tierSettings = useAuthStore.getState().getTierSettings();
           set({ 
             error: tierSettings?.global_discovery ? "No additional global matches found." : "No additional matches found in your area.",
             isPrefetching: false,
@@ -292,6 +326,11 @@ export const useMatchesStore = create<MatchesState>()(
         
         set({ isLoading: true, error: null });
         try {
+          // Add to pending likes
+          set(state => ({
+            pendingLikes: new Set([...state.pendingLikes, userId])
+          }));
+          
           // Check swipe limits using usage store
           const result = await useUsageStore.getState().trackUsage({ actionType: 'swipe', batchProcess: true });
           if (!result.isAllowed) {
@@ -338,6 +377,12 @@ export const useMatchesStore = create<MatchesState>()(
           // Return null for now - match will be processed in batch
           return null;
         } catch (error) {
+          // Remove from pending likes if there was an error
+          set(state => {
+            const newPendingLikes = new Set(state.pendingLikes);
+            newPendingLikes.delete(userId);
+            return { pendingLikes: newPendingLikes };
+          });
           console.error('[MatchesStore] Error liking user:', getReadableError(error));
           notifyError('Error liking user: ' + getReadableError(error));
           set({ 
@@ -364,7 +409,28 @@ export const useMatchesStore = create<MatchesState>()(
             throw new Error('Daily swipe limit reached');
           }
           
-          // Add to swipe queue instead of processing immediately
+          // Add to passed users in local storage
+          const passedUser: PassedUser = {
+            id: userId,
+            timestamp: Date.now()
+          };
+          
+          // Update state with new passed user
+          set(state => ({
+            passedUsers: [...state.passedUsers, passedUser]
+          }));
+          
+          // Store in AsyncStorage
+          try {
+            const existingPassedUsers = await AsyncStorage.getItem(PASSED_USERS_KEY);
+            const passedUsers = existingPassedUsers ? JSON.parse(existingPassedUsers) : [];
+            passedUsers.push(passedUser);
+            await AsyncStorage.setItem(PASSED_USERS_KEY, JSON.stringify(passedUsers));
+          } catch (storageError) {
+            console.error('Error storing passed user:', storageError);
+          }
+          
+          // Add to swipe queue for analytics/tracking
           await get().queueSwipe(userId, 'left');
           
           // Remove the passed user from potential matches
@@ -491,6 +557,20 @@ export const useMatchesStore = create<MatchesState>()(
               swipeQueue: [], 
               isLoading: false 
             });
+            
+            // Clear pending likes for processed swipes
+            const processedIds = result.processed_swipes.map(
+              (swipe: any) => swipe.swipee_id
+            );
+            set(state => {
+              const newPendingLikes = new Set(state.pendingLikes);
+              processedIds.forEach(id => newPendingLikes.delete(id));
+              return { 
+                pendingLikes: newPendingLikes,
+                swipeQueue: [],
+                isLoading: false 
+              };
+            });
           } else {
             throw new Error('Supabase is not configured');
           }
@@ -580,6 +660,7 @@ export const useMatchesStore = create<MatchesState>()(
           set({
             potentialMatches: [],
             cachedMatches: [],
+            matches: [],
             swipeQueue: [],
             error: null,
             newMatch: null,
@@ -587,7 +668,9 @@ export const useMatchesStore = create<MatchesState>()(
             matchLimitReached: false,
             isLoading: false,
             isPrefetching: false,
-            noMoreProfiles: false
+            noMoreProfiles: false,
+            passedUsers: [],
+            pendingLikes: new Set()
           });
           
           // Clear in-memory cache
@@ -628,14 +711,43 @@ export const useMatchesStore = create<MatchesState>()(
             duration: 5000
           });
         }
+      },
+
+      cleanupExpiredPasses: async () => {
+        try {
+          const now = Date.now();
+          const expiryTime = PASS_EXPIRY_DAYS * 24 * 60 * 60 * 1000; // 3 days in milliseconds
+          
+          // Clean up state
+          set(state => ({
+            passedUsers: state.passedUsers.filter(pass => (now - pass.timestamp) < expiryTime)
+          }));
+          
+          // Clean up AsyncStorage
+          const existingPassedUsers = await AsyncStorage.getItem(PASSED_USERS_KEY);
+          if (existingPassedUsers) {
+            const passedUsers: PassedUser[] = JSON.parse(existingPassedUsers);
+            const validPasses = passedUsers.filter(pass => (now - pass.timestamp) < expiryTime);
+            await AsyncStorage.setItem(PASSED_USERS_KEY, JSON.stringify(validPasses));
+          }
+        } catch (error) {
+          console.error('[MatchesStore] Error cleaning up passed users:', error);
+        }
       }
     }),
     {
       name: 'matches-storage',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
-        matches: state.matches, // Only persist the matches
+        ...state,
+        pendingLikes: Array.from(state.pendingLikes) // Convert Set to Array for storage
       }),
+      onRehydrateStorage: () => (state) => {
+        // Convert Array back to Set after rehydration
+        if (state && Array.isArray(state.pendingLikes)) {
+          state.pendingLikes = new Set(state.pendingLikes);
+        }
+      }
     }
   )
 );
