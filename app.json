@@ -18,7 +18,8 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.innercircle.myapp"
+      "bundleIdentifier": "com.innercircle.myapp",
+			"buildNumber": "2"
     },
     "android": {
       "adaptiveIcon": {
