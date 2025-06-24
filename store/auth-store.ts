@@ -23,7 +23,7 @@ interface AuthState {
   updateProfile: (data: Partial<UserProfile>) => Promise<void>;
   updateMembership: (tier: MembershipTier) => Promise<void>;
   fetchTierSettings: (userId: string, forceRefresh?: boolean) => Promise<void>;
-  getTierSettings: () => TierSettings | null;
+  getTierSettings: () => TierSettings;
   invalidateTierSettingsCache: () => Promise<void>;
   clearError: () => void;
   clearCache: () => Promise<void>;
@@ -89,9 +89,6 @@ const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
     successHighlight: String(camelCaseData.successHighlight || ''),
   };
 };
-
-// Cache expiration time (24 hours in milliseconds)
-const CACHE_EXPIRATION_TIME = 24 * 60 * 60 * 1000;
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -532,15 +529,14 @@ export const useAuthStore = create<AuthState>()(
           throw new Error('Cannot fetch tier settings: Invalid user ID or Supabase not configured');
         }
 
-        // Check if cached settings are still valid (less than 24 hours old)
-        const { tierSettingsTimestamp } = get();
-        const now = Date.now();
-        if (!forceRefresh && tierSettingsTimestamp && (now - tierSettingsTimestamp) < CACHE_EXPIRATION_TIME) {
-          console.log('Using cached tier settings', { ageInHours: (now - tierSettingsTimestamp) / (60 * 60 * 1000) });
+        // Don't fetch if we already have settings and not forcing refresh
+        const { tierSettings } = get();
+        if (!forceRefresh && tierSettings) {
+          console.log('Using existing tier settings from cache');
           return;
         }
 
-        // Don't fetch if we're already loading
+        // Don't fetch if we're already loading and not forcing refresh
         if (get().isLoading && !forceRefresh) {
           console.log('Skipping tier settings fetch: Already loading');
           return;
@@ -569,14 +565,19 @@ export const useAuthStore = create<AuthState>()(
           if (tierError) {
             console.error('Error fetching tier settings:', JSON.stringify(tierError, null, 2));
             throw new Error(`Failed to fetch tier settings: ${getReadableError(tierError)}`);
-          } else {
-            console.log('Tier settings fetched successfully:', tierSettings);
-            set({ 
-              tierSettings: tierSettings as TierSettings, 
-              tierSettingsTimestamp: now,
-              isLoading: false 
-            });
           }
+
+          if (!tierSettings) {
+            throw new Error('No tier settings returned from server');
+          }
+
+          // Update cache with fresh settings
+          console.log('Tier settings fetched successfully:', tierSettings);
+          set({ 
+            tierSettings: tierSettings as TierSettings,
+            tierSettingsTimestamp: Date.now(), // Keep timestamp for debugging only
+            isLoading: false 
+          });
         } catch (error) {
           console.error('Fetch tier settings error:', JSON.stringify(error, null, 2));
           set({ 
@@ -588,12 +589,21 @@ export const useAuthStore = create<AuthState>()(
       },
 
       getTierSettings: () => {
-        const { tierSettings, tierSettingsTimestamp } = get();
-        const now = Date.now();
-        if (tierSettings && tierSettingsTimestamp && (now - tierSettingsTimestamp) < CACHE_EXPIRATION_TIME) {
+        const { tierSettings, user } = get();
+        if (tierSettings) {
           return tierSettings;
         }
-        throw new Error('Tier settings not available or cache expired');
+        
+        // If no tier settings but we have a user, trigger fetchTierSettings
+        if (user) {
+          // We already have a function that handles fetching and caching
+          get().fetchTierSettings(user.id, true).catch(error => {
+            console.error('Error fetching tier settings:', error);
+          });
+          throw new Error('Tier settings are being refreshed. Please retry in a moment.');
+        }
+        
+        throw new Error('User not authenticated');
       },
 
       invalidateTierSettingsCache: async () => {
