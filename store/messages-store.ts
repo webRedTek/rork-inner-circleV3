@@ -88,7 +88,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         if (!result.isAllowed) {
           throw {
             category: ErrorCategory.RATE_LIMIT,
-            code: ErrorCodes.USAGE_LIMIT_EXCEEDED,
+            code: ErrorCodes.RATE_LIMIT_EXCEEDED,
             message: 'Daily message limit reached. Upgrade your plan for more messages.'
           };
         }
@@ -96,7 +96,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         if (!isSupabaseConfigured() || !supabase) {
           throw {
             category: ErrorCategory.DATABASE,
-            code: ErrorCodes.DATABASE_NOT_CONFIGURED,
+            code: ErrorCodes.DB_CONNECTION_ERROR,
             message: 'Database is not configured'
           };
         }
@@ -133,7 +133,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         if (insertError) {
           throw {
             category: ErrorCategory.DATABASE,
-            code: ErrorCodes.DATABASE_INSERT_FAILED,
+            code: ErrorCodes.DB_QUERY_ERROR,
             message: getReadableError(insertError)
           };
         }
@@ -176,10 +176,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         });
       });
     } catch (error) {
-      const handledError = handleError(error, {
-        defaultMessage: 'Failed to send message',
-        context: { conversationId }
-      });
+      const handledError = handleError(error);
 
       set({ 
         error: { ...get().error, [conversationId]: handledError.message }, 
