@@ -12,6 +12,7 @@ interface AuthState {
   user: UserProfile | null;
   tierSettings: TierSettings | null;
   tierSettingsTimestamp: number | null;
+  hasFetchedTierSettingsThisSession: boolean;
   isAuthenticated: boolean;
   isLoading: boolean;
   isReady: boolean;
@@ -22,8 +23,8 @@ interface AuthState {
   logout: () => Promise<void>;
   updateProfile: (data: Partial<UserProfile>) => Promise<void>;
   updateMembership: (tier: MembershipTier) => Promise<void>;
-  fetchTierSettings: (userId: string, forceRefresh?: boolean) => Promise<void>;
-  getTierSettings: () => TierSettings;
+  fetchTierSettings: (userId: string) => Promise<void>;
+  getTierSettings: () => TierSettings | null;
   invalidateTierSettingsCache: () => Promise<void>;
   clearError: () => void;
   clearCache: () => Promise<void>;
@@ -96,6 +97,7 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       tierSettings: null,
       tierSettingsTimestamp: null,
+      hasFetchedTierSettingsThisSession: false,
       isAuthenticated: false,
       isLoading: false,
       isReady: false,
@@ -376,29 +378,24 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: async () => {
-        set({ isLoading: true });
         try {
           if (isSupabaseConfigured() && supabase) {
-            await supabase.auth.signOut();
-            stopUsageSync();
+            const { error } = await supabase.auth.signOut();
+            if (error) throw error;
           }
           
-          set({
+          set({ 
             user: null,
-            tierSettings: null,
-            tierSettingsTimestamp: null,
             isAuthenticated: false,
-            isLoading: false,
-            error: null,
+            hasFetchedTierSettingsThisSession: false,
+            // Keep tier settings in cache but mark for refresh next session
+            tierSettingsTimestamp: null
           });
           
-          await get().clearCache();
+          stopUsageSync();
         } catch (error) {
           console.error('Logout error:', error);
-          set({
-            isLoading: false,
-            error: getReadableError(error),
-          });
+          set({ error: getReadableError(error) });
         }
       },
 
@@ -493,7 +490,7 @@ export const useAuthStore = create<AuthState>()(
               isLoading: false,
             });
             // Refresh tier settings after membership update
-            await get().fetchTierSettings(user.id, true);
+            await get().fetchTierSettings(user.id);
           } else {
             throw new Error('Database is not configured');
           }
@@ -518,44 +515,22 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      fetchTierSettings: async (userId: string, forceRefresh = false) => {
+      fetchTierSettings: async (userId: string) => {
         // Guard clause to prevent fetching if user ID is invalid
         if (!userId || userId.trim() === '' || !isSupabaseConfigured() || !supabase) {
-          console.log('Skipping tier settings fetch: Invalid user ID or database not configured', { 
-            userId, 
-            supabaseConfigured: isSupabaseConfigured(),
-            hasSupabase: !!supabase
-          });
-          throw new Error('Cannot fetch tier settings: Invalid user ID or Supabase not configured');
-        }
-
-        // Don't fetch if we already have settings and not forcing refresh
-        const { tierSettings } = get();
-        if (!forceRefresh && tierSettings) {
-          console.log('Using existing tier settings from cache');
+          console.log('Skipping tier settings fetch: Invalid user ID or database not configured');
           return;
         }
 
-        // Don't fetch if we're already loading and not forcing refresh
-        if (get().isLoading && !forceRefresh) {
-          console.log('Skipping tier settings fetch: Already loading');
+        // Don't fetch if we've already fetched this session
+        if (get().hasFetchedTierSettingsThisSession) {
+          console.log('Already fetched tier settings this session, using cache');
           return;
         }
 
-        set({ isLoading: true, error: null });
         try {
-          // Check network connectivity first
-          const state = await NetInfo.fetch();
-          set({ networkStatus: { isConnected: state.isConnected, type: state.type } });
-          
-          if (state.isConnected === false) {
-            console.warn('Network appears to be offline. Cannot fetch tier settings.');
-            throw new Error('Network appears to be offline. Cannot fetch tier settings.');
-          }
-          
           console.log('Fetching tier settings for user:', userId);
           
-          // Use retry operation for tier settings fetch
           const { data: tierSettings, error: tierError } = await retryOperation(async () => {
             if (!supabase) throw new Error('Supabase client is not initialized');
             return await supabase
@@ -563,62 +538,62 @@ export const useAuthStore = create<AuthState>()(
           });
             
           if (tierError) {
-            console.error('Error fetching tier settings:', JSON.stringify(tierError, null, 2));
-            throw new Error(`Failed to fetch tier settings: ${getReadableError(tierError)}`);
+            console.error('Error fetching tier settings:', tierError);
+            return; // Don't throw, just keep using cached settings
           }
 
-          if (!tierSettings) {
-            throw new Error('No tier settings returned from server');
+          if (tierSettings) {
+            // Update cache with fresh settings
+            console.log('Tier settings fetched successfully:', tierSettings);
+            set({ 
+              tierSettings: tierSettings as TierSettings,
+              tierSettingsTimestamp: Date.now(),
+            });
           }
-
-          // Update cache with fresh settings
-          console.log('Tier settings fetched successfully:', tierSettings);
-          set({ 
-            tierSettings: tierSettings as TierSettings,
-            tierSettingsTimestamp: Date.now(), // Keep timestamp for debugging only
-            isLoading: false 
-          });
         } catch (error) {
-          console.error('Fetch tier settings error:', JSON.stringify(error, null, 2));
-          set({ 
-            error: getReadableError(error), 
-            isLoading: false 
-          });
-          throw new Error(`Error fetching tier settings: ${getReadableError(error)}`);
+          console.error('Fetch tier settings error:', error);
+          // Don't throw or set error state, just keep using cached settings
+        } finally {
+          // Mark that we've attempted the fetch this session
+          set({ hasFetchedTierSettingsThisSession: true });
         }
       },
 
       getTierSettings: () => {
         const { tierSettings, user } = get();
+        
+        // If we have cached settings, return them immediately
         if (tierSettings) {
+          // Trigger background fetch if we haven't this session
+          if (user && !get().hasFetchedTierSettingsThisSession) {
+            get().fetchTierSettings(user.id).catch(() => {
+              // Silently handle any errors - we're already using cached settings
+            });
+          }
           return tierSettings;
         }
         
-        // If no tier settings but we have a user, trigger fetchTierSettings
+        // If no cached settings but we have a user, fetch them
         if (user) {
-          // We already have a function that handles fetching and caching
-          get().fetchTierSettings(user.id, true).catch(error => {
-            console.error('Error fetching tier settings:', error);
+          // This should only happen on first app load before any cache
+          get().fetchTierSettings(user.id).catch(() => {
+            // Silently handle any errors
           });
-          throw new Error('Tier settings are being refreshed. Please retry in a moment.');
         }
         
-        throw new Error('User not authenticated');
+        return null;
       },
 
       invalidateTierSettingsCache: async () => {
-        set({ tierSettingsTimestamp: null });
         const { user } = get();
         if (user) {
-          await get().fetchTierSettings(user.id, true);
+          // Reset the session flag so we'll fetch again
+          set({ 
+            hasFetchedTierSettingsThisSession: false,
+            tierSettingsTimestamp: null 
+          });
+          await get().fetchTierSettings(user.id);
         }
-        console.log('Tier settings cache invalidated');
-        useNotificationStore.getState().addNotification({
-          type: 'success',
-          message: 'Tier settings refreshed',
-          displayStyle: 'toast',
-          duration: 3000,
-        });
       },
 
       clearError: () => set({ error: null }),
@@ -631,6 +606,7 @@ export const useAuthStore = create<AuthState>()(
             user: null, 
             tierSettings: null,
             tierSettingsTimestamp: null,
+            hasFetchedTierSettingsThisSession: false,
             isAuthenticated: false, 
             isLoading: false,
             error: null
@@ -644,17 +620,8 @@ export const useAuthStore = create<AuthState>()(
             duration: 3000,
           });
         } catch (error) {
-          console.error('Error clearing auth cache:', getReadableError(error));
-          set({ 
-            error: getReadableError(error), 
-            isLoading: false 
-          });
-          useNotificationStore.getState().addNotification({
-            type: 'error',
-            message: 'Failed to clear app cache',
-            displayStyle: 'toast',
-            duration: 5000,
-          });
+          console.error('Error clearing auth cache:', error);
+          set({ error: getReadableError(error), isLoading: false });
         }
       },
 
@@ -716,7 +683,13 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-      storage: createJSONStorage(() => AsyncStorage),
+      // Only persist these fields
+      partialize: (state) => ({
+        user: state.user,
+        tierSettings: state.tierSettings,
+        tierSettingsTimestamp: state.tierSettingsTimestamp,
+        isAuthenticated: state.isAuthenticated
+      })
     }
   )
 );
