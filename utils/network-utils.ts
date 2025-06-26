@@ -38,3 +38,25 @@ export function isNetworkError(error: any): boolean {
     message.includes("timeout")
   );
 }
+
+/**
+ * Wrapper function to handle operations that require network connectivity.
+ * Checks network status before operation and handles network-related errors.
+ * @param operation - The async operation to execute.
+ * @returns Promise with the operation result.
+ */
+export async function withNetworkCheck<T>(operation: () => Promise<T>): Promise<T> {
+  const status = await checkNetworkStatus();
+  if (!status.isConnected) {
+    throw new Error('No network connection available');
+  }
+  try {
+    return await operation();
+  } catch (error) {
+    if (isNetworkError(error)) {
+      // Re-check network status on network errors
+      await checkNetworkStatus();
+    }
+    throw error;
+  }
+}
