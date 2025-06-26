@@ -4,6 +4,8 @@ import { isSupabaseConfigured, supabase, convertToCamelCase, convertToSnakeCase 
 import { useAuthStore } from './auth-store';
 import { useUsageStore } from './usage-store';
 import { useNotificationStore } from './notification-store';
+import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
+import { withNetworkCheck } from '@/utils/network-utils';
 
 // Helper function to extract readable error message from Supabase error
 const getReadableError = (error: any): string => {
@@ -36,9 +38,6 @@ const supabaseToMessage = (data: Record<string, any>): Message => {
     receiverId: String(camelCaseData.receiverId || ''),
     content: String(camelCaseData.content || ''),
     type: camelCaseData.type as Message['type'],
-    voiceUrl: camelCaseData.voiceUrl,
-    voiceDuration: camelCaseData.voiceDuration,
-    imageUrl: camelCaseData.imageUrl,
     createdAt: Number(camelCaseData.createdAt || Date.now()),
     read: Boolean(camelCaseData.read || false),
   };
@@ -51,7 +50,6 @@ interface MessagesState {
   pagination: Record<string, { page: number; hasMore: boolean; lastFetched: number }>; // Pagination info per conversation
   subscriptions: Record<string, any>; // Real-time subscription handles
   sendMessage: (conversationId: string, content: string, receiverId: string) => Promise<void>;
-  sendVoiceMessage: (conversationId: string, voiceUrl: string, duration: number, receiverId: string) => Promise<void>;
   getMessages: (conversationId: string, pageSize?: number) => Promise<void>;
   loadMoreMessages: (conversationId: string, pageSize?: number) => Promise<void>;
   markAsRead: (conversationId: string) => Promise<void>;
@@ -71,21 +69,38 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   sendMessage: async (conversationId: string, content: string, receiverId: string) => {
     const { user, isReady } = useAuthStore.getState();
     if (!isReady || !user) {
-      throw new Error('User not ready or authenticated for sending message');
+      throw {
+        category: ErrorCategory.AUTH,
+        code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
+        message: 'User not ready or authenticated for sending message'
+      };
     }
     
     set(state => ({ 
       isLoading: { ...state.isLoading, [conversationId]: true },
       error: { ...state.error, [conversationId]: null }
     }));
+
     try {
-      // Check message sending limit based on tier settings
-      const result = await useUsageStore.getState().trackUsage({ actionType: 'message', batchProcess: true });
-      if (!result.isAllowed) {
-        throw new Error('Daily message limit reached. Upgrade your plan for more messages.');
-      }
-      
-      if (isSupabaseConfigured() && supabase) {
+      await withNetworkCheck(async () => {
+        // Check message sending limit based on tier settings
+        const result = await useUsageStore.getState().trackUsage({ actionType: 'message', batchProcess: true });
+        if (!result.isAllowed) {
+          throw {
+            category: ErrorCategory.RATE_LIMIT,
+            code: ErrorCodes.USAGE_LIMIT_EXCEEDED,
+            message: 'Daily message limit reached. Upgrade your plan for more messages.'
+          };
+        }
+        
+        if (!isSupabaseConfigured() || !supabase) {
+          throw {
+            category: ErrorCategory.DATABASE,
+            code: ErrorCodes.DATABASE_NOT_CONFIGURED,
+            message: 'Database is not configured'
+          };
+        }
+
         // Create message in Supabase
         const newMessage: Message = {
           id: `msg-${Date.now()}`,
@@ -101,18 +116,43 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         const messageRecord = convertToSnakeCase(newMessage);
         messageRecord.conversation_id = conversationId;
         
-        const { error: insertError } = await supabase
-          .from('messages')
-          .insert(messageRecord);
+        // Insert message with retry on network errors
+        const { error: insertError } = await withRetry(
+          async () => {
+            if (!supabase) throw new Error('Supabase client is not initialized');
+            return await supabase
+              .from('messages')
+              .insert(messageRecord);
+          },
+          {
+            maxRetries: 3,
+            shouldRetry: (error) => error.category === ErrorCategory.NETWORK
+          }
+        );
           
-        if (insertError) throw insertError;
+        if (insertError) {
+          throw {
+            category: ErrorCategory.DATABASE,
+            code: ErrorCodes.DATABASE_INSERT_FAILED,
+            message: getReadableError(insertError)
+          };
+        }
         
         // Update last message timestamp in match if it's a match conversation
         if (conversationId.startsWith('match-')) {
-          const { error: updateMatchError } = await supabase
-            .from('matches')
-            .update({ last_message_at: newMessage.createdAt })
-            .eq('id', conversationId);
+          const { error: updateMatchError } = await withRetry(
+            async () => {
+              if (!supabase) throw new Error('Supabase client is not initialized');
+              return await supabase
+                .from('matches')
+                .update({ last_message_at: newMessage.createdAt })
+                .eq('id', conversationId);
+            },
+            {
+              maxRetries: 2,
+              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
+            }
+          );
             
           if (updateMatchError) {
             console.warn('Failed to update match last_message_at:', getReadableError(updateMatchError));
@@ -134,93 +174,15 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           }, 
           isLoading: { ...get().isLoading, [conversationId]: false }
         });
-      } else {
-        throw new Error('Database is not configured');
-      }
-    } catch (error) {
-      console.error('Error sending message:', getReadableError(error));
-      set({ 
-        error: { ...get().error, [conversationId]: getReadableError(error) }, 
-        isLoading: { ...get().isLoading, [conversationId]: false }
       });
-    }
-  },
-
-  sendVoiceMessage: async (conversationId: string, voiceUrl: string, duration: number, receiverId: string) => {
-    const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) {
-      throw new Error('User not ready or authenticated for sending voice message');
-    }
-    
-    set(state => ({ 
-      isLoading: { ...state.isLoading, [conversationId]: true },
-      error: { ...state.error, [conversationId]: null }
-    }));
-    try {
-      // Check message sending limit using usage store
-      const result = await useUsageStore.getState().trackUsage({ actionType: 'message', batchProcess: true });
-      if (!result.isAllowed) {
-        throw new Error('Daily message limit reached. Upgrade your plan for more messages.');
-      }
-      
-      if (isSupabaseConfigured() && supabase) {
-        // Create voice message in Supabase
-        const newMessage: Message = {
-          id: `msg-${Date.now()}`,
-          senderId: user.id,
-          receiverId,
-          content: 'Voice message',
-          type: 'voice',
-          voiceUrl,
-          voiceDuration: duration,
-          createdAt: Date.now(),
-          read: false
-        };
-        
-        // Convert to snake_case for Supabase
-        const messageRecord = convertToSnakeCase(newMessage);
-        messageRecord.conversation_id = conversationId;
-        
-        const { error: insertError } = await supabase
-          .from('messages')
-          .insert(messageRecord);
-          
-        if (insertError) throw insertError;
-        
-        // Update last message timestamp in match if it's a match conversation
-        if (conversationId.startsWith('match-')) {
-          const { error: updateMatchError } = await supabase
-            .from('matches')
-            .update({ last_message_at: newMessage.createdAt })
-            .eq('id', conversationId);
-            
-          if (updateMatchError) {
-            console.warn('Failed to update match last_message_at:', getReadableError(updateMatchError));
-          }
-        }
-        
-        // Get existing messages for this conversation
-        const { messages } = get();
-        const conversationMessages = messages[conversationId] || [];
-        
-        // Add new message
-        const updatedMessages = [...conversationMessages, newMessage];
-        
-        // Update state
-        set({ 
-          messages: { 
-            ...messages, 
-            [conversationId]: updatedMessages 
-          }, 
-          isLoading: { ...get().isLoading, [conversationId]: false }
-        });
-      } else {
-        throw new Error('Database is not configured');
-      }
     } catch (error) {
-      console.error('Error sending voice message:', getReadableError(error));
+      const handledError = handleError(error, {
+        defaultMessage: 'Failed to send message',
+        context: { conversationId }
+      });
+
       set({ 
-        error: { ...get().error, [conversationId]: getReadableError(error) }, 
+        error: { ...get().error, [conversationId]: handledError.message }, 
         isLoading: { ...get().isLoading, [conversationId]: false }
       });
     }
