@@ -21,6 +21,24 @@ export default function MembershipScreen() {
   const [selectedTier, setSelectedTier] = useState<MembershipTier>(user?.membershipTier || 'basic');
   const [loading, setLoading] = useState(false);
   
+  if (!tierSettings) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <Stack.Screen options={{ title: 'Membership Plans' }} />
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Error: Membership settings are not available. Please try again later.</Text>
+          <Button
+            title="Back"
+            onPress={() => router.back()}
+            variant="outline"
+            size="large"
+            style={styles.backButton}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
+  
   const handleUpgrade = async () => {
     if (!user) return;
     
@@ -87,12 +105,12 @@ export default function MembershipScreen() {
             <View style={styles.planFeatures}>
               {renderFeature('Create a basic profile', true)}
               {renderFeature('Discover entrepreneurs', true)}
-              {renderFeature(`Limited swipes per day (${tierSettings?.daily_swipe_limit || 10})`, true)}
+              {renderFeature(`Limited swipes per day (${tierSettings.daily_swipe_limit})`, true)}
               {renderFeature('Message your matches', true)}
-              {renderFeature('Join groups', false)}
-              {renderFeature('Create a portfolio', false)}
-              {renderFeature('Advanced matching algorithm', false)}
-              {renderFeature('Priority in discovery queue', false)}
+              {renderFeature('Join groups', tierSettings.groups_limit > 0)}
+              {renderFeature('Create a portfolio', tierSettings.featured_portfolio_limit > 0)}
+              {renderFeature('Advanced matching algorithm', tierSettings.premium_filters_access)}
+              {renderFeature('Priority in discovery queue', tierSettings.priority_listing)}
             </View>
             
             {user?.membershipTier === 'basic' && (
@@ -117,13 +135,13 @@ export default function MembershipScreen() {
             
             <View style={styles.planFeatures}>
               {renderFeature('All Basic features', true)}
-              {renderFeature(`Increased swipes per day (30)`, true)}
-              {renderFeature('Join 1 group', true)}
-              {renderFeature('Create a basic portfolio', true)}
-              {renderFeature('See who liked you', true)}
-              {renderFeature('Advanced matching algorithm', false)}
-              {renderFeature('Priority in discovery queue', false)}
-              {renderFeature('Business verification badge', false)}
+              {renderFeature(`Increased swipes per day`, tierSettings.daily_swipe_limit > 10)}
+              {renderFeature('Join groups', tierSettings.groups_limit > 0)}
+              {renderFeature('Create a basic portfolio', tierSettings.featured_portfolio_limit > 0)}
+              {renderFeature('See who liked you', tierSettings.can_see_who_liked_you)}
+              {renderFeature('Advanced matching algorithm', tierSettings.premium_filters_access)}
+              {renderFeature('Priority in discovery queue', tierSettings.priority_listing)}
+              {renderFeature('Business verification badge', tierSettings.has_business_verification)}
             </View>
             
             {user?.membershipTier === 'silver' && (
@@ -148,13 +166,13 @@ export default function MembershipScreen() {
             
             <View style={styles.planFeatures}>
               {renderFeature('All Silver features', true)}
-              {renderFeature('Unlimited swipes', true)}
-              {renderFeature('Join multiple groups', true)}
-              {renderFeature('Create an advanced portfolio', true)}
-              {renderFeature('See who liked you', true)}
-              {renderFeature('Advanced matching algorithm', true)}
-              {renderFeature('Priority in discovery queue', true)}
-              {renderFeature('Business verification badge', true)}
+              {renderFeature('Unlimited swipes', tierSettings.daily_swipe_limit === 0 || tierSettings.daily_swipe_limit > 50)}
+              {renderFeature('Join multiple groups', tierSettings.groups_limit > 1)}
+              {renderFeature('Create an advanced portfolio', tierSettings.featured_portfolio_limit > 1)}
+              {renderFeature('See who liked you', tierSettings.can_see_who_liked_you)}
+              {renderFeature('Advanced matching algorithm', tierSettings.premium_filters_access)}
+              {renderFeature('Priority in discovery queue', tierSettings.priority_listing)}
+              {renderFeature('Business verification badge', tierSettings.has_business_verification)}
             </View>
             
             {user?.membershipTier === 'gold' && (
@@ -288,5 +306,17 @@ const styles = StyleSheet.create({
   },
   backButton: {
     marginBottom: 16,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    color: Colors.dark.error,
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 20,
   },
 });
