@@ -18,7 +18,7 @@ import { MembershipTier } from '@/types/user';
 export default function MembershipScreen() {
   const router = useRouter();
   const { user, tierSettings, updateMembership, isLoading } = useAuthStore();
-  const [selectedTier, setSelectedTier] = useState<MembershipTier>(user?.membershipTier || 'basic');
+  const [selectedTier, setSelectedTier] = useState<MembershipTier>(user?.membershipTier || 'bronze');
   const [loading, setLoading] = useState(false);
   
   if (!tierSettings) {
@@ -89,16 +89,16 @@ export default function MembershipScreen() {
         </View>
         
         <View style={styles.plansContainer}>
-          {/* Basic Plan */}
+          {/* Bronze Plan */}
           <TouchableOpacity
             style={[
               styles.planCard,
-              selectedTier === 'basic' && styles.selectedPlan
+              selectedTier === 'bronze' && styles.selectedPlan
             ]}
-            onPress={() => setSelectedTier('basic')}
+            onPress={() => setSelectedTier('bronze')}
           >
             <View style={styles.planHeader}>
-              <Text style={styles.planName}>Basic</Text>
+              <Text style={styles.planName}>Bronze</Text>
               <Text style={styles.planPrice}>Free</Text>
             </View>
             
@@ -113,7 +113,7 @@ export default function MembershipScreen() {
               {renderFeature('Priority in discovery queue', tierSettings.priority_listing)}
             </View>
             
-            {user?.membershipTier === 'basic' && (
+            {user?.membershipTier === 'bronze' && (
               <View style={styles.currentPlanBadge}>
                 <Text style={styles.currentPlanText}>Current Plan</Text>
               </View>
@@ -134,7 +134,7 @@ export default function MembershipScreen() {
             </View>
             
             <View style={styles.planFeatures}>
-              {renderFeature('All Basic features', true)}
+              {renderFeature('All Bronze features', true)}
               {renderFeature(`Increased swipes per day`, tierSettings.daily_swipe_limit > 10)}
               {renderFeature('Join groups', tierSettings.groups_limit > 0)}
               {renderFeature('Create a basic portfolio', tierSettings.featured_portfolio_limit > 0)}

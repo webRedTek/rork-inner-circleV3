@@ -293,16 +293,28 @@ export const useUsageStore = create<UsageState>()(
         const { usageCache } = get();
         
         if (!user) {
-          throw new Error('User not authenticated for usage tracking');
+          throw {
+            category: 'AUTH',
+            code: 'AUTH_NOT_AUTHENTICATED',
+            message: 'User not authenticated for usage tracking'
+          };
         }
 
         if (!usageCache) {
-          throw new Error('Usage cache not initialized for tracking');
+          throw {
+            category: 'BUSINESS',
+            code: 'BUSINESS_LIMIT_REACHED',
+            message: 'Usage cache not initialized for tracking'
+          };
         }
 
         const tierSettings = useAuthStore.getState().getTierSettings();
         if (!tierSettings) {
-          throw new Error('Tier settings not available for usage limits');
+          throw {
+            category: 'BUSINESS',
+            code: 'BUSINESS_LIMIT_REACHED',
+            message: 'Tier settings not available for usage limits'
+          };
         }
 
         const limit = actionType === 'swipe' 
@@ -354,7 +366,11 @@ export const useUsageStore = create<UsageState>()(
         const tierSettings = useAuthStore.getState().getTierSettings();
         
         if (!usageCache || !tierSettings) {
-          throw new Error('Usage cache or tier settings not available for stats');
+          throw {
+            category: 'BUSINESS',
+            code: 'BUSINESS_LIMIT_REACHED',
+            message: 'Usage cache or tier settings not available for stats'
+          };
         }
 
         const swipeData = usageCache.usageData['swipe'] || { currentCount: 0 };
@@ -378,7 +394,11 @@ export const useUsageStore = create<UsageState>()(
       queueBatchUpdate: (actionType: string, countChange: number) => {
         const { user } = useAuthStore.getState();
         if (!user) {
-          throw new Error('User not authenticated for batch update');
+          throw {
+            category: 'AUTH',
+            code: 'AUTH_NOT_AUTHENTICATED',
+            message: 'User not authenticated for batch update'
+          };
         }
 
         const now = Date.now();
@@ -492,7 +512,11 @@ export const useUsageStore = create<UsageState>()(
       checkLimit: (actionType: string, limit: number) => {
         const { usageCache } = get();
         if (!usageCache || !usageCache.usageData[actionType]) {
-          throw new Error(`Usage data not available for action type: ${actionType}`);
+          throw {
+            category: 'BUSINESS',
+            code: 'BUSINESS_LIMIT_REACHED',
+            message: `Usage data not available for action type: ${actionType}`
+          };
         }
 
         const now = Date.now();
@@ -521,7 +545,11 @@ export const useUsageStore = create<UsageState>()(
       resetUsage: (actionType?: string) => {
         const { usageCache } = get();
         if (!usageCache) {
-          throw new Error('Usage cache not available for reset');
+          throw {
+            category: 'BUSINESS',
+            code: 'BUSINESS_LIMIT_REACHED',
+            message: 'Usage cache not available for reset'
+          };
         }
 
         const now = Date.now();
