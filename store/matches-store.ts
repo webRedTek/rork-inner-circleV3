@@ -10,8 +10,7 @@ import {
   fetchPotentialMatches as fetchPotentialMatchesFromSupabase, 
   processSwipeBatch as processSwipeBatchFromSupabase, 
   fetchUserMatches as fetchUserMatchesFromSupabase,
-  PotentialMatchesResult,
-  SupabaseError
+  PotentialMatchesResult
 } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
 import { notifyError } from '@/utils/notify';
@@ -106,6 +105,10 @@ const withRateLimitAndRetry = async <T>(operation: () => Promise<T>): Promise<T>
     shouldRetry: (error) => error.category === ErrorCategory.NETWORK
   });
 };
+
+interface SerializedMatchesState extends Omit<MatchesStateData, 'pendingLikes'> {
+  pendingLikes: string[];
+}
 
 interface MatchesStateData {
   potentialMatches: UserProfile[];
@@ -782,30 +785,29 @@ export const useMatchesStore = create<MatchesState>()(
       }
     })),
     {
-      name: 'matches-storage',
+      name: 'matches-store',
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state: MatchesState): MatchesStateData => ({
+      partialize: (state: MatchesStateData): SerializedMatchesState => ({
+        passedUsers: state.passedUsers,
+        pendingLikes: Array.from(state.pendingLikes),
+        swipeQueue: state.swipeQueue,
+        matches: state.matches,
+        error: state.error,
+        swipeLimitReached: state.swipeLimitReached,
+        matchLimitReached: state.matchLimitReached,
+        noMoreProfiles: state.noMoreProfiles,
         potentialMatches: state.potentialMatches,
         cachedMatches: state.cachedMatches,
-        matches: state.matches,
-        swipeQueue: state.swipeQueue,
         batchSize: state.batchSize,
         prefetchThreshold: state.prefetchThreshold,
         batchProcessingInterval: state.batchProcessingInterval,
         isLoading: state.isLoading,
         isPrefetching: state.isPrefetching,
-        error: state.error,
-        newMatch: state.newMatch,
-        swipeLimitReached: state.swipeLimitReached,
-        matchLimitReached: state.matchLimitReached,
-        noMoreProfiles: state.noMoreProfiles,
-        passedUsers: state.passedUsers,
-        pendingLikes: new Set(Array.from(state.pendingLikes))
+        newMatch: state.newMatch
       }),
-      onRehydrateStorage: () => (state: MatchesStateData | null) => {
-        if (state) {
-          // Convert pendingLikes back to Set after rehydration
-          state.pendingLikes = new Set(Array.from(state.pendingLikes));
+      onRehydrateStorage: () => (state: SerializedMatchesState | null): void => {
+        if (state && Array.isArray(state.pendingLikes)) {
+          state.pendingLikes = new Set(state.pendingLikes) as unknown as string[];
         }
       }
     }
