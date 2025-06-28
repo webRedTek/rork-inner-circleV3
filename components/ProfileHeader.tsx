@@ -1,139 +1,113 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
-import { UserProfile } from '@/types/user';
-import Colors from '@/constants/colors';
-import { Shield, Award } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/auth-store';
+import Colors from '@/constants/colors';
+import { Shield } from 'lucide-react-native';
 
-interface ProfileHeaderProps {
-  profile: UserProfile;
-  onPress?: () => void;
-}
+export const ProfileHeader: React.FC = () => {
+  const router = useRouter();
+  const { user } = useAuthStore();
+  
+  if (!user) return null;
 
-export const ProfileHeader: React.FC<ProfileHeaderProps> = ({ profile, onPress }) => {
-  const { tierSettings } = useAuthStore();
-  
-  const getTierColor = () => {
-    switch (profile.membershipTier) {
-      case 'gold':
-        return '#FFD700';
-      case 'silver':
-        return '#C0C0C0';
-      default:
-        return '#CD7F32'; // Bronze
-    }
-  };
-  
+  const tierColor = user.membershipTier === 'gold' 
+    ? Colors.dark.gold 
+    : user.membershipTier === 'silver' 
+      ? Colors.dark.silver 
+      : Colors.dark.bronze;
+
   return (
-    <TouchableOpacity 
-      style={styles.container}
-      onPress={onPress}
-      disabled={!onPress}
-    >
-      <Image
-        source={{ 
-          uri: profile.photoUrl || 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?q=80&w=2787&auto=format&fit=crop' 
-        }}
-        style={styles.avatar}
-      />
-      
+    <View style={styles.container}>
+      <TouchableOpacity 
+        style={styles.imageContainer}
+        onPress={() => router.push('/edit-profile')}
+      >
+        {user.photoUrl ? (
+          <Image 
+            source={{ uri: user.photoUrl }} 
+            style={styles.profileImage} 
+          />
+        ) : (
+          <View style={[styles.profileImage, styles.placeholderImage]}>
+            <Text style={styles.placeholderText}>
+              {user.name?.charAt(0) || user.email?.charAt(0) || '?'}
+            </Text>
+          </View>
+        )}
+      </TouchableOpacity>
+
       <View style={styles.infoContainer}>
-        <View style={styles.nameRow}>
-          <Text style={styles.name}>{profile.name}</Text>
-          {profile.businessVerified && (
-            <Shield size={16} color={Colors.dark.success} style={styles.verifiedIcon} />
-          )}
-        </View>
+        <Text style={styles.name}>{user.name || 'Anonymous'}</Text>
+        <Text style={styles.email}>{user.email}</Text>
         
-        <Text style={styles.field}>{profile.businessField}</Text>
-        
-        <View style={styles.statusRow}>
-          <View style={[
-            styles.statusBadge,
-            { backgroundColor: profile.entrepreneurStatus === 'current' ? Colors.dark.success : Colors.dark.accent }
-          ]}>
-            <Text style={styles.statusText}>
-              {profile.entrepreneurStatus === 'current' ? 'Current' : 'Upcoming'}
-            </Text>
-          </View>
-          
-          <View style={[styles.tierBadge, { borderColor: getTierColor() }]}>
-            <Award size={12} color={getTierColor()} style={styles.tierIcon} />
-            <Text style={[styles.tierText, { color: getTierColor() }]}>
-              {profile.membershipTier.charAt(0).toUpperCase() + profile.membershipTier.slice(1)}
-            </Text>
-          </View>
-        </View>
+        <TouchableOpacity 
+          style={[styles.tierBadge, { backgroundColor: tierColor }]}
+          onPress={() => router.push('/membership')}
+        >
+          <Shield size={16} color={Colors.dark.text} />
+          <Text style={styles.tierText}>
+            {user.membershipTier.charAt(0).toUpperCase() + user.membershipTier.slice(1)}
+          </Text>
+        </TouchableOpacity>
       </View>
-    </TouchableOpacity>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    alignItems: 'center',
     padding: 16,
-    backgroundColor: Colors.dark.card,
+    backgroundColor: Colors.dark.cardBackground,
     borderRadius: 12,
     marginBottom: 16,
   },
-  avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+  imageContainer: {
     marginRight: 16,
+  },
+  profileImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+  },
+  placeholderImage: {
+    backgroundColor: Colors.dark.placeholder,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  placeholderText: {
+    fontSize: 32,
+    color: Colors.dark.text,
+    textTransform: 'uppercase',
   },
   infoContainer: {
     flex: 1,
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
+    justifyContent: 'center',
   },
   name: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
     color: Colors.dark.text,
-    marginRight: 4,
+    marginBottom: 4,
   },
-  verifiedIcon: {
-    marginLeft: 4,
-  },
-  field: {
+  email: {
     fontSize: 14,
     color: Colors.dark.textSecondary,
     marginBottom: 8,
   },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-    marginRight: 8,
-  },
-  statusText: {
-    color: Colors.dark.text,
-    fontSize: 12,
-    fontWeight: '500',
-  },
   tierBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  tierIcon: {
-    marginRight: 4,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
   },
   tierText: {
-    fontSize: 12,
+    color: Colors.dark.text,
+    marginLeft: 4,
+    fontSize: 14,
     fontWeight: '500',
   },
 });
