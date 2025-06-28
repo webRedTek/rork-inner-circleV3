@@ -2,11 +2,24 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { UserProfile, MembershipTier, MatchWithProfile } from '@/types/user';
-import { isSupabaseConfigured, supabase, convertToCamelCase, SwipeAction, fetchPotentialMatches as fetchPotentialMatchesFromSupabase, processSwipeBatch as processSwipeBatchFromSupabase, fetchUserMatches as fetchUserMatchesFromSupabase } from '@/lib/supabase';
+import { 
+  isSupabaseConfigured, 
+  supabase, 
+  convertToCamelCase, 
+  SwipeAction, 
+  fetchPotentialMatches as fetchPotentialMatchesFromSupabase, 
+  processSwipeBatch as processSwipeBatchFromSupabase, 
+  fetchUserMatches as fetchUserMatchesFromSupabase,
+  PotentialMatchesResult,
+  SupabaseError
+} from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
 import { notifyError } from '@/utils/notify';
 import { useNotificationStore } from './notification-store';
 import { useUsageStore } from './usage-store';
+import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
+import { withNetworkCheck } from '@/utils/network-utils';
+import { StoreApi } from '@/types/store';
 
 // Helper function to extract readable error message from Supabase error
 const getReadableError = (error: any): string => {
@@ -100,7 +113,7 @@ interface PassedUser {
   timestamp: number;
 }
 
-interface MatchesState {
+interface MatchesStateData {
   potentialMatches: UserProfile[];
   cachedMatches: UserProfile[];
   matches: MatchWithProfile[];
@@ -117,6 +130,9 @@ interface MatchesState {
   noMoreProfiles: boolean;
   passedUsers: PassedUser[];
   pendingLikes: Set<string>;
+}
+
+interface MatchesStateMethods {
   fetchPotentialMatches: (maxDistance?: number, forceRefresh?: boolean) => Promise<void>;
   prefetchNextBatch: (maxDistance?: number) => Promise<void>;
   likeUser: (userId: string) => Promise<MatchWithProfile | null>;
@@ -131,13 +147,21 @@ interface MatchesState {
   cleanupExpiredPasses: () => Promise<void>;
 }
 
+type MatchesState = MatchesStateData & MatchesStateMethods;
+
 // Constants
 const PASS_EXPIRY_DAYS = 3;
 const PASSED_USERS_KEY = 'passed_users';
 
+type MatchesStateWithoutMethods = Omit<MatchesState, 
+  'fetchPotentialMatches' | 'prefetchNextBatch' | 'likeUser' | 'passUser' | 
+  'queueSwipe' | 'processSwipeBatch' | 'getMatches' | 'refreshCandidates' | 
+  'clearError' | 'clearNewMatch' | 'resetCacheAndState' | 'cleanupExpiredPasses'
+>;
+
 export const useMatchesStore = create<MatchesState>()(
   persist(
-    (set, get) => ({
+    ((set: StoreApi<MatchesState>['setState'], get: StoreApi<MatchesState>['getState']): MatchesState => ({
       potentialMatches: [],
       cachedMatches: [],
       matches: [],
@@ -154,99 +178,133 @@ export const useMatchesStore = create<MatchesState>()(
       noMoreProfiles: false,
       passedUsers: [],
       pendingLikes: new Set(),
+
       fetchPotentialMatches: async (maxDistance = 50, forceRefresh = false) => {
-        const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) {
-          throw new Error('User not ready or authenticated for fetching matches');
-        }
-        
-        if (get().isLoading && !forceRefresh) return;
-        
         set({ isLoading: true, error: null });
+
         try {
-          // Clean up expired passes first
-          await get().cleanupExpiredPasses();
-          
-          // Get current passed users and pending likes
-          const passedUserIds = get().passedUsers.map(pass => pass.id);
-          const pendingLikeIds = Array.from(get().pendingLikes);
-          
-          // If we have cached matches and not forcing refresh, use them
-          if (!forceRefresh && get().cachedMatches.length > 0) {
-            const { cachedMatches } = get();
-            // Filter out passed users and pending likes from cached matches
-            const filteredCache = cachedMatches.filter(match => 
-              !passedUserIds.includes(match.id) && 
-              !pendingLikeIds.includes(match.id)
-            );
-            const batchToShow = filteredCache.slice(0, get().batchSize);
-            const remainingCache = filteredCache.slice(get().batchSize);
-            console.log('[MatchesStore] Using cached matches', { batchToShow: batchToShow.length, remainingCache: remainingCache.length });
-            set({ 
-              potentialMatches: batchToShow, 
-              cachedMatches: remainingCache, 
-              isLoading: false,
-              noMoreProfiles: false
-            });
-            return;
-          }
-          
-          if (isSupabaseConfigured() && supabase) {
-            // Use cached tier settings for global discovery
-            const tierSettings = useAuthStore.getState().getTierSettings();
-            if (!tierSettings) {
-              throw new Error('Tier settings not available for global discovery check');
+          await withErrorHandling(async () => {
+            const { user, isReady } = useAuthStore.getState();
+            if (!isReady || !user) {
+              throw {
+                category: ErrorCategory.AUTH,
+                code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
+                message: 'User not ready or authenticated for fetching matches'
+              };
             }
-            const isGlobalDiscovery = tierSettings.global_discovery;
-            // Use user's preferred distance if available
-            const userMaxDistance = user.preferredDistance || maxDistance;
-            
-            // Apply rate limiting
-            await rateLimitedQuery();
-            
-            // Fetch potential matches with retry logic
-            const result = await retryOperation(() => fetchPotentialMatchesFromSupabase(user.id, userMaxDistance, isGlobalDiscovery, get().batchSize * 2));
-            
-            if (!result || result.count === 0) {
-              throw new Error(isGlobalDiscovery ? "No global matches found. Try adjusting your preferences." : "No matches found in your area. Try increasing your distance.");
-            }
-            
-            // Convert raw matches to UserProfile type and cache
-            const potentialMatches = result.matches.map((match: Record<string, any>) => {
-              const profile = supabaseToUserProfile(match);
-              userProfileCache.set(profile.id, profile);
-              return profile;
+
+            await withNetworkCheck(async () => {
+              // Clean up expired passes first
+              await get().cleanupExpiredPasses();
+              
+              // Get current passed users and pending likes
+              const passedUserIds = get().passedUsers.map((pass: PassedUser) => pass.id);
+              const pendingLikeIds = Array.from(get().pendingLikes);
+              
+              // If we have cached matches and not forcing refresh, use them
+              if (!forceRefresh && get().cachedMatches.length > 0) {
+                const { cachedMatches } = get();
+                // Filter out passed users and pending likes from cached matches
+                const filteredCache = cachedMatches.filter((match: UserProfile) => 
+                  passedUserIds.indexOf(match.id) === -1 && 
+                  pendingLikeIds.indexOf(match.id) === -1
+                );
+                const batchToShow = filteredCache.slice(0, get().batchSize);
+                const remainingCache = filteredCache.slice(get().batchSize);
+                console.log('[MatchesStore] Using cached matches', { batchToShow: batchToShow.length, remainingCache: remainingCache.length });
+                set({ 
+                  potentialMatches: batchToShow, 
+                  cachedMatches: remainingCache, 
+                  isLoading: false,
+                  noMoreProfiles: false
+                });
+                return;
+              }
+
+              if (!isSupabaseConfigured() || !supabase) {
+                throw {
+                  category: ErrorCategory.DATABASE,
+                  code: ErrorCodes.DB_CONNECTION_ERROR,
+                  message: 'Database is not configured'
+                };
+              }
+
+              // Use cached tier settings for global discovery
+              const tierSettings = useAuthStore.getState().getTierSettings();
+              if (!tierSettings) {
+                throw {
+                  category: ErrorCategory.VALIDATION,
+                  code: ErrorCodes.VALIDATION_MISSING_FIELD,
+                  message: 'Tier settings not available for global discovery check'
+                };
+              }
+
+              const isGlobalDiscovery = tierSettings.global_discovery;
+
+              // Fetch potential matches using the Supabase function
+              const result = await withRetry<PotentialMatchesResult>(
+                async () => {
+                  const response = await fetchPotentialMatchesFromSupabase(
+                    user.id,
+                    maxDistance,
+                    isGlobalDiscovery,
+                    get().batchSize * 2 // Fetch extra for caching
+                  );
+                  if (!response) {
+                    throw {
+                      category: ErrorCategory.DATABASE,
+                      code: ErrorCodes.DB_QUERY_ERROR,
+                      message: 'Failed to fetch matches'
+                    };
+                  }
+                  return response;
+                },
+                {
+                  maxRetries: 3,
+                  shouldRetry: (error) => error.category === ErrorCategory.NETWORK
+                }
+              );
+
+              if (!result || !result.matches) {
+                throw {
+                  category: ErrorCategory.DATABASE,
+                  code: ErrorCodes.DB_QUERY_ERROR,
+                  message: 'Failed to fetch matches'
+                };
+              }
+
+              if (result.matches.length === 0) {
+                set({ 
+                  potentialMatches: [], 
+                  cachedMatches: [],
+                  isLoading: false,
+                  noMoreProfiles: true
+                });
+                return;
+              }
+
+              // Convert matches to UserProfile objects
+              const userProfiles = result.matches.map(supabaseToUserProfile);
+              
+              // Split into current batch and cache
+              const batchToShow = userProfiles.slice(0, get().batchSize);
+              const remainingProfiles = userProfiles.slice(get().batchSize);
+
+              set({ 
+                potentialMatches: batchToShow,
+                cachedMatches: remainingProfiles,
+                isLoading: false,
+                noMoreProfiles: false
+              });
             });
-            
-            // After fetching new matches, filter out passed users and pending likes
-            const filteredMatches = potentialMatches.filter(match => 
-              !passedUserIds.includes(match.id) && 
-              !pendingLikeIds.includes(match.id)
-            );
-            
-            // Split into potential and cached
-            const batchToShow = filteredMatches.slice(0, get().batchSize);
-            const remainingCache = filteredMatches.slice(get().batchSize);
-            
-            console.log('[MatchesStore] Fetched potential matches', { total: filteredMatches.length, batchToShow: batchToShow.length, cached: remainingCache.length });
-            set({ 
-              potentialMatches: batchToShow, 
-              cachedMatches: remainingCache, 
-              isLoading: false,
-              noMoreProfiles: false
-            });
-          } else {
-            throw new Error('Supabase is not configured');
-          }
-        } catch (error) {
-          console.error('[MatchesStore] Error fetching potential matches:', getReadableError(error));
-          notifyError('Error fetching matches: ' + getReadableError(error));
-          const tierSettings = useAuthStore.getState().getTierSettings();
-          set({ 
-            error: tierSettings?.global_discovery ? "No global matches found. Try adjusting your preferences." : "No matches found in your area. Try increasing your distance.",
-            isLoading: false,
-            noMoreProfiles: true
           });
+        } catch (error) {
+          const appError = handleError(error);
+          set({ 
+            error: appError.userMessage,
+            isLoading: false
+          });
+          throw appError;
         }
       },
 
@@ -734,18 +792,32 @@ export const useMatchesStore = create<MatchesState>()(
           console.error('[MatchesStore] Error cleaning up passed users:', error);
         }
       }
-    }),
+    })),
     {
       name: 'matches-storage',
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({
-        ...state,
-        pendingLikes: Array.from(state.pendingLikes) // Convert Set to Array for storage
+      partialize: (state: MatchesState): MatchesStateData => ({
+        potentialMatches: state.potentialMatches,
+        cachedMatches: state.cachedMatches,
+        matches: state.matches,
+        swipeQueue: state.swipeQueue,
+        batchSize: state.batchSize,
+        prefetchThreshold: state.prefetchThreshold,
+        batchProcessingInterval: state.batchProcessingInterval,
+        isLoading: state.isLoading,
+        isPrefetching: state.isPrefetching,
+        error: state.error,
+        newMatch: state.newMatch,
+        swipeLimitReached: state.swipeLimitReached,
+        matchLimitReached: state.matchLimitReached,
+        noMoreProfiles: state.noMoreProfiles,
+        passedUsers: state.passedUsers,
+        pendingLikes: new Set(Array.from(state.pendingLikes))
       }),
-      onRehydrateStorage: () => (state) => {
-        // Convert Array back to Set after rehydration
-        if (state && Array.isArray(state.pendingLikes)) {
-          state.pendingLikes = new Set(state.pendingLikes);
+      onRehydrateStorage: () => (state: MatchesStateData | null) => {
+        if (state) {
+          // Convert pendingLikes back to Set after rehydration
+          state.pendingLikes = new Set(Array.from(state.pendingLikes));
         }
       }
     }
