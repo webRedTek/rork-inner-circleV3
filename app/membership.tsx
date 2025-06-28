@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   View, 
   Text, 
@@ -13,13 +13,27 @@ import Colors from '@/constants/colors';
 import { useAuthStore } from '@/store/auth-store';
 import { Button } from '@/components/Button';
 import { Check } from 'lucide-react-native';
-import { MembershipTier } from '@/types/user';
+import { MembershipTier, TierSettings } from '@/types/user';
 
 export default function MembershipScreen() {
   const router = useRouter();
-  const { user, tierSettings, updateMembership, isLoading } = useAuthStore();
-  const [selectedTier, setSelectedTier] = useState<MembershipTier>(user?.membershipTier || 'bronze');
+  const { user, updateMembership, isLoading } = useAuthStore();
+  const [selectedTier, setSelectedTier] = useState<MembershipTier | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [tierSettings, setTierSettings] = useState<Record<MembershipTier, TierSettings> | null>(null);
+
+  useEffect(() => {
+    // Load tier settings
+    try {
+      const settings = useAuthStore.getState().allTierSettings;
+      if (settings) {
+        setTierSettings(settings);
+      }
+    } catch (err) {
+      setError('Failed to load tier settings');
+    }
+  }, []);
   
   if (!tierSettings) {
     return (
@@ -40,26 +54,16 @@ export default function MembershipScreen() {
   }
   
   const handleUpgrade = async () => {
-    if (!user) return;
+    if (!selectedTier) return;
     
     setLoading(true);
+    setError(null);
     
     try {
-      // In a real app, this would process payment first
       await updateMembership(selectedTier);
-      
-      Alert.alert(
-        'Membership Upgraded',
-        `Your membership has been upgraded to ${selectedTier.charAt(0).toUpperCase() + selectedTier.slice(1)}`,
-        [
-          {
-            text: 'OK',
-            onPress: () => router.back(),
-          },
-        ]
-      );
-    } catch (error) {
-      Alert.alert('Error', 'Failed to upgrade membership');
+      // Success notification handled by the store
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to upgrade membership');
     } finally {
       setLoading(false);
     }
@@ -88,32 +92,36 @@ export default function MembershipScreen() {
           </Text>
         </View>
         
+        {error && (
+          <Text style={styles.errorText}>{error}</Text>
+        )}
+        
         <View style={styles.plansContainer}>
-          {/* Bronze Plan */}
+          {/* Basic Plan */}
           <TouchableOpacity
             style={[
               styles.planCard,
-              selectedTier === 'bronze' && styles.selectedPlan
+              selectedTier === 'basic' && styles.selectedPlan
             ]}
-            onPress={() => setSelectedTier('bronze')}
+            onPress={() => setSelectedTier('basic')}
           >
             <View style={styles.planHeader}>
-              <Text style={styles.planName}>Bronze</Text>
+              <Text style={styles.planName}>Basic</Text>
               <Text style={styles.planPrice}>Free</Text>
             </View>
             
             <View style={styles.planFeatures}>
               {renderFeature('Create a basic profile', true)}
               {renderFeature('Discover entrepreneurs', true)}
-              {renderFeature(`Limited swipes per day (${tierSettings.daily_swipe_limit})`, true)}
+              {renderFeature(`Limited swipes per day (${tierSettings?.basic.daily_swipe_limit})`, true)}
               {renderFeature('Message your matches', true)}
-              {renderFeature('Join groups', tierSettings.groups_limit > 0)}
-              {renderFeature('Create a portfolio', tierSettings.featured_portfolio_limit > 0)}
-              {renderFeature('Advanced matching algorithm', tierSettings.premium_filters_access)}
-              {renderFeature('Priority in discovery queue', tierSettings.priority_listing)}
+              {renderFeature('Join groups', tierSettings?.basic.groups_limit > 0)}
+              {renderFeature('Create a portfolio', tierSettings?.basic.featured_portfolio_limit > 0)}
+              {renderFeature('Advanced matching algorithm', tierSettings?.basic.premium_filters_access)}
+              {renderFeature('Priority in discovery queue', tierSettings?.basic.priority_listing)}
             </View>
             
-            {user?.membershipTier === 'bronze' && (
+            {user?.membershipTier === 'basic' && (
               <View style={styles.currentPlanBadge}>
                 <Text style={styles.currentPlanText}>Current Plan</Text>
               </View>
@@ -134,14 +142,14 @@ export default function MembershipScreen() {
             </View>
             
             <View style={styles.planFeatures}>
-              {renderFeature('All Bronze features', true)}
-              {renderFeature(`Increased swipes per day`, tierSettings.daily_swipe_limit > 10)}
-              {renderFeature('Join groups', tierSettings.groups_limit > 0)}
-              {renderFeature('Create a basic portfolio', tierSettings.featured_portfolio_limit > 0)}
-              {renderFeature('See who liked you', tierSettings.can_see_who_liked_you)}
-              {renderFeature('Advanced matching algorithm', tierSettings.premium_filters_access)}
-              {renderFeature('Priority in discovery queue', tierSettings.priority_listing)}
-              {renderFeature('Business verification badge', tierSettings.has_business_verification)}
+              {renderFeature('All Basic features', true)}
+              {renderFeature(`Increased swipes per day`, tierSettings?.silver.daily_swipe_limit > 10)}
+              {renderFeature('Join groups', tierSettings?.silver.groups_limit > 0)}
+              {renderFeature('Create a basic portfolio', tierSettings?.silver.featured_portfolio_limit > 0)}
+              {renderFeature('See who liked you', tierSettings?.silver.can_see_who_liked_you)}
+              {renderFeature('Advanced matching algorithm', tierSettings?.silver.premium_filters_access)}
+              {renderFeature('Priority in discovery queue', tierSettings?.silver.priority_listing)}
+              {renderFeature('Business verification badge', tierSettings?.silver.has_business_verification)}
             </View>
             
             {user?.membershipTier === 'silver' && (
@@ -166,13 +174,13 @@ export default function MembershipScreen() {
             
             <View style={styles.planFeatures}>
               {renderFeature('All Silver features', true)}
-              {renderFeature('Unlimited swipes', tierSettings.daily_swipe_limit === 0 || tierSettings.daily_swipe_limit > 50)}
-              {renderFeature('Join multiple groups', tierSettings.groups_limit > 1)}
-              {renderFeature('Create an advanced portfolio', tierSettings.featured_portfolio_limit > 1)}
-              {renderFeature('See who liked you', tierSettings.can_see_who_liked_you)}
-              {renderFeature('Advanced matching algorithm', tierSettings.premium_filters_access)}
-              {renderFeature('Priority in discovery queue', tierSettings.priority_listing)}
-              {renderFeature('Business verification badge', tierSettings.has_business_verification)}
+              {renderFeature('Unlimited swipes', tierSettings?.gold.daily_swipe_limit === 0 || tierSettings?.gold.daily_swipe_limit > 50)}
+              {renderFeature('Join multiple groups', tierSettings?.gold.groups_limit > 1)}
+              {renderFeature('Create an advanced portfolio', tierSettings?.gold.featured_portfolio_limit > 1)}
+              {renderFeature('See who liked you', tierSettings?.gold.can_see_who_liked_you)}
+              {renderFeature('Advanced matching algorithm', tierSettings?.gold.premium_filters_access)}
+              {renderFeature('Priority in discovery queue', tierSettings?.gold.priority_listing)}
+              {renderFeature('Business verification badge', tierSettings?.gold.has_business_verification)}
             </View>
             
             {user?.membershipTier === 'gold' && (
@@ -184,7 +192,7 @@ export default function MembershipScreen() {
         </View>
         
         <View style={styles.actionContainer}>
-          {selectedTier !== user?.membershipTier ? (
+          {selectedTier && selectedTier !== user?.membershipTier && (
             <Button
               title={`Upgrade to ${selectedTier.charAt(0).toUpperCase() + selectedTier.slice(1)}`}
               onPress={handleUpgrade}
@@ -192,14 +200,6 @@ export default function MembershipScreen() {
               size="large"
               loading={loading || isLoading}
               style={styles.upgradeButton}
-            />
-          ) : (
-            <Button
-              title="Back to Profile"
-              onPress={() => router.back()}
-              variant="outline"
-              size="large"
-              style={styles.backButton}
             />
           )}
         </View>
