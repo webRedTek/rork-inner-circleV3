@@ -54,7 +54,7 @@ export type AvailabilityLevel =
   | 'Local meetups'
   | 'Long-term mentorship/partnership';
 
-export type MembershipTier = 'basic' | 'bronze' | 'silver' | 'gold';
+export type MembershipTier = 'bronze' | 'silver' | 'gold';
 
 export type LocationPrivacy = 'public' | 'matches_only' | 'hidden';
 export type UserRole = 'member' | 'admin';

@@ -19,7 +19,7 @@ create table public.users (
   business_field text not null,
   entrepreneur_status text not null,
   photo_url text,
-  membership_tier text not null default 'basic',
+  membership_tier text not null default 'bronze',
   business_verified boolean not null default false,
   joined_groups uuid[] default '{}',
   created_at bigint not null default extract(epoch from now()) * 1000,
@@ -335,32 +335,6 @@ begin
   
   -- Return settings based on tier
   case user_tier
-    when 'basic' then
-      settings := jsonb_build_object(
-        'daily_swipe_limit', 10,
-        'daily_match_limit', 5,
-        'message_sending_limit', 20,
-        'can_see_who_liked_you', false,
-        'can_rewind_last_swipe', false,
-        'boost_duration', 0,
-        'boost_frequency', 0,
-        'profile_visibility_control', false,
-        'priority_listing', false,
-        'premium_filters_access', false,
-        'global_discovery', false,
-        'groups_limit', 0,
-        'groups_creation_limit', 0,
-        'featured_portfolio_limit', 0,
-        'events_per_month', 0,
-        'can_create_groups', false,
-        'has_business_verification', false,
-        'has_advanced_analytics', false,
-        'has_priority_inbox', false,
-        'can_send_direct_intro', false,
-        'has_virtual_meeting_room', false,
-        'has_custom_branding', false,
-        'has_dedicated_support', false
-      );
     when 'bronze' then
       settings := jsonb_build_object(
         'daily_swipe_limit', 10,

@@ -207,7 +207,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     try {
       // Check membership tier restrictions using tier settings
       if (tierSettings.groups_limit <= 0) {
-        throw new Error('Basic/Bronze members cannot join groups. Please upgrade to Silver or Gold.');
+        throw new Error('Bronze members cannot join groups. Please upgrade to Silver or Gold.');
       }
       
       const userGroups = get().userGroups;
@@ -364,7 +364,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     try {
       // Check membership tier restrictions using tier settings
       if (!tierSettings.can_create_groups) {
-        throw new Error('Basic/Bronze members cannot create groups. Please upgrade to Silver or Gold.');
+        throw new Error('Bronze members cannot create groups. Please upgrade to Silver or Gold.');
       }
       
       const userGroups = get().userGroups;

@@ -13,7 +13,6 @@ export default function AdminSettingsScreen() {
   const router = useRouter();
   const { user, invalidateTierSettingsCache } = useAuthStore();
   const [settingsByTier, setSettingsByTier] = useState<Record<MembershipTier, Record<string, any>>>({
-    basic: {},
     bronze: {},
     silver: {},
     gold: {}
@@ -47,7 +46,6 @@ export default function AdminSettingsScreen() {
 
       if (data && data.length > 0) {
         const settingsMap: Record<MembershipTier, Record<string, any>> = {
-          basic: {},
           bronze: {},
           silver: {},
           gold: {}
