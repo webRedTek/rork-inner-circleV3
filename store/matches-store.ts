@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+import { persist, createJSONStorage, PersistOptions } from 'zustand/middleware';
 import { UserProfile, MembershipTier, MatchWithProfile } from '@/types/user';
 import { 
   isSupabaseConfigured, 
@@ -18,7 +18,7 @@ import { useNotificationStore } from './notification-store';
 import { useUsageStore } from './usage-store';
 import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
 import { withNetworkCheck } from '@/utils/network-utils';
-import { StoreApi } from '@/types/store';
+import type { StoreApi } from 'zustand';
 
 // Define PassedUser interface
 interface PassedUser {
@@ -155,6 +155,10 @@ type MatchesStateWithoutMethods = Omit<MatchesState,
   'queueSwipe' | 'processSwipeBatch' | 'getMatches' | 'refreshCandidates' | 
   'clearError' | 'clearNewMatch' | 'resetCacheAndState' | 'cleanupExpiredPasses'
 >;
+
+type MatchesPersistedState = Omit<MatchesStateData, 'pendingLikes'> & {
+  pendingLikes: string[];
+};
 
 export const useMatchesStore = create<MatchesState>()(
   persist(
@@ -787,7 +791,7 @@ export const useMatchesStore = create<MatchesState>()(
     {
       name: 'matches-store',
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state: MatchesStateData): SerializedMatchesState => ({
+      partialize: (state: MatchesStateData): MatchesPersistedState => ({
         passedUsers: state.passedUsers,
         pendingLikes: Array.from(state.pendingLikes),
         swipeQueue: state.swipeQueue,
@@ -805,12 +809,14 @@ export const useMatchesStore = create<MatchesState>()(
         isPrefetching: state.isPrefetching,
         newMatch: state.newMatch
       }),
-      onRehydrateStorage: () => (state: SerializedMatchesState | null): void => {
-        if (state && Array.isArray(state.pendingLikes)) {
-          state.pendingLikes = new Set(state.pendingLikes) as unknown as string[];
-        }
+      onRehydrateStorage: (state: MatchesPersistedState) => {
+        return (persistedState: MatchesPersistedState | null) => {
+          if (persistedState && Array.isArray(persistedState.pendingLikes)) {
+            persistedState.pendingLikes = new Set(persistedState.pendingLikes) as unknown as string[];
+          }
+        };
       }
-    }
+    } as PersistOptions<MatchesState, MatchesPersistedState>
   )
 );
 
