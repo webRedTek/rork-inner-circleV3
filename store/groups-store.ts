@@ -5,6 +5,8 @@ import { useAuthStore } from './auth-store';
 import { useUsageStore } from './usage-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNotificationStore } from './notification-store';
+import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
+import { withNetworkCheck } from '@/utils/network-utils';
 
 // Helper function to extract readable error message from Supabase error
 const getReadableError = (error: any): string => {
@@ -146,324 +148,565 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
   eventsPerPage: 10,
 
   fetchGroups: async () => {
-    const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) {
-      throw new Error('User not ready or authenticated for fetching groups');
-    }
-    
     set({ isLoading: true, error: null });
+    
     try {
-      if (isSupabaseConfigured() && supabase) {
-        // Fetch groups from Supabase
-        const { data: groupsData, error: groupsError } = await supabase
-          .from('groups')
-          .select('*');
+      await withErrorHandling(async () => {
+        const { user, isReady } = useAuthStore.getState();
+        if (!isReady || !user) {
+          throw {
+            category: ErrorCategory.AUTH,
+            code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
+            message: 'User not ready or authenticated for fetching groups'
+          };
+        }
+        
+        await withNetworkCheck(async () => {
+          if (!isSupabaseConfigured() || !supabase) {
+            throw {
+              category: ErrorCategory.DATABASE,
+              code: ErrorCodes.DB_CONNECTION_ERROR,
+              message: 'Database is not configured'
+            };
+          }
           
-        if (groupsError) throw groupsError;
-        
-        // Convert Supabase response to Group type
-        const typedGroups: Group[] = (groupsData || []).map(supabaseToGroup);
-        
-        // Filter groups for the current user
-        const userGroups = typedGroups.filter((group: Group) => 
-          group.memberIds.includes(user.id)
-        );
-        
-        // Filter available groups (not joined by the user)
-        const availableGroups = typedGroups.filter((group: Group) => 
-          !group.memberIds.includes(user.id)
-        );
-        
-        set({ 
-          groups: typedGroups, 
-          userGroups, 
-          availableGroups, 
-          isLoading: false 
+          // Fetch groups from Supabase with retry on network errors
+          const { data: groupsData, error: groupsError } = await withRetry(
+            async () => {
+              if (!supabase) throw new Error('Supabase client is not initialized');
+              return await supabase
+                .from('groups')
+                .select('*');
+            },
+            {
+              maxRetries: 3,
+              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
+            }
+          );
+          
+          if (groupsError) {
+            throw {
+              category: ErrorCategory.DATABASE,
+              code: ErrorCodes.DB_QUERY_ERROR,
+              message: groupsError.message
+            };
+          }
+          
+          // Convert Supabase response to Group type
+          const typedGroups: Group[] = (groupsData || []).map(supabaseToGroup);
+          
+          // Filter groups for the current user
+          const userGroups = typedGroups.filter((group: Group) => 
+            group.memberIds.includes(user.id)
+          );
+          
+          // Filter available groups (not joined by the user)
+          const availableGroups = typedGroups.filter((group: Group) => 
+            !group.memberIds.includes(user.id)
+          );
+          
+          set({ 
+            groups: typedGroups, 
+            userGroups, 
+            availableGroups, 
+            isLoading: false 
+          });
         });
-      } else {
-        throw new Error('Supabase is not configured');
-      }
+      });
     } catch (error) {
-      console.error('Error fetching groups:', getReadableError(error));
+      const appError = handleError(error);
       set({ 
-        error: getReadableError(error), 
+        error: appError.userMessage, 
         isLoading: false 
       });
+      throw appError;
     }
   },
 
   joinGroup: async (groupId: string) => {
-    const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) {
-      throw new Error('User not ready or authenticated for joining group');
-    }
-    
-    const tierSettings = useAuthStore.getState().getTierSettings();
-    if (!tierSettings) {
-      throw new Error('Tier settings not available for group limit check');
-    }
-    
     set({ isLoading: true, error: null });
+    
     try {
-      // Check membership tier restrictions using tier settings
-      if (tierSettings.groups_limit <= 0) {
-        throw new Error('Bronze members cannot join groups. Please upgrade to Silver or Gold.');
-      }
-      
-      const userGroups = get().userGroups;
-      const groupsLimit = tierSettings.groups_limit;
-      if (userGroups.length >= groupsLimit) {
-        const nextTier = tierSettings.groups_limit <= 3 ? 'Gold' : 'Gold';
-        throw new Error(`You have reached your group limit (${userGroups.length} of ${groupsLimit} groups). Upgrade to ${nextTier} to join more groups.`);
-      }
-      
-      if (isSupabaseConfigured() && supabase) {
-        // Get the group to update
-        const { data: groupData, error: groupError } = await supabase
-          .from('groups')
-          .select('*')
-          .eq('id', groupId)
-          .single();
-          
-        if (groupError) throw groupError;
-        
-        // Convert to Group type
-        const group = supabaseToGroup(groupData || {});
-        
-        // Update the group with the new member
-        const updatedMemberIds = [...group.memberIds, user.id];
-        
-        const { error: updateError } = await supabase
-          .from('groups')
-          .update({ member_ids: updatedMemberIds })
-          .eq('id', groupId);
-          
-        if (updateError) throw updateError;
-        
-        // Update user's joinedGroups
-        const updatedJoinedGroups = [...user.joinedGroups, groupId];
-        
-        const { error: userUpdateError } = await supabase
-          .from('users')
-          .update({ joined_groups: updatedJoinedGroups })
-          .eq('id', user.id);
-          
-        if (userUpdateError) throw userUpdateError;
-        
-        // Log the action using usage store
-        useUsageStore.getState().trackUsage({ actionType: 'join_group', batchProcess: true });
-        
-        // Update auth store
-        const authStorage = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}');
-        if (authStorage.state) {
-          authStorage.state.user = {
-            ...authStorage.state.user,
-            joinedGroups: updatedJoinedGroups
+      await withErrorHandling(async () => {
+        const { user, isReady } = useAuthStore.getState();
+        if (!isReady || !user) {
+          throw {
+            category: ErrorCategory.AUTH,
+            code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
+            message: 'User not ready or authenticated for joining group'
           };
-          await AsyncStorage.setItem('auth-storage', JSON.stringify(authStorage));
         }
         
-        // Refresh groups
-        await get().fetchGroups();
-      } else {
-        throw new Error('Supabase is not configured');
-      }
-      
-      set({ isLoading: false });
+        const tierSettings = useAuthStore.getState().getTierSettings();
+        if (!tierSettings) {
+          throw {
+            category: ErrorCategory.BUSINESS,
+            code: ErrorCodes.BUSINESS_LOGIC_VIOLATION,
+            message: 'Tier settings not available for group limit check'
+          };
+        }
+        
+        // Check membership tier restrictions using tier settings
+        if (tierSettings.groups_limit <= 0) {
+          throw {
+            category: ErrorCategory.BUSINESS,
+            code: ErrorCodes.BUSINESS_LIMIT_REACHED,
+            message: 'Bronze members cannot join groups. Please upgrade to Silver or Gold.'
+          };
+        }
+        
+        const userGroups = get().userGroups;
+        const groupsLimit = tierSettings.groups_limit;
+        if (userGroups.length >= groupsLimit) {
+          const nextTier = tierSettings.groups_limit <= 3 ? 'Gold' : 'Gold';
+          throw {
+            category: ErrorCategory.BUSINESS,
+            code: ErrorCodes.BUSINESS_LIMIT_REACHED,
+            message: `You have reached your group limit (${userGroups.length} of ${groupsLimit} groups). Upgrade to ${nextTier} to join more groups.`
+          };
+        }
+        
+        await withNetworkCheck(async () => {
+          if (!isSupabaseConfigured() || !supabase) {
+            throw {
+              category: ErrorCategory.DATABASE,
+              code: ErrorCodes.DB_CONNECTION_ERROR,
+              message: 'Database is not configured'
+            };
+          }
+          
+          // Get the group to update with retry on network errors
+          const { data: groupData, error: groupError } = await withRetry(
+            async () => {
+              if (!supabase) throw new Error('Supabase client is not initialized');
+              return await supabase
+                .from('groups')
+                .select('*')
+                .eq('id', groupId)
+                .single();
+            },
+            {
+              maxRetries: 3,
+              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
+            }
+          );
+          
+          if (groupError) {
+            throw {
+              category: ErrorCategory.DATABASE,
+              code: ErrorCodes.DB_QUERY_ERROR,
+              message: groupError.message
+            };
+          }
+          
+          // Convert to Group type
+          const group = supabaseToGroup(groupData || {});
+          
+          // Update the group with the new member
+          const updatedMemberIds = [...group.memberIds, user.id];
+          
+          const { error: updateError } = await withRetry(
+            async () => {
+              if (!supabase) throw new Error('Supabase client is not initialized');
+              return await supabase
+                .from('groups')
+                .update({ member_ids: updatedMemberIds })
+                .eq('id', groupId);
+            },
+            {
+              maxRetries: 3,
+              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
+            }
+          );
+          
+          if (updateError) {
+            throw {
+              category: ErrorCategory.DATABASE,
+              code: ErrorCodes.DB_QUERY_ERROR,
+              message: updateError.message
+            };
+          }
+          
+          // Update user's joinedGroups
+          const updatedJoinedGroups = [...user.joinedGroups, groupId];
+          
+          const { error: userUpdateError } = await withRetry(
+            async () => {
+              if (!supabase) throw new Error('Supabase client is not initialized');
+              return await supabase
+                .from('users')
+                .update({ joined_groups: updatedJoinedGroups })
+                .eq('id', user.id);
+            },
+            {
+              maxRetries: 3,
+              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
+            }
+          );
+          
+          if (userUpdateError) {
+            throw {
+              category: ErrorCategory.DATABASE,
+              code: ErrorCodes.DB_QUERY_ERROR,
+              message: userUpdateError.message
+            };
+          }
+          
+          // Log the action using usage store
+          await useUsageStore.getState().trackUsage({ actionType: 'join_group', batchProcess: true });
+          
+          // Update auth store
+          const authStorage = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}');
+          if (authStorage.state) {
+            authStorage.state.user = {
+              ...authStorage.state.user,
+              joinedGroups: updatedJoinedGroups
+            };
+            await AsyncStorage.setItem('auth-storage', JSON.stringify(authStorage));
+          }
+          
+          // Refresh groups
+          await get().fetchGroups();
+          
+          set({ isLoading: false });
+        });
+      });
     } catch (error) {
-      console.error('Error joining group:', getReadableError(error));
+      const appError = handleError(error);
       set({ 
-        error: getReadableError(error), 
+        error: appError.userMessage, 
         isLoading: false 
       });
+      throw appError;
     }
   },
 
   leaveGroup: async (groupId: string) => {
-    const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) {
-      throw new Error('User not ready or authenticated for leaving group');
-    }
-    
     set({ isLoading: true, error: null });
+    
     try {
-      if (isSupabaseConfigured() && supabase) {
-        // Get the group to update
-        const { data: groupData, error: groupError } = await supabase
-          .from('groups')
-          .select('*')
-          .eq('id', groupId)
-          .single();
-          
-        if (groupError) throw groupError;
-        
-        // Convert to Group type
-        const group = supabaseToGroup(groupData || {});
-        
-        // Update the group by removing the member
-        const updatedMemberIds = group.memberIds.filter((id: string) => id !== user.id);
-        
-        const { error: updateError } = await supabase
-          .from('groups')
-          .update({ member_ids: updatedMemberIds })
-          .eq('id', groupId);
-          
-        if (updateError) throw updateError;
-        
-        // Update user's joinedGroups
-        const updatedJoinedGroups = user.joinedGroups.filter((id: string) => id !== groupId);
-        
-        const { error: userUpdateError } = await supabase
-          .from('users')
-          .update({ joined_groups: updatedJoinedGroups })
-          .eq('id', user.id);
-          
-        if (userUpdateError) throw userUpdateError;
-        
-        // Log the action using usage store
-        useUsageStore.getState().trackUsage({ actionType: 'leave_group', batchProcess: true });
-        
-        // Update auth store
-        const authStorage = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}');
-        if (authStorage.state) {
-          authStorage.state.user = {
-            ...authStorage.state.user,
-            joinedGroups: updatedJoinedGroups
+      await withErrorHandling(async () => {
+        const { user, isReady } = useAuthStore.getState();
+        if (!isReady || !user) {
+          throw {
+            category: ErrorCategory.AUTH,
+            code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
+            message: 'User not ready or authenticated for leaving group'
           };
-          await AsyncStorage.setItem('auth-storage', JSON.stringify(authStorage));
         }
         
-        // Refresh groups
-        await get().fetchGroups();
-      } else {
-        throw new Error('Supabase is not configured');
-      }
-      
-      set({ isLoading: false });
+        await withNetworkCheck(async () => {
+          if (!isSupabaseConfigured() || !supabase) {
+            throw {
+              category: ErrorCategory.DATABASE,
+              code: ErrorCodes.DB_CONNECTION_ERROR,
+              message: 'Database is not configured'
+            };
+          }
+          
+          // Get the group to update with retry
+          const { data: groupData, error: groupError } = await withRetry(
+            async () => {
+              if (!supabase) throw new Error('Supabase client is not initialized');
+              return await supabase
+                .from('groups')
+                .select('*')
+                .eq('id', groupId)
+                .single();
+            },
+            {
+              maxRetries: 3,
+              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
+            }
+          );
+          
+          if (groupError) {
+            throw {
+              category: ErrorCategory.DATABASE,
+              code: ErrorCodes.DB_QUERY_ERROR,
+              message: groupError.message
+            };
+          }
+          
+          // Convert to Group type and update members
+          const group = supabaseToGroup(groupData || {});
+          const updatedMemberIds = group.memberIds.filter((id: string) => id !== user.id);
+          
+          // Update group members with retry
+          const { error: updateError } = await withRetry(
+            async () => {
+              if (!supabase) throw new Error('Supabase client is not initialized');
+              return await supabase
+                .from('groups')
+                .update({ member_ids: updatedMemberIds })
+                .eq('id', groupId);
+            },
+            {
+              maxRetries: 3,
+              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
+            }
+          );
+          
+          if (updateError) {
+            throw {
+              category: ErrorCategory.DATABASE,
+              code: ErrorCodes.DB_QUERY_ERROR,
+              message: updateError.message
+            };
+          }
+          
+          // Update user's joinedGroups
+          const updatedJoinedGroups = user.joinedGroups.filter((id: string) => id !== groupId);
+          
+          // Update user with retry
+          const { error: userUpdateError } = await withRetry(
+            async () => {
+              if (!supabase) throw new Error('Supabase client is not initialized');
+              return await supabase
+                .from('users')
+                .update({ joined_groups: updatedJoinedGroups })
+                .eq('id', user.id);
+            },
+            {
+              maxRetries: 3,
+              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
+            }
+          );
+          
+          if (userUpdateError) {
+            throw {
+              category: ErrorCategory.DATABASE,
+              code: ErrorCodes.DB_QUERY_ERROR,
+              message: userUpdateError.message
+            };
+          }
+          
+          // Log the action using usage store
+          await useUsageStore.getState().trackUsage({ actionType: 'leave_group', batchProcess: true });
+          
+          // Update auth store
+          const authStorage = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}');
+          if (authStorage.state) {
+            authStorage.state.user = {
+              ...authStorage.state.user,
+              joinedGroups: updatedJoinedGroups
+            };
+            await AsyncStorage.setItem('auth-storage', JSON.stringify(authStorage));
+          }
+          
+          // Refresh groups
+          await get().fetchGroups();
+          set({ isLoading: false });
+        });
+      });
     } catch (error) {
-      console.error('Error leaving group:', getReadableError(error));
+      const appError = handleError(error);
       set({ 
-        error: getReadableError(error), 
+        error: appError.userMessage, 
         isLoading: false 
       });
+      throw appError;
     }
   },
 
   createGroup: async (groupData: Partial<Group>) => {
-    const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) {
-      throw new Error('User not ready or authenticated for creating group');
-    }
-    
-    const tierSettings = useAuthStore.getState().getTierSettings();
-    if (!tierSettings) {
-      throw new Error('Tier settings not available for group creation limit check');
-    }
-    
     set({ isLoading: true, error: null });
+    
     try {
-      // Check membership tier restrictions using tier settings
-      if (!tierSettings.can_create_groups) {
-        throw new Error('Bronze members cannot create groups. Please upgrade to Silver or Gold.');
-      }
-      
-      const userGroups = get().userGroups;
-      const groupsLimit = tierSettings.groups_limit;
-      if (userGroups.length >= groupsLimit) {
-        const nextTier = tierSettings.groups_creation_limit <= 1 ? 'Gold' : 'Gold';
-        throw new Error(`You have reached your group creation limit (${userGroups.length} of ${groupsLimit} groups). Upgrade to ${nextTier} to create more groups.`);
-      }
-      
-      if (isSupabaseConfigured() && supabase) {
-        // Create new group with snake_case fields, letting Postgres generate the UUID
-        const newGroup = {
-          name: groupData.name || 'New Group',
-          description: groupData.description || '',
-          image_url: groupData.imageUrl,
-          member_ids: [user.id], // Creator is the first member
-          created_by: user.id,
-          created_at: Date.now(),
-          category: groupData.category || 'Interest',
-          industry: groupData.industry
-        };
-        
-        // Insert group into Supabase and get the created group with generated UUID
-        const { data: createdGroup, error: insertError } = await supabase
-          .from('groups')
-          .insert(newGroup)
-          .select()
-          .single();
-          
-        if (insertError) throw insertError;
-        
-        // Update user's joinedGroups with the Postgres-generated UUID
-        const updatedJoinedGroups = [...user.joinedGroups, createdGroup.id];
-        
-        const { error: userUpdateError } = await supabase
-          .from('users')
-          .update({ joined_groups: updatedJoinedGroups })
-          .eq('id', user.id);
-          
-        if (userUpdateError) throw userUpdateError;
-        
-        // Log the action using usage store
-        useUsageStore.getState().trackUsage({ actionType: 'create_group', batchProcess: true });
-        
-        // Update auth store
-        const authStorage = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}');
-        if (authStorage.state) {
-          authStorage.state.user = {
-            ...authStorage.state.user,
-            joinedGroups: updatedJoinedGroups
+      await withErrorHandling(async () => {
+        const { user, isReady } = useAuthStore.getState();
+        if (!isReady || !user) {
+          throw {
+            category: ErrorCategory.AUTH,
+            code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
+            message: 'User not ready or authenticated for creating group'
           };
-          await AsyncStorage.setItem('auth-storage', JSON.stringify(authStorage));
         }
         
-        // Refresh groups
-        await get().fetchGroups();
-      } else {
-        throw new Error('Supabase is not configured');
-      }
-      
-      set({ isLoading: false });
+        const tierSettings = useAuthStore.getState().getTierSettings();
+        if (!tierSettings) {
+          throw {
+            category: ErrorCategory.BUSINESS,
+            code: ErrorCodes.BUSINESS_LOGIC_VIOLATION,
+            message: 'Tier settings not available for group creation limit check'
+          };
+        }
+        
+        // Check membership tier restrictions
+        if (!tierSettings.can_create_groups) {
+          throw {
+            category: ErrorCategory.BUSINESS,
+            code: ErrorCodes.BUSINESS_LIMIT_REACHED,
+            message: 'Bronze members cannot create groups. Please upgrade to Silver or Gold.'
+          };
+        }
+        
+        const userGroups = get().userGroups;
+        const groupsLimit = tierSettings.groups_limit;
+        if (userGroups.length >= groupsLimit) {
+          const nextTier = tierSettings.groups_creation_limit <= 1 ? 'Gold' : 'Gold';
+          throw {
+            category: ErrorCategory.BUSINESS,
+            code: ErrorCodes.BUSINESS_LIMIT_REACHED,
+            message: `You have reached your group creation limit (${userGroups.length} of ${groupsLimit} groups). Upgrade to ${nextTier} to create more groups.`
+          };
+        }
+        
+        await withNetworkCheck(async () => {
+          if (!isSupabaseConfigured() || !supabase) {
+            throw {
+              category: ErrorCategory.DATABASE,
+              code: ErrorCodes.DB_CONNECTION_ERROR,
+              message: 'Database is not configured'
+            };
+          }
+          
+          // Create new group with retry
+          const newGroup = {
+            name: groupData.name || 'New Group',
+            description: groupData.description || '',
+            image_url: groupData.imageUrl,
+            member_ids: [user.id],
+            created_by: user.id,
+            created_at: Date.now(),
+            category: groupData.category || 'Interest',
+            industry: groupData.industry
+          };
+          
+          const { data: createdGroup, error: insertError } = await withRetry(
+            async () => {
+              if (!supabase) throw new Error('Supabase client is not initialized');
+              return await supabase
+                .from('groups')
+                .insert(newGroup)
+                .select()
+                .single();
+            },
+            {
+              maxRetries: 3,
+              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
+            }
+          );
+          
+          if (insertError) {
+            throw {
+              category: ErrorCategory.DATABASE,
+              code: ErrorCodes.DB_QUERY_ERROR,
+              message: insertError.message
+            };
+          }
+          
+          // Update user's joinedGroups with retry
+          const updatedJoinedGroups = [...user.joinedGroups, createdGroup.id];
+          
+          const { error: userUpdateError } = await withRetry(
+            async () => {
+              if (!supabase) throw new Error('Supabase client is not initialized');
+              return await supabase
+                .from('users')
+                .update({ joined_groups: updatedJoinedGroups })
+                .eq('id', user.id);
+            },
+            {
+              maxRetries: 3,
+              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
+            }
+          );
+          
+          if (userUpdateError) {
+            throw {
+              category: ErrorCategory.DATABASE,
+              code: ErrorCodes.DB_QUERY_ERROR,
+              message: userUpdateError.message
+            };
+          }
+          
+          // Log the action using usage store
+          await useUsageStore.getState().trackUsage({ actionType: 'create_group', batchProcess: true });
+          
+          // Update auth store
+          const authStorage = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}');
+          if (authStorage.state) {
+            authStorage.state.user = {
+              ...authStorage.state.user,
+              joinedGroups: updatedJoinedGroups
+            };
+            await AsyncStorage.setItem('auth-storage', JSON.stringify(authStorage));
+          }
+          
+          // Refresh groups
+          await get().fetchGroups();
+          set({ isLoading: false });
+        });
+      });
     } catch (error) {
-      console.error('Error creating group:', getReadableError(error));
+      const appError = handleError(error);
       set({ 
-        error: getReadableError(error), 
+        error: appError.userMessage, 
         isLoading: false 
       });
+      throw appError;
     }
   },
 
   fetchGroupDetails: async (groupId: string) => {
-    const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) {
-      throw new Error('User not ready or authenticated for fetching group details');
-    }
-    
     set({ isLoading: true, error: null });
+    
     try {
-      if (isSupabaseConfigured() && supabase) {
-        // Fetch group details
-        const { data: groupData, error: groupError } = await supabase
-          .from('groups')
-          .select('*')
-          .eq('id', groupId)
-          .single();
-          
-        if (groupError) throw groupError;
+      await withErrorHandling(async () => {
+        const { user, isReady } = useAuthStore.getState();
+        if (!isReady || !user) {
+          throw {
+            category: ErrorCategory.AUTH,
+            code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
+            message: 'User not ready or authenticated for fetching group details'
+          };
+        }
         
-        const group = supabaseToGroup(groupData || {});
-        set({ currentGroup: group, isLoading: false });
-      } else {
-        throw new Error('Supabase is not configured');
-      }
+        await withNetworkCheck(async () => {
+          if (!isSupabaseConfigured() || !supabase) {
+            throw {
+              category: ErrorCategory.DATABASE,
+              code: ErrorCodes.DB_CONNECTION_ERROR,
+              message: 'Database is not configured'
+            };
+          }
+          
+          // Fetch group details with retry
+          const { data: groupData, error: groupError } = await withRetry(
+            async () => {
+              if (!supabase) throw new Error('Supabase client is not initialized');
+              return await supabase
+                .from('groups')
+                .select('*')
+                .eq('id', groupId)
+                .single();
+            },
+            {
+              maxRetries: 3,
+              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
+            }
+          );
+          
+          if (groupError) {
+            throw {
+              category: ErrorCategory.DATABASE,
+              code: ErrorCodes.DB_QUERY_ERROR,
+              message: groupError.message
+            };
+          }
+          
+          const group = supabaseToGroup(groupData || {});
+          set({ currentGroup: group, isLoading: false });
+        });
+      });
     } catch (error) {
-      console.error('Error fetching group details:', getReadableError(error));
+      const appError = handleError(error);
       set({ 
-        error: getReadableError(error), 
+        error: appError.userMessage, 
         isLoading: false 
       });
+      throw appError;
     }
   },
 
@@ -606,51 +849,80 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
   },
 
   updateGroupEvent: async (eventData: Partial<GroupEvent>) => {
-    const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) {
-      throw new Error('User not ready or authenticated for updating group event');
-    }
-    
     set({ isLoading: true, error: null });
+    
     try {
-      if (isSupabaseConfigured() && supabase) {
-        const updatedEvent = {
-          title: eventData.title || 'Updated Event',
-          description: eventData.description || '',
-          location: eventData.location,
-          start_time: eventData.startTime || Date.now(),
-          end_time: eventData.endTime,
-          recurrence_pattern: eventData.recurrencePattern,
-          recurrence_end: eventData.recurrenceEnd,
-        };
-        
-        const { data: updatedEventData, error: updateError } = await supabase
-          .from('group_events')
-          .update(updatedEvent)
-          .eq('id', eventData.id)
-          .select()
-          .single();
-          
-        if (updateError) throw updateError;
-        
-        // Log the action using usage store
-        useUsageStore.getState().trackUsage({ actionType: 'update_group_event', batchProcess: true });
-        
-        // Refresh events
-        if (eventData.groupId) {
-          await get().fetchGroupEvents(eventData.groupId);
+      await withErrorHandling(async () => {
+        const { user, isReady } = useAuthStore.getState();
+        if (!isReady || !user) {
+          throw {
+            category: ErrorCategory.AUTH,
+            code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
+            message: 'User not ready or authenticated for updating group event'
+          };
         }
-      } else {
-        throw new Error('Supabase is not configured');
-      }
-      
-      set({ isLoading: false });
+        
+        await withNetworkCheck(async () => {
+          if (!isSupabaseConfigured() || !supabase) {
+            throw {
+              category: ErrorCategory.DATABASE,
+              code: ErrorCodes.DB_CONNECTION_ERROR,
+              message: 'Database is not configured'
+            };
+          }
+          
+          const updatedEvent = {
+            title: eventData.title || 'Updated Event',
+            description: eventData.description || '',
+            location: eventData.location,
+            start_time: eventData.startTime || Date.now(),
+            end_time: eventData.endTime,
+            recurrence_pattern: eventData.recurrencePattern,
+            recurrence_end: eventData.recurrenceEnd,
+          };
+          
+          const { data: updatedEventData, error: updateError } = await withRetry(
+            async () => {
+              if (!supabase) throw new Error('Supabase client is not initialized');
+              return await supabase
+                .from('group_events')
+                .update(updatedEvent)
+                .eq('id', eventData.id)
+                .select()
+                .single();
+            },
+            {
+              maxRetries: 3,
+              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
+            }
+          );
+          
+          if (updateError) {
+            throw {
+              category: ErrorCategory.DATABASE,
+              code: ErrorCodes.DB_QUERY_ERROR,
+              message: updateError.message
+            };
+          }
+          
+          // Log the action using usage store
+          await useUsageStore.getState().trackUsage({ actionType: 'update_group_event', batchProcess: true });
+          
+          // Refresh events
+          if (eventData.groupId) {
+            await get().fetchGroupEvents(eventData.groupId);
+          }
+          
+          set({ isLoading: false });
+        });
+      });
     } catch (error) {
-      console.error('Error updating group event:', getReadableError(error));
+      const appError = handleError(error);
       set({ 
-        error: getReadableError(error), 
+        error: appError.userMessage, 
         isLoading: false 
       });
+      throw appError;
     }
   },
 
@@ -708,111 +980,199 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
   },
 
   rsvpToEvent: async (eventId: string, response: 'yes' | 'no' | 'maybe') => {
-    const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) {
-      throw new Error('User not ready or authenticated for RSVPing to event');
-    }
-    
     set({ isLoading: true, error: null });
+    
     try {
-      if (isSupabaseConfigured() && supabase) {
-        // Check if user already has an RSVP for this event
-        const { data: existingRSVP, error: checkError } = await supabase
-          .from('group_event_rsvps')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('event_id', eventId)
-          .single();
-          
-        if (checkError && checkError.code !== 'PGRST116') throw checkError;
-        
-        if (existingRSVP) {
-          // Update existing RSVP
-          const { error: updateError } = await supabase
-            .from('group_event_rsvps')
-            .update({ response, created_at: Date.now() })
-            .eq('id', existingRSVP.id);
-            
-          if (updateError) throw updateError;
-        } else {
-          // Create new RSVP
-          const newRSVP = {
-            event_id: eventId,
-            user_id: user.id,
-            response,
-            created_at: Date.now()
+      await withErrorHandling(async () => {
+        const { user, isReady } = useAuthStore.getState();
+        if (!isReady || !user) {
+          throw {
+            category: ErrorCategory.AUTH,
+            code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
+            message: 'User not ready or authenticated for RSVPing to event'
           };
+        }
+        
+        await withNetworkCheck(async () => {
+          if (!isSupabaseConfigured() || !supabase) {
+            throw {
+              category: ErrorCategory.DATABASE,
+              code: ErrorCodes.DB_CONNECTION_ERROR,
+              message: 'Database is not configured'
+            };
+          }
           
-          const { error: insertError } = await supabase
-            .from('group_event_rsvps')
-            .insert(newRSVP);
+          // Check if user already has an RSVP for this event
+          const { data: existingRSVP, error: checkError } = await withRetry(
+            async () => {
+              if (!supabase) throw new Error('Supabase client is not initialized');
+              return await supabase
+                .from('group_event_rsvps')
+                .select('*')
+                .eq('user_id', user.id)
+                .eq('event_id', eventId)
+                .single();
+            },
+            {
+              maxRetries: 3,
+              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
+            }
+          );
+          
+          if (checkError && checkError.code !== 'PGRST116') {
+            throw {
+              category: ErrorCategory.DATABASE,
+              code: ErrorCodes.DB_QUERY_ERROR,
+              message: checkError.message
+            };
+          }
+          
+          if (existingRSVP) {
+            // Update existing RSVP
+            const { error: updateError } = await withRetry(
+              async () => {
+                if (!supabase) throw new Error('Supabase client is not initialized');
+                return await supabase
+                  .from('group_event_rsvps')
+                  .update({ response, created_at: Date.now() })
+                  .eq('id', existingRSVP.id);
+              },
+              {
+                maxRetries: 3,
+                shouldRetry: (error) => error.category === ErrorCategory.NETWORK
+              }
+            );
             
-          if (insertError) throw insertError;
-        }
-        
-        // Log the action using usage store
-        useUsageStore.getState().trackUsage({ actionType: 'rsvp_event', batchProcess: true });
-        
-        // Refresh RSVPs (assuming groupId is available from current context)
-        const groupId = get().groupEvents.find(event => event.id === eventId)?.groupId;
-        if (groupId) {
-          await get().fetchGroupEvents(groupId);
-        }
-      } else {
-        throw new Error('Supabase is not configured');
-      }
-      
-      set({ isLoading: false });
+            if (updateError) {
+              throw {
+                category: ErrorCategory.DATABASE,
+                code: ErrorCodes.DB_QUERY_ERROR,
+                message: updateError.message
+              };
+            }
+          } else {
+            // Create new RSVP
+            const newRSVP = {
+              event_id: eventId,
+              user_id: user.id,
+              response,
+              created_at: Date.now()
+            };
+            
+            const { error: insertError } = await withRetry(
+              async () => {
+                if (!supabase) throw new Error('Supabase client is not initialized');
+                return await supabase
+                  .from('group_event_rsvps')
+                  .insert(newRSVP);
+              },
+              {
+                maxRetries: 3,
+                shouldRetry: (error) => error.category === ErrorCategory.NETWORK
+              }
+            );
+            
+            if (insertError) {
+              throw {
+                category: ErrorCategory.DATABASE,
+                code: ErrorCodes.DB_QUERY_ERROR,
+                message: insertError.message
+              };
+            }
+          }
+          
+          // Log the action using usage store
+          await useUsageStore.getState().trackUsage({ actionType: 'rsvp_event', batchProcess: true });
+          
+          // Refresh RSVPs
+          const groupId = get().groupEvents.find(event => event.id === eventId)?.groupId;
+          if (groupId) {
+            await get().fetchGroupEvents(groupId);
+          }
+          
+          set({ isLoading: false });
+        });
+      });
     } catch (error) {
-      console.error('Error RSVPing to event:', getReadableError(error));
+      const appError = handleError(error);
       set({ 
-        error: getReadableError(error), 
+        error: appError.userMessage, 
         isLoading: false 
       });
+      throw appError;
     }
   },
 
   updateGroup: async (groupData: Partial<Group>) => {
-    const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) {
-      throw new Error('User not ready or authenticated for updating group');
-    }
-    
     set({ isLoading: true, error: null });
+    
     try {
-      if (isSupabaseConfigured() && supabase) {
-        const updatedGroup = {
-          name: groupData.name,
-          description: groupData.description,
-          category: groupData.category,
-          industry: groupData.industry
-        };
-        
-        const { error: updateError } = await supabase
-          .from('groups')
-          .update(updatedGroup)
-          .eq('id', groupData.id);
-          
-        if (updateError) throw updateError;
-        
-        // Log the action using usage store
-        useUsageStore.getState().trackUsage({ actionType: 'update_group', batchProcess: true });
-        
-        // Refresh group details
-        if (groupData.id) {
-          await get().fetchGroupDetails(groupData.id);
+      await withErrorHandling(async () => {
+        const { user, isReady } = useAuthStore.getState();
+        if (!isReady || !user) {
+          throw {
+            category: ErrorCategory.AUTH,
+            code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
+            message: 'User not ready or authenticated for updating group'
+          };
         }
-      } else {
-        throw new Error('Supabase is not configured');
-      }
-      
-      set({ isLoading: false });
+        
+        await withNetworkCheck(async () => {
+          if (!isSupabaseConfigured() || !supabase) {
+            throw {
+              category: ErrorCategory.DATABASE,
+              code: ErrorCodes.DB_CONNECTION_ERROR,
+              message: 'Database is not configured'
+            };
+          }
+          
+          const updatedGroup = {
+            name: groupData.name,
+            description: groupData.description,
+            category: groupData.category,
+            industry: groupData.industry
+          };
+          
+          const { error: updateError } = await withRetry(
+            async () => {
+              if (!supabase) throw new Error('Supabase client is not initialized');
+              return await supabase
+                .from('groups')
+                .update(updatedGroup)
+                .eq('id', groupData.id);
+            },
+            {
+              maxRetries: 3,
+              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
+            }
+          );
+          
+          if (updateError) {
+            throw {
+              category: ErrorCategory.DATABASE,
+              code: ErrorCodes.DB_QUERY_ERROR,
+              message: updateError.message
+            };
+          }
+          
+          // Log the action using usage store
+          await useUsageStore.getState().trackUsage({ actionType: 'update_group', batchProcess: true });
+          
+          // Refresh group details
+          if (groupData.id) {
+            await get().fetchGroupDetails(groupData.id);
+          }
+          
+          set({ isLoading: false });
+        });
+      });
     } catch (error) {
-      console.error('Error updating group:', getReadableError(error));
+      const appError = handleError(error);
       set({ 
-        error: getReadableError(error), 
+        error: appError.userMessage, 
         isLoading: false 
       });
+      throw appError;
     }
   },
 
@@ -820,44 +1180,47 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
 
   resetGroupsCache: async () => {
     try {
-      console.log('[GroupsStore] Resetting groups cache and state');
-      set({
-        groups: [],
-        userGroups: [],
-        availableGroups: [],
-        currentGroup: null,
-        groupMessages: [],
-        groupEvents: [],
-        userRSVPs: [],
-        error: null,
-        isLoading: false,
-        isMessagesLoading: false,
-        isEventsLoading: false
+      await withErrorHandling(async () => {
+        // Clear state
+        set({
+          groups: [],
+          userGroups: [],
+          availableGroups: [],
+          currentGroup: null,
+          groupMessages: [],
+          groupEvents: [],
+          userRSVPs: [],
+          error: null,
+          isLoading: false,
+          isMessagesLoading: false,
+          isEventsLoading: false
+        });
+        
+        // Clear in-memory caches
+        groupMessagesCache.clear();
+        groupEventsCache.clear();
+        
+        // Notify success
+        useNotificationStore.getState().addNotification({
+          type: 'success',
+          message: 'Groups data refreshed',
+          displayStyle: 'toast',
+          duration: 3000
+        });
+        
+        // Refetch groups data
+        await get().fetchGroups();
       });
-      
-      // Clear in-memory caches
-      groupMessagesCache.clear();
-      groupEventsCache.clear();
-      
-      console.log('[GroupsStore] Groups cache reset complete');
-      useNotificationStore.getState().addNotification({
-        type: 'success',
-        message: 'Groups data refreshed',
-        displayStyle: 'toast',
-        duration: 3000
-      });
-      
-      // Optionally, refetch groups data
-      await get().fetchGroups();
     } catch (error) {
-      console.error('[GroupsStore] Error resetting groups cache:', getReadableError(error));
+      const appError = handleError(error);
       useNotificationStore.getState().addNotification({
         type: 'error',
-        message: 'Failed to reset groups data',
+        message: appError.userMessage,
         displayStyle: 'toast',
         duration: 5000
       });
-      set({ error: getReadableError(error) });
+      set({ error: appError.userMessage });
+      throw appError;
     }
   }
 }));
