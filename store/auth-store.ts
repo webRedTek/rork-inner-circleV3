@@ -12,9 +12,8 @@ import { checkNetworkStatus, withNetworkCheck } from '@/utils/network-utils';
 
 interface AuthState {
   user: UserProfile | null;
-  tierSettings: TierSettings | null;
+  allTierSettings: Record<MembershipTier, TierSettings> | null;
   tierSettingsTimestamp: number | null;
-  hasFetchedTierSettingsThisSession: boolean;
   isAuthenticated: boolean;
   isLoading: boolean;
   isReady: boolean;
@@ -26,7 +25,7 @@ interface AuthState {
   logout: () => Promise<void>;
   updateProfile: (data: Partial<UserProfile>) => Promise<void>;
   updateMembership: (tier: MembershipTier) => Promise<void>;
-  fetchTierSettings: (userId: string) => Promise<void>;
+  fetchAllTierSettings: () => Promise<void>;
   getTierSettings: () => TierSettings | null;
   invalidateTierSettingsCache: () => Promise<void>;
   clearError: () => void;
@@ -105,9 +104,8 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       user: null,
-      tierSettings: null,
+      allTierSettings: null,
       tierSettingsTimestamp: null,
-      hasFetchedTierSettingsThisSession: false,
       isAuthenticated: false,
       isLoading: false,
       isReady: false,
@@ -193,8 +191,7 @@ export const useAuthStore = create<AuthState>()(
                 isLoading: false
               });
 
-              // Initialize services
-              await get().fetchTierSettings(data.user.id);
+              // Initialize usage tracking
               await useUsageStore.getState().initializeUsage(data.user.id);
             } else if (profileError) {
               throw profileError;
@@ -277,7 +274,6 @@ export const useAuthStore = create<AuthState>()(
             });
 
             if (data.user?.id) {
-              await get().fetchTierSettings(data.user.id);
               await useUsageStore.getState().initializeUsage(data.user.id);
             }
           });
@@ -301,7 +297,6 @@ export const useAuthStore = create<AuthState>()(
             set({
               user: null,
               isAuthenticated: false,
-              hasFetchedTierSettingsThisSession: false,
               tierSettingsTimestamp: null
             });
             
@@ -404,7 +399,8 @@ export const useAuthStore = create<AuthState>()(
               isLoading: false
             });
 
-            await get().fetchTierSettings(user.id);
+            // Fetch new tier settings after membership change
+            await get().invalidateTierSettingsCache();
           });
         } catch (error) {
           const appError = handleError(error);
@@ -415,7 +411,7 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      fetchTierSettings: async (userId: string) => {
+      fetchAllTierSettings: async () => {
         try {
           await withNetworkCheck(async () => {
             await initSupabase();
@@ -432,54 +428,96 @@ export const useAuthStore = create<AuthState>()(
               async () => {
                 if (!supabase) throw new Error('Supabase client is not initialized');
                 return await supabase
-                  .rpc('get_user_tier_settings', { user_id: userId });
+                  .from('app_settings')
+                  .select('*');
               }
             );
 
             if (error) throw error;
 
+            if (!data || data.length === 0) {
+              throw {
+                category: ErrorCategory.BUSINESS,
+                code: ErrorCodes.BUSINESS_LOGIC_VIOLATION,
+                message: 'No tier settings found in database'
+              };
+            }
+
+            // Initialize settings with empty objects for each tier
+            const settings: Record<MembershipTier, TierSettings> = {
+              bronze: {} as TierSettings,
+              silver: {} as TierSettings,
+              gold: {} as TierSettings
+            };
+
+            // Map database values to settings
+            data.forEach(setting => {
+              if (setting.tier) {
+                settings[setting.tier as MembershipTier] = setting;
+              }
+            });
+
+            // Verify we have settings for all tiers
+            const requiredTiers: MembershipTier[] = ['bronze', 'silver', 'gold'];
+            const missingTiers = requiredTiers.filter(tier => !settings[tier]);
+            
+            if (missingTiers.length > 0) {
+              throw {
+                category: ErrorCategory.BUSINESS,
+                code: ErrorCodes.BUSINESS_LOGIC_VIOLATION,
+                message: `Missing tier settings for: ${missingTiers.join(', ')}`
+              };
+            }
+
             set({
-              tierSettings: data,
-              tierSettingsTimestamp: Date.now(),
-              hasFetchedTierSettingsThisSession: true
+              allTierSettings: settings,
+              tierSettingsTimestamp: Date.now()
             });
           });
         } catch (error) {
-          // Silent error handling for background fetches
-          console.error('Error fetching tier settings:', error);
+          const appError = handleError(error);
+          throw {
+            category: ErrorCategory.BUSINESS,
+            code: ErrorCodes.BUSINESS_LOGIC_VIOLATION,
+            message: `Failed to fetch tier settings: ${appError.userMessage}`
+          };
         }
       },
 
       getTierSettings: () => {
-        const { tierSettings, user } = get();
+        const { allTierSettings, user } = get();
         
-        if (tierSettings) {
-          if (user && !get().hasFetchedTierSettingsThisSession) {
-            get().fetchTierSettings(user.id).catch(() => {
-              // Silently handle errors - using cached settings
-            });
-          }
-          return tierSettings;
+        if (!user) {
+          throw {
+            category: ErrorCategory.AUTH,
+            code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
+            message: 'User not authenticated'
+          };
         }
         
-        if (user) {
-          get().fetchTierSettings(user.id).catch(() => {
-            // Silently handle errors
-          });
+        if (!allTierSettings) {
+          throw {
+            category: ErrorCategory.BUSINESS,
+            code: ErrorCodes.BUSINESS_LIMIT_REACHED,
+            message: 'Tier settings not available for usage limits'
+          };
         }
         
-        return null;
+        const tierSettings = allTierSettings[user.membershipTier];
+        if (!tierSettings) {
+          throw {
+            category: ErrorCategory.BUSINESS,
+            code: ErrorCodes.BUSINESS_LIMIT_REACHED,
+            message: 'Tier settings not available for usage limits'
+          };
+        }
+        
+        return tierSettings;
       },
 
       invalidateTierSettingsCache: async () => {
-        const { user } = get();
-        if (user) {
-          set({
-            hasFetchedTierSettingsThisSession: false,
-            tierSettingsTimestamp: null
-          });
-          await get().fetchTierSettings(user.id);
-        }
+        set({ allTierSettings: null, tierSettingsTimestamp: null });
+        await get().fetchAllTierSettings();
       },
 
       clearError: () => set({ error: null }),
@@ -490,9 +528,8 @@ export const useAuthStore = create<AuthState>()(
             await AsyncStorage.removeItem('auth-storage');
             set({
               user: null,
-              tierSettings: null,
+              allTierSettings: null,
               tierSettingsTimestamp: null,
-              hasFetchedTierSettingsThisSession: false,
               isAuthenticated: false,
               isLoading: false,
               error: null
@@ -550,7 +587,7 @@ export const useAuthStore = create<AuthState>()(
             await useUsageStore.getState().initializeUsage(userProfile.id);
             startUsageSync();
 
-            await get().fetchTierSettings(userProfile.id);
+            await get().fetchAllTierSettings();
 
             set({
               user: userProfile,
@@ -576,13 +613,8 @@ export const useAuthStore = create<AuthState>()(
       }
     }),
     {
-      name: 'auth-storage',
-      partialize: (state) => ({
-        user: state.user,
-        tierSettings: state.tierSettings,
-        tierSettingsTimestamp: state.tierSettingsTimestamp,
-        isAuthenticated: state.isAuthenticated
-      })
+      name: 'auth-store',
+      storage: createJSONStorage(() => AsyncStorage)
     }
   )
 );
