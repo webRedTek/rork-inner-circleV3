@@ -787,7 +787,7 @@ const matchesStoreCreator: StateCreator<
 
 export const useMatchesStore = create<MatchesState>()(
   persist(
-    matchesStoreCreator,
+    matchesStoreCreator as any, // Use type assertion to bypass complex type mismatch
     {
       name: 'matches-store',
       storage: createJSONStorage(() => AsyncStorage),
@@ -809,14 +809,14 @@ export const useMatchesStore = create<MatchesState>()(
         isPrefetching: state.isPrefetching,
         newMatch: state.newMatch
       }),
-      onRehydrateStorage: () => (persistedState: MatchesPersistedState | null) => {
-        if (persistedState && Array.isArray(persistedState.pendingLikes)) {
+      onRehydrateStorage: () => (state: MatchesPersistedState | undefined, error: unknown) => {
+        if (state && Array.isArray(state.pendingLikes)) {
           useMatchesStore.setState({
-            pendingLikes: new Set(persistedState.pendingLikes)
+            pendingLikes: new Set(state.pendingLikes)
           });
         }
       }
-    } as PersistOptions<MatchesState, MatchesPersistedState>
+    } as unknown as PersistOptions<MatchesState, MatchesPersistedState> // Use type assertion to resolve PersistOptions mismatch
   )
 );
 
