@@ -8,6 +8,7 @@ import { useUsageStore } from '@/store/usage-store';
 import { useAuthStore } from '@/store/auth-store';
 // @ts-ignore - Types are provided by Expo
 import { Database, RefreshCw, Copy, ChevronDown, ChevronUp } from 'lucide-react-native';
+import { MembershipTier, TierSettings } from '@/types/user';
 
 interface CacheViewModalProps {
   visible: boolean;
@@ -16,7 +17,7 @@ interface CacheViewModalProps {
 
 export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose }) => {
   const { usageCache, lastSyncError, isSyncing, syncUsageData } = useUsageStore();
-  const { tierSettings, tierSettingsTimestamp, fetchAllTierSettings, user, isLoading } = useAuthStore();
+  const { allTierSettings, tierSettingsTimestamp, fetchAllTierSettings, user, isLoading } = useAuthStore();
   const [collapsedSections, setCollapsedSections] = useState<{
     usage: boolean;
     premium: boolean;
@@ -28,6 +29,9 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
     analytics: false,
     tier: false,
   });
+
+  // Get the current user's tier settings
+  const tierSettings = user && allTierSettings ? allTierSettings[user.membershipTier] : null;
 
   useEffect(() => {
     if (visible && user) {
