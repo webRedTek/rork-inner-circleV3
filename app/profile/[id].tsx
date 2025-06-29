@@ -18,6 +18,8 @@ import { useAuthStore } from '@/store/auth-store';
 import { useMatchesStore } from '@/store/matches-store';
 import { ArrowLeft, MessageCircle } from 'lucide-react-native';
 import { isSupabaseConfigured, supabase, convertToCamelCase } from '@/lib/supabase';
+import { handleError, ErrorCategory, ErrorCodes } from '@/utils/error-utils';
+import { withNetworkCheck } from '@/utils/network-utils';
 
 export default function ProfileDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -43,8 +45,17 @@ export default function ProfileDetailScreen() {
     
     try {
       setLoading(true);
+      setError(null);
       
-      if (isSupabaseConfigured() && supabase) {
+      await withNetworkCheck(async () => {
+        if (!isSupabaseConfigured() || !supabase) {
+          throw {
+            category: ErrorCategory.DATABASE,
+            code: ErrorCodes.DB_CONNECTION_ERROR,
+            message: 'Database is not configured'
+          };
+        }
+
         // Get user profile from Supabase
         const { data: foundUser, error: userError } = await supabase
           .from('users')
@@ -52,12 +63,23 @@ export default function ProfileDetailScreen() {
           .eq('id', id)
           .single();
         
-        if (userError || !foundUser) {
-          setError('User not found');
-          return;
+        if (userError) {
+          throw {
+            category: ErrorCategory.DATABASE,
+            code: ErrorCodes.DB_QUERY_ERROR,
+            message: 'Failed to fetch user profile'
+          };
         }
         
-        const userProfile = supabaseToUserProfile(foundUser);
+        if (!foundUser) {
+          throw {
+            category: ErrorCategory.DATABASE,
+            code: ErrorCodes.DB_NOT_FOUND,
+            message: 'User not found'
+          };
+        }
+        
+        const userProfile = convertToCamelCase(foundUser) as UserProfile;
         setProfile(userProfile);
         
         // Check if there's a match
@@ -68,9 +90,11 @@ export default function ProfileDetailScreen() {
           .or(`user_id.eq.${id},matched_user_id.eq.${id}`);
         
         if (matchesError) {
-          console.error('Error checking matches:', matchesError);
-          setIsMatch(false);
-          return;
+          throw {
+            category: ErrorCategory.DATABASE,
+            code: ErrorCodes.DB_QUERY_ERROR,
+            message: 'Failed to check match status'
+          };
         }
         
         const match = matchesData.find(
@@ -79,134 +103,84 @@ export default function ProfileDetailScreen() {
         );
         
         setIsMatch(!!match);
-      } else {
-        setError('Supabase not configured');
-      }
+      });
     } catch (err) {
-      setError('Failed to load profile');
-      console.error(err);
+      const appError = handleError(err);
+      setError(appError.userMessage);
     } finally {
       setLoading(false);
     }
   };
-  
-  const handleConnect = async () => {
-    if (!profile || !user) return;
-    
+
+  const handleLike = async () => {
     try {
-      const match = await likeUser(profile.id);
-      
-      if (match) {
-        setIsMatch(true);
-        Alert.alert(
-          "It's a Match!",
-          `You and ${profile.name} have liked each other.`,
-          [
-            {
-              text: 'Send Message',
-              onPress: () => router.push(`/chat/${profile.id}`),
-            },
-            {
-              text: 'Continue Browsing',
-              style: 'cancel',
-            },
-          ]
-        );
-      } else {
-        Alert.alert('Connection Request Sent', `You've liked ${profile.name}'s profile.`);
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to connect with this user');
-    }
-  };
-  
-  const handlePass = async () => {
-    if (!profile || !user) return;
-    
-    try {
-      await passUser(profile.id);
+      await likeUser(id);
       router.back();
-    } catch (error) {
-      Alert.alert('Error', 'Failed to pass on this user');
+    } catch (err) {
+      const appError = handleError(err);
+      Alert.alert('Error', appError.userMessage);
     }
   };
-  
-  const handleMessage = () => {
-    if (!profile) return;
-    router.push(`/chat/${profile.id}`);
+
+  const handlePass = async () => {
+    try {
+      await passUser(id);
+      router.back();
+    } catch (err) {
+      const appError = handleError(err);
+      Alert.alert('Error', appError.userMessage);
+    }
   };
-  
-  if (loading || initialLoad || !isReady) {
+
+  const handleMessage = () => {
+    router.push(`/chat/${id}`);
+  };
+
+  if (loading || !profile) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={Colors.dark.accent} />
-        <Text style={styles.loadingText}>Loading profile...</Text>
       </View>
     );
   }
-  
-  if (error || !profile || !user) {
+
+  if (error) {
     return (
       <View style={styles.errorContainer}>
-        <Text style={styles.errorText}>{error || 'Something went wrong'}</Text>
+        <Text style={styles.errorText}>{error}</Text>
         <Button
-          title="Go Back"
-          onPress={() => router.back()}
-          variant="outline"
-          style={styles.errorButton}
+          title="Try Again"
+          onPress={fetchProfile}
+          variant="primary"
+          size="medium"
+          style={styles.retryButton}
         />
       </View>
     );
   }
-  
+
   return (
     <ScrollView style={styles.container}>
-      <Stack.Screen 
+      <Stack.Screen
         options={{
-          title: profile.name,
           headerLeft: () => (
             <TouchableOpacity 
               onPress={() => router.back()}
-              style={styles.headerBackButton}
+              style={styles.headerButton}
             >
               <ArrowLeft size={24} color={Colors.dark.text} />
             </TouchableOpacity>
           ),
+          headerRight: isMatch ? () => (
+            <TouchableOpacity 
+              onPress={handleMessage}
+              style={styles.headerButton}
+            >
+              <MessageCircle size={24} color={Colors.dark.text} />
+            </TouchableOpacity>
+          ) : undefined,
         }}
       />
-      
-      <ProfileHeader profile={profile} />
-      
-      {isMatch ? (
-        <View style={styles.matchContainer}>
-          <View style={styles.matchBadge}>
-            <Text style={styles.matchText}>Connected</Text>
-          </View>
-          
-          <Button
-            title="Message"
-            onPress={handleMessage}
-            variant="primary"
-            style={styles.messageButton}
-            icon={<MessageCircle size={18} color={Colors.dark.text} />}
-          />
-        </View>
-      ) : (
-        <View style={styles.actionsContainer}>
-          <Button 
-            title="Connect" 
-            onPress={handleConnect} 
-            variant="primary"
-            style={styles.actionButton}
-          />
-          <Button 
-            title="Pass" 
-            onPress={handlePass} 
-            variant="outline"
-            style={styles.actionButton}
-          />
-        </View>
-      )}
       
       <View style={styles.detailsContainer}>
         <ProfileDetailCard 
@@ -273,47 +247,33 @@ export default function ProfileDetailScreen() {
           />
         )}
       </View>
+
+      {!isMatch && (
+        <View style={styles.actionButtons}>
+          <Button
+            title="Pass"
+            onPress={handlePass}
+            variant="outline"
+            size="large"
+            style={styles.actionButton}
+          />
+          <Button
+            title="Like"
+            onPress={handleLike}
+            variant="primary"
+            size="large"
+            style={styles.actionButton}
+          />
+        </View>
+      )}
     </ScrollView>
   );
 }
-
-// Helper function to convert Supabase response to UserProfile type
-const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
-  const camelCaseData = convertToCamelCase(data);
-  
-  return {
-    id: String(camelCaseData.id || ''),
-    email: String(camelCaseData.email || ''),
-    name: String(camelCaseData.name || ''),
-    bio: String(camelCaseData.bio || ''),
-    location: String(camelCaseData.location || ''),
-    zipCode: String(camelCaseData.zipCode || ''),
-    businessField: (String(camelCaseData.businessField || 'Technology')) as UserProfile["businessField"],
-    entrepreneurStatus: (String(camelCaseData.entrepreneurStatus || 'upcoming')) as UserProfile["entrepreneurStatus"],
-    photoUrl: String(camelCaseData.photoUrl || ''),
-    membershipTier: (String(camelCaseData.membershipTier || 'basic')) as UserProfile["membershipTier"],
-    businessVerified: Boolean(camelCaseData.businessVerified || false),
-    joinedGroups: Array.isArray(camelCaseData.joinedGroups) ? camelCaseData.joinedGroups : [],
-    createdAt: Number(camelCaseData.createdAt || Date.now()),
-    lookingFor: Array.isArray(camelCaseData.lookingFor) ? camelCaseData.lookingFor as UserProfile["lookingFor"] : [],
-    businessStage: camelCaseData.businessStage as UserProfile["businessStage"] || 'Idea Phase',
-    skillsOffered: Array.isArray(camelCaseData.skillsOffered) ? camelCaseData.skillsOffered as UserProfile["skillsOffered"] : [],
-    skillsSeeking: Array.isArray(camelCaseData.skillsSeeking) ? camelCaseData.skillsSeeking as UserProfile["skillsSeeking"] : [],
-    keyChallenge: String(camelCaseData.keyChallenge || ''),
-    industryFocus: String(camelCaseData.industryFocus || ''),
-    availabilityLevel: Array.isArray(camelCaseData.availabilityLevel) ? camelCaseData.availabilityLevel as UserProfile["availabilityLevel"] : [],
-    timezone: String(camelCaseData.timezone || ''),
-    successHighlight: String(camelCaseData.successHighlight || ''),
-  };
-};
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.dark.background,
-  },
-  headerBackButton: {
-    padding: 8,
   },
   loadingContainer: {
     flex: 1,
@@ -321,61 +281,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: Colors.dark.background,
   },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: Colors.dark.textSecondary,
-  },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
     backgroundColor: Colors.dark.background,
+    padding: 16,
   },
   errorText: {
-    fontSize: 18,
-    color: Colors.dark.textSecondary,
-    marginBottom: 24,
+    color: Colors.dark.error,
     textAlign: 'center',
-  },
-  errorButton: {
-    minWidth: 120,
-  },
-  matchContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
     marginBottom: 16,
+    fontSize: 16,
   },
-  matchBadge: {
-    backgroundColor: Colors.dark.success,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 16,
+  retryButton: {
+    width: 200,
   },
-  matchText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: Colors.dark.text,
+  headerButton: {
+    padding: 8,
   },
-  messageButton: {
-    minWidth: 120,
+  detailsContainer: {
+    paddingVertical: 16,
   },
-  actionsContainer: {
+  actionButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     padding: 16,
-    marginBottom: 16,
-    gap: 12,
+    gap: 16,
   },
   actionButton: {
     flex: 1,
-  },
-  detailsContainer: {
-    padding: 16,
-    gap: 16,
-    marginBottom: 32,
   },
 });
