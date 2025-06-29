@@ -3,6 +3,37 @@ import NetInfo from '@react-native-community/netinfo';
 import { useNotificationStore } from '@/store/notification-store';
 
 /**
+ * FILE: utils/error-utils.ts
+ * LAST UPDATED: 2024-12-19 16:00
+ * 
+ * CURRENT STATE:
+ * Central error handling utility system for the app. Provides standardized error
+ * categorization, processing, and display. Handles network, authentication,
+ * database, validation, business logic, and rate limiting errors with proper
+ * user-friendly messages and retry logic.
+ * 
+ * RECENT CHANGES:
+ * - Fixed withErrorHandling function to always throw processed appError instead of original error object
+ * - Removed conditional logic that was causing [object Object] errors
+ * - Ensured all errors are properly stringified and have meaningful messages
+ * 
+ * FILE INTERACTIONS:
+ * - Imports from: notification-store (for displaying errors to users)
+ * - Exports to: All stores and components that need error handling
+ * - Dependencies: React Native NetInfo (for network error detection)
+ * - Data flow: Receives raw errors, processes them into AppError objects,
+ *   displays user-friendly messages, and provides retry logic for recoverable errors
+ * 
+ * KEY FUNCTIONS/COMPONENTS:
+ * - handleError: Converts any error into standardized AppError object
+ * - withErrorHandling: Wraps async operations with error handling
+ * - withRetry: Provides retry logic with exponential backoff
+ * - showError: Displays errors via notification system
+ * - categorizeError: Determines error category (network, auth, database, etc.)
+ * - mapErrorCode: Maps errors to specific error codes
+ */
+
+/**
  * Enum representing different categories of errors in the application.
  */
 export enum ErrorCategory {
@@ -234,10 +265,7 @@ export async function withErrorHandling<T>(
     if (!options.silent) {
       showError(appError);
     }
-    if (options.rethrow) {
-      throw appError;
-    }
-    throw error; // Rethrow original error if rethrow is not specified
+    throw appError; // Always throw the processed error instead of original
   }
 }
 
