@@ -25,17 +25,21 @@ import { Input } from '@/components/Input';
 
 /**
  * FILE: app/(tabs)/discover.tsx
- * LAST UPDATED: 2024-12-19 15:30
+ * LAST UPDATED: 2024-12-19 15:45
  * 
  * CURRENT STATE:
  * Main discovery screen for the app. Displays potential matches as swipeable cards,
  * handles user interactions (like/pass), manages loading states, and controls
- * global search functionality based on user tier settings.
+ * global search functionality based on user tier settings. Currently includes
+ * comprehensive debugging features for troubleshooting loading issues.
  * 
  * RECENT CHANGES:
- * - Fixed tier settings access pattern to use allTierSettings[user.membershipTier] instead of manual fetching
+ * - Added comprehensive debugging system with real-time on-screen display
+ * - Added console logging for all major events and state changes
+ * - Added timeout detection for loading states (5-second warning)
+ * - Added debug state tracking for user info, tier settings, loading states
+ * - Fixed tier settings access pattern to use allTierSettings[user.membershipTier]
  * - Removed unnecessary useState, useEffect, and TierSettings import
- * - Simplified tier settings access to match app-wide pattern used in CacheViewModal
  * 
  * FILE INTERACTIONS:
  * - Imports from: matches-store (potentialMatches, fetchPotentialMatches, likeUser, passUser, etc.)
@@ -52,6 +56,8 @@ import { Input } from '@/components/Input';
  * - handleModalAction: Handle various modal actions (message, upgrade, filters)
  * - handleRefresh: Manual refresh of potential matches
  * - handleToggleGlobalSearch: Toggle global search based on tier permissions
+ * - DEBUG: addDebugInfo: Logs debug information to console and screen
+ * - DEBUG: Real-time debug display showing current state and recent actions
  */
 
 export default function DiscoverScreen() {
@@ -90,8 +96,18 @@ export default function DiscoverScreen() {
   const tierSettings = user && allTierSettings ? allTierSettings[user.membershipTier] : null;
   const isGlobalSearchAllowed = tierSettings?.global_discovery || false;
 
+  // DEBUG: Add temporary debugging state
+  const [debugInfo, setDebugInfo] = useState<string[]>([]);
+  const addDebugInfo = (info: string) => {
+    console.log(`[DEBUG] ${info}`);
+    setDebugInfo(prev => [...prev, `${new Date().toLocaleTimeString()}: ${info}`]);
+  };
+
   useEffect(() => {
     if (isReady && user) {
+      addDebugInfo(`Initial load - user: ${user.id}, tier: ${user.membershipTier}`);
+      addDebugInfo(`Tier settings available: ${!!tierSettings}`);
+      addDebugInfo(`Global discovery allowed: ${isGlobalSearchAllowed}`);
       console.log('[Discover] Initial load - fetching potential matches', { userId: user.id });
       fetchPotentialMatches();
       startBatchProcessing();
@@ -111,6 +127,7 @@ export default function DiscoverScreen() {
   useFocusEffect(
     React.useCallback(() => {
       if (isReady && user) {
+        addDebugInfo(`Screen focused - refreshing matches, current count: ${potentialMatches.length}`);
         console.log('[Discover] Screen focused - refreshing potential matches', { userId: user.id, matchesCount: potentialMatches.length });
         fetchPotentialMatches();
       }
@@ -120,6 +137,7 @@ export default function DiscoverScreen() {
   useEffect(() => {
     // Prefetch more profiles if we're running low
     if (potentialMatches.length <= 3 && !isPrefetching && !isLoading && user && !noMoreProfiles) {
+      addDebugInfo(`Prefetching triggered - matches: ${potentialMatches.length}, prefetching: ${isPrefetching}, loading: ${isLoading}, noMore: ${noMoreProfiles}`);
       console.log('[Discover] Running low on matches, prefetching more', { currentMatches: potentialMatches.length });
       prefetchNextBatch();
     }
@@ -156,7 +174,18 @@ export default function DiscoverScreen() {
   
   useEffect(() => {
     console.log('[Discover] Potential matches updated', { count: potentialMatches.length, isLoading, isPrefetching, error: error || 'none' });
+    addDebugInfo(`Matches updated - count: ${potentialMatches.length}, loading: ${isLoading}, prefetching: ${isPrefetching}, error: ${error || 'none'}`);
   }, [potentialMatches, isLoading, isPrefetching, error]);
+  
+  // DEBUG: Add timeout to detect if loading takes too long
+  useEffect(() => {
+    if (isLoading && potentialMatches.length === 0) {
+      const timeout = setTimeout(() => {
+        addDebugInfo(`WARNING: Loading for more than 5 seconds - this might indicate an issue`);
+      }, 5000);
+      return () => clearTimeout(timeout);
+    }
+  }, [isLoading, potentialMatches.length]);
   
   const handleSwipeRight = async (profile: UserProfile) => {
     if (Platform.OS !== 'web') {
@@ -414,6 +443,26 @@ export default function DiscoverScreen() {
             <MapPin size={24} color={Colors.dark.accent} />
             <Text style={styles.filterButtonText}>{preferredDistance} km</Text>
           </TouchableOpacity>
+        </View>
+      )}
+      
+      {/* DEBUG: Temporary debug display */}
+      {__DEV__ && (
+        <View style={styles.debugContainer}>
+          <Text style={styles.debugTitle}>DEBUG INFO:</Text>
+          <Text style={styles.debugText}>User: {user?.id || 'none'}</Text>
+          <Text style={styles.debugText}>Tier: {user?.membershipTier || 'none'}</Text>
+          <Text style={styles.debugText}>Tier Settings: {tierSettings ? 'loaded' : 'missing'}</Text>
+          <Text style={styles.debugText}>Matches: {potentialMatches.length}</Text>
+          <Text style={styles.debugText}>Loading: {isLoading ? 'true' : 'false'}</Text>
+          <Text style={styles.debugText}>Prefetching: {isPrefetching ? 'true' : 'false'}</Text>
+          <Text style={styles.debugText}>No More: {noMoreProfiles ? 'true' : 'false'}</Text>
+          <Text style={styles.debugText}>Error: {error || 'none'}</Text>
+          <Text style={styles.debugText}>Ready: {isReady ? 'true' : 'false'}</Text>
+          <Text style={styles.debugTitle}>RECENT ACTIONS:</Text>
+          {debugInfo.slice(-5).map((info, index) => (
+            <Text key={index} style={styles.debugText}>{info}</Text>
+          ))}
         </View>
       )}
       
@@ -739,5 +788,24 @@ const styles = StyleSheet.create({
   },
   passButton: {
     borderColor: Colors.dark.error,
+  },
+  debugContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: Colors.dark.background,
+    padding: 16,
+  },
+  debugTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: Colors.dark.accent,
+    marginBottom: 8,
+  },
+  debugText: {
+    fontSize: 16,
+    color: Colors.dark.textSecondary,
+    marginBottom: 4,
   },
 });
