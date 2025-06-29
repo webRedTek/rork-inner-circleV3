@@ -384,8 +384,7 @@ export const initSupabase = async (): Promise<boolean> => {
         console.log('Using saved Supabase configuration from AsyncStorage');
         return await initWithRetry(savedUrl, savedKey);
       }
-      console.error('No saved configuration found in AsyncStorage.');
-      return false;
+      throw new Error('Supabase is not configured and no saved configuration found. Please check your setup.');
     }
 
     const supabaseUrl = 
@@ -397,15 +396,25 @@ export const initSupabase = async (): Promise<boolean> => {
       Constants.expoConfig?.extra?.supabaseAnonKey;
 
     if (!supabaseUrl || !supabaseAnonKey) {
-      console.error('Supabase URL or Anon Key is missing in environment variables.');
-      return false;
+      throw new Error('Supabase URL or Anon Key is missing. Please check your environment variables.');
     }
 
     return await initWithRetry(supabaseUrl, supabaseAnonKey);
   } catch (error) {
     console.error('Error initializing Supabase:', error instanceof Error ? error.message : String(error));
     console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');
-    return false;
+    
+    // Try to get more details about the error
+    const details = {
+      networkStatus: await checkNetworkStatus(),
+      hasUrl: Boolean(process.env.EXPO_PUBLIC_SUPABASE_URL || Constants.expoConfig?.extra?.supabaseUrl),
+      hasKey: Boolean(process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || Constants.expoConfig?.extra?.supabaseAnonKey),
+      hasSavedUrl: Boolean(await AsyncStorage.getItem('SUPABASE_URL')),
+      hasSavedKey: Boolean(await AsyncStorage.getItem('SUPABASE_KEY'))
+    };
+    console.error('Supabase initialization details:', details);
+    
+    throw error;
   }
 };
 
@@ -432,6 +441,7 @@ const initWithRetry = async (url: string, key: string, retryCount = 0): Promise<
     const { data, error } = await supabase.from('app_settings').select('id').limit(1).maybeSingle();
     
     if (error) {
+      console.error('Supabase connection test failed:', error);
       if (retryCount < MAX_RETRIES - 1) {
         console.warn(`Supabase initialization attempt ${retryCount + 1} failed: ${error.message}. Retrying...`);
         const delay = RETRY_DELAY * Math.pow(RETRY_BACKOFF_FACTOR, retryCount);
@@ -453,7 +463,7 @@ const initWithRetry = async (url: string, key: string, retryCount = 0): Promise<
     }
     
     console.error('All Supabase initialization attempts failed:', error instanceof Error ? error.message : String(error));
-    return false;
+    throw error;
   }
 };
 
