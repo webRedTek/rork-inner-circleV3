@@ -389,21 +389,26 @@ export interface UsageStats {
   timestamp: number;
 }
 
+export interface DatabaseTotals {
+  swipe_count: number;
+  match_count: number;
+  message_count: number;
+  like_count: number;
+  daily_reset_at: string;
+}
+
 export interface UsageStore {
   usageCache: UsageCache | null;
   batchUpdates: BatchUpdate[];
   isSyncing: boolean;
   lastSyncError: string | null;
-  saveStrategy: {
-    critical: {
-      interval: number;
-      features: string[];
-    };
-  };
+  databaseTotals: DatabaseTotals | null;
+  saveStrategy: SyncStrategy;
   rateLimits: RateLimits;
   cacheConfig: CacheConfig;
   retryStrategy: RetryStrategy;
   initializeUsage: (userId: string) => Promise<void>;
+  fetchDatabaseTotals: (userId: string) => Promise<DatabaseTotals | undefined>;
   syncUsageData: (force?: boolean) => Promise<void>;
   trackUsage: (options: UsageTrackingOptions) => Promise<UsageResult>;
   getUsageStats: () => UsageStats | null;
