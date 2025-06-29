@@ -217,6 +217,7 @@ export interface TierSettings {
   daily_match_limit: number;
   daily_like_limit: number;
   message_sending_limit: number;
+  like_sending_limit: number;
   can_see_who_liked_you: boolean;
   can_rewind_last_swipe: boolean;
   profile_visibility_control: boolean;
@@ -386,4 +387,27 @@ export interface UsageStats {
   likeLimit: number;
   likeRemaining: number;
   timestamp: number;
+}
+
+export interface UsageStore {
+  usageCache: UsageCache | null;
+  batchUpdates: BatchUpdate[];
+  isSyncing: boolean;
+  lastSyncError: string | null;
+  saveStrategy: {
+    critical: {
+      interval: number;
+      features: string[];
+    };
+  };
+  rateLimits: RateLimits;
+  cacheConfig: CacheConfig;
+  retryStrategy: RetryStrategy;
+  initializeUsage: (userId: string) => Promise<void>;
+  syncUsageData: (force?: boolean) => Promise<void>;
+  trackUsage: (options: UsageTrackingOptions) => Promise<UsageResult>;
+  getUsageStats: () => UsageStats | null;
+  queueBatchUpdate: (actionType: string, count: number) => void;
+  resetUsage: (actionType?: string) => void;
+  clearError: () => void;
 }
