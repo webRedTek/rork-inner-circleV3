@@ -393,8 +393,8 @@ export const useUsageStore = create<UsageStore>()(
           messageLimit: tierSettings.message_sending_limit,
           messageRemaining: Math.max(0, tierSettings.message_sending_limit - messageData.currentCount),
           likeCount: likeData.currentCount,
-          likeLimit: tierSettings.like_sending_limit,
-          likeRemaining: Math.max(0, tierSettings.like_sending_limit - likeData.currentCount),
+          likeLimit: tierSettings.daily_like_limit,
+          likeRemaining: Math.max(0, tierSettings.daily_like_limit - likeData.currentCount),
           timestamp: Date.now(),
         };
       },
