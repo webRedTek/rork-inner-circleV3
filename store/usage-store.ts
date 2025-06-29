@@ -1,50 +1,12 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { persist, createJSONStorage, StateCreator } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import type { StoreApi, StateCreator } from 'zustand';
 import { UsageCache, BatchUpdate, SyncStrategy, RateLimits, CacheConfig, RetryStrategy, UsageTrackingOptions, UsageResult, UsageStats, UsageStore } from '@/types/user';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
 import { useNotificationStore } from './notification-store';
-import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory, getReadableError } from '@/utils/error-utils';
-
-// Helper function to extract readable error message
-const getReadableError = (error: any): string => {
-  if (!error) return 'Unknown error occurred';
-  if (typeof error === 'string') return error;
-  if (error.message) return error.message;
-  if (error.error && error.error.message) return error.error.message;
-  if (error.details) return String(error.details);
-  if (error.code) return `Error code: ${error.code}`;
-  try {
-    return JSON.stringify(error);
-  } catch (e) {
-    return 'An error occurred';
-  }
-};
-
-interface UsageState {
-  usageCache: UsageCache | null;
-  batchUpdates: BatchUpdate[];
-  isSyncing: boolean;
-  lastSyncError: string | null;
-  saveStrategy: {
-    critical: {
-      interval: number;
-      features: string[];
-    };
-  };
-  initializeUsage: (userId: string) => Promise<void>;
-  syncUsageData: (force?: boolean) => Promise<void>;
-  trackUsage: (options: UsageTrackingOptions) => Promise<UsageResult>;
-  getUsageStats: () => UsageStats | null;
-  queueBatchUpdate: (actionType: string, count: number) => void;
-  rateLimits: RateLimits;
-  cacheConfig: CacheConfig;
-  retryStrategy: RetryStrategy;
-  resetUsage: (actionType?: string) => void;
-  clearError: () => void;
-  resetUsageCache: () => Promise<void>;
-}
+import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
 
 // Default usage cache
 const defaultUsageCache: UsageCache = {
@@ -100,7 +62,7 @@ const defaultRetryStrategy: RetryStrategy = {
 
 export const useUsageStore = create<UsageStore>()(
   persist(
-    (set, get) => ({
+    ((set: StoreApi<UsageStore>['setState'], get: StoreApi<UsageStore>['getState']) => ({
       usageCache: null,
       batchUpdates: [],
       isSyncing: false,
@@ -150,7 +112,7 @@ export const useUsageStore = create<UsageStore>()(
               .single();
 
             if (createError) {
-              throw new Error(`Failed to create usage record: ${getReadableError(createError)}`);
+              throw new Error(`Failed to create usage record: ${handleError(createError).userMessage}`);
             }
 
             const usageCache: UsageCache = {
@@ -214,7 +176,7 @@ export const useUsageStore = create<UsageStore>()(
                 .single();
 
               if (resetError) {
-                throw new Error(`Failed to reset usage counts: ${getReadableError(resetError)}`);
+                throw new Error(`Failed to reset usage counts: ${handleError(resetError).userMessage}`);
               }
 
               const usageCache: UsageCache = {
@@ -302,9 +264,9 @@ export const useUsageStore = create<UsageStore>()(
             }
           }
         } catch (error) {
-          console.error('Error initializing usage:', getReadableError(error));
-          set({ lastSyncError: getReadableError(error) });
-          throw new Error(`Usage initialization failed: ${getReadableError(error)}`);
+          console.error('Error initializing usage:', handleError(error).userMessage);
+          set({ lastSyncError: handleError(error).userMessage });
+          throw error;
         }
       },
 
@@ -665,7 +627,7 @@ export const useUsageStore = create<UsageStore>()(
             duration: 3000
           });
         } catch (error) {
-          console.error('Error resetting usage cache:', getReadableError(error));
+          console.error('Error resetting usage cache:', handleError(error).userMessage);
           useNotificationStore.getState().addNotification({
             type: 'error',
             message: 'Failed to reset usage data',
@@ -674,7 +636,7 @@ export const useUsageStore = create<UsageStore>()(
           });
         }
       }
-    }),
+    })) as StateCreator<UsageStore>,
     {
       name: 'usage-storage',
       storage: createJSONStorage(() => AsyncStorage),
