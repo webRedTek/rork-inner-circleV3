@@ -133,13 +133,21 @@ export const useAuthStore = create<AuthState>()(
         
         try {
           await withNetworkCheck(async () => {
-            await initSupabase();
+            try {
+              await initSupabase();
+            } catch (error) {
+              throw {
+                category: ErrorCategory.AUTH,
+                code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
+                message: error instanceof Error ? error.message : 'Failed to initialize authentication service. Please check your network connection and try again.'
+              };
+            }
             
             if (!isSupabaseConfigured() || !supabase) {
               throw {
                 category: ErrorCategory.AUTH,
                 code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-                message: 'Authentication service is not configured'
+                message: 'Authentication service is not configured. Please check your setup and try again.'
               };
             }
 
@@ -155,7 +163,16 @@ export const useAuthStore = create<AuthState>()(
               }
             );
 
-            if (error) throw error;
+            if (error) {
+              if (error.message?.toLowerCase().includes('invalid login credentials')) {
+                throw {
+                  category: ErrorCategory.AUTH,
+                  code: ErrorCodes.AUTH_INVALID_CREDENTIALS,
+                  message: 'Invalid email or password. Please check your credentials and try again.'
+                };
+              }
+              throw error;
+            }
 
             // Profile fetch operation
             const { data: profileData, error: profileError } = await withRetry(
@@ -183,7 +200,13 @@ export const useAuthStore = create<AuthState>()(
                 }
               );
 
-              if (insertError) throw insertError;
+              if (insertError) {
+                throw {
+                  category: ErrorCategory.DATABASE,
+                  code: ErrorCodes.DB_QUERY_ERROR,
+                  message: 'Failed to create user profile. Please try logging in again.'
+                };
+              }
 
               set({
                 user: newProfile,
@@ -194,7 +217,11 @@ export const useAuthStore = create<AuthState>()(
               // Initialize usage tracking
               await useUsageStore.getState().initializeUsage(data.user.id);
             } else if (profileError) {
-              throw profileError;
+              throw {
+                category: ErrorCategory.DATABASE,
+                code: ErrorCodes.DB_QUERY_ERROR,
+                message: 'Failed to fetch user profile. Please try logging in again.'
+              };
             } else {
               const userProfile = supabaseToUserProfile(profileData || {});
               await useUsageStore.getState().initializeUsage(userProfile.id);
@@ -209,6 +236,12 @@ export const useAuthStore = create<AuthState>()(
           });
         } catch (error) {
           const appError = handleError(error);
+          console.error('[AuthStore] Login error:', {
+            category: appError.category,
+            code: appError.code,
+            message: appError.message,
+            technical: appError.technical
+          });
           set({
             isLoading: false,
             error: appError.userMessage
