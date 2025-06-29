@@ -1,3 +1,35 @@
+/**
+ * FILE: components/SwipeCards.tsx
+ * LAST UPDATED: 2024-12-19 16:15
+ * 
+ * CURRENT STATE:
+ * Swipeable card component for displaying potential matches. Handles touch gestures,
+ * animations, and user interactions. Fixed prefetching infinite loop by removing
+ * function from useEffect dependencies.
+ * 
+ * RECENT CHANGES:
+ * - Fixed useEffect dependency array to prevent infinite prefetch loops
+ * - Removed prefetchNextBatch from dependencies to prevent re-triggers
+ * - Maintained existing swipe functionality while fixing the loop issue
+ * 
+ * FILE INTERACTIONS:
+ * - Imports from: matches-store (prefetchNextBatch, prefetchThreshold, isPrefetching, noMoreProfiles)
+ * - Imports from: EntrepreneurCard component (profile display)
+ * - Imports from: user types (UserProfile)
+ * - Exports to: Discover screen and other screens that need swipeable cards
+ * - Dependencies: React Native, Animated API, PanResponder
+ * - Data flow: Receives profiles array, handles swipe gestures, triggers
+ *   prefetching when running low on profiles, calls parent callbacks for actions
+ * 
+ * KEY FUNCTIONS/COMPONENTS:
+ * - SwipeCards: Main component with gesture handling
+ * - forceSwipe: Programmatic swipe with animation
+ * - onSwipeComplete: Handle swipe completion and trigger callbacks
+ * - resetPosition: Reset card position after swipe
+ * - renderCards: Render current and next cards with animations
+ * - Prefetching logic with proper state management
+ */
+
 import React, { useRef, useState, useEffect } from 'react';
 import { 
   View, 
@@ -84,7 +116,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     } else if (noMoreProfiles) {
       console.log('[SwipeCards] Prefetch skipped - no more profiles to load', { currentIndex, profilesCount: profiles.length });
     }
-  }, [currentIndex, profiles.length, isPrefetching, noMoreProfiles, prefetchThreshold, prefetchNextBatch]);
+  }, [currentIndex, profiles.length, isPrefetching, noMoreProfiles, prefetchThreshold]);
   
   useEffect(() => {
     console.log('[SwipeCards] Profiles or index updated', { currentIndex, profilesCount: profiles.length });
