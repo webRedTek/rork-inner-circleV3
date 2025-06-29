@@ -68,12 +68,7 @@ export const useUsageStore = create<UsageStore>()(
       isSyncing: false,
       lastSyncError: null,
       databaseTotals: null as DatabaseTotals | null,
-      saveStrategy: {
-        critical: {
-          interval: 30 * 1000, // 30 seconds
-          features: ['swipes', 'matches', 'messages', 'likes'],
-        },
-      },
+      saveStrategy: defaultSyncStrategy,
       rateLimits: defaultRateLimits,
       cacheConfig: defaultCacheConfig,
       retryStrategy: defaultRetryStrategy,
