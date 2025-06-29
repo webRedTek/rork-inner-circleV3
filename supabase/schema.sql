@@ -274,30 +274,47 @@ CREATE TABLE public.affiliate_clicks (
 CREATE TABLE public.user_daily_usage (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   user_id uuid NOT NULL,
-  action_type text NOT NULL CHECK (action_type = ANY (ARRAY['swipe', 'match', 'message', 'group_join', 'group_create', 'portfolio_feature', 'event_create', 'direct_intro', 'boost_use', 'rewind_use', 'virtual_meeting'])),
-  first_action_timestamp bigint NOT NULL,
-  last_action_timestamp bigint NOT NULL,
-  current_count integer NOT NULL DEFAULT 0,
-  reset_timestamp bigint NOT NULL,
-  boost_minutes_remaining integer DEFAULT 0,
-  boost_uses_remaining integer DEFAULT 0,
-  events_created_this_month integer DEFAULT 0,
-  events_month_reset_timestamp bigint,
-  direct_intros_sent integer DEFAULT 0,
+  date date NOT NULL DEFAULT CURRENT_DATE,
+  swipe_count integer DEFAULT 0,
+  match_count integer DEFAULT 0,
+  message_count integer DEFAULT 0,
+  direct_intro_count integer DEFAULT 0,
+  groups_joined_count integer DEFAULT 0,
+  groups_created_count integer DEFAULT 0,
+  events_created_count integer DEFAULT 0,
+  featured_portfolio_count integer DEFAULT 0,
   virtual_meetings_hosted integer DEFAULT 0,
-  groups_joined integer DEFAULT 0,
-  groups_created integer DEFAULT 0,
-  featured_portfolios_count integer DEFAULT 0,
-  messages_sent_count integer DEFAULT 0,
-  priority_messages_sent integer DEFAULT 0,
-  profile_views_received integer DEFAULT 0,
-  search_appearances integer DEFAULT 0,
-  premium_features_used jsonb,
-  last_tier_change_timestamp bigint,
-  tier_history jsonb,
+  boost_minutes_used integer DEFAULT 0,
+  boost_uses_count integer DEFAULT 0,
+  last_updated timestamp with time zone DEFAULT now(),
+  created_at timestamp with time zone DEFAULT now(),
+  monthly_reset_at timestamp with time zone DEFAULT date_trunc('month'::text, now()),
+  daily_reset_at timestamp with time zone DEFAULT date_trunc('day'::text, now()),
+  like_count integer NOT NULL DEFAULT 0,
   CONSTRAINT user_daily_usage_pkey PRIMARY KEY (id),
   CONSTRAINT user_daily_usage_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
+
+-- Enable RLS on user_daily_usage
+ALTER TABLE public.user_daily_usage ENABLE ROW LEVEL SECURITY;
+
+-- Create RLS policies for user_daily_usage
+CREATE POLICY "Users can view their own usage"
+  ON public.user_daily_usage FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own usage"
+  ON public.user_daily_usage FOR UPDATE
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own usage"
+  ON public.user_daily_usage FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+-- Create index for better performance
+CREATE INDEX IF NOT EXISTS idx_user_daily_usage_user_id ON public.user_daily_usage (user_id);
+CREATE INDEX IF NOT EXISTS idx_user_daily_usage_date ON public.user_daily_usage (date);
+CREATE INDEX IF NOT EXISTS idx_user_daily_usage_user_date ON public.user_daily_usage (user_id, date);
 
 -- Enable RLS on all affiliate tables
 alter table public.affiliate_stats enable row level security;
@@ -528,19 +545,11 @@ begin
 
   -- Update usage tracking for swipes and matches
   if v_swipe_count > 0 then
-    insert into public.user_daily_usage (user_id, action_type, first_action_timestamp, last_action_timestamp, current_count, reset_timestamp)
-    values (v_swiper_id, 'swipe', extract(epoch from now()) * 1000, extract(epoch from now()) * 1000, v_swipe_count, extract(epoch from (current_date + interval '1 day')) * 1000)
-    on conflict (user_id, action_type) do update
-    set current_count = user_daily_usage.current_count + v_swipe_count,
-        last_action_timestamp = extract(epoch from now()) * 1000;
-  end if;
-
-  if v_match_count > 0 then
-    insert into public.user_daily_usage (user_id, action_type, first_action_timestamp, last_action_timestamp, current_count, reset_timestamp)
-    values (v_swiper_id, 'match', extract(epoch from now()) * 1000, extract(epoch from now()) * 1000, v_match_count, extract(epoch from (current_date + interval '1 day')) * 1000)
-    on conflict (user_id, action_type) do update
-    set current_count = user_daily_usage.current_count + v_match_count,
-        last_action_timestamp = extract(epoch from now()) * 1000;
+    insert into public.user_daily_usage (user_id, swipe_count, match_count)
+    values (v_swiper_id, v_swipe_count, v_match_count)
+    on conflict (user_id) do update
+    set swipe_count = user_daily_usage.swipe_count + v_swipe_count,
+        match_count = user_daily_usage.match_count + v_match_count;
   end if;
 
   -- Return results with processed swipes and any new matches
