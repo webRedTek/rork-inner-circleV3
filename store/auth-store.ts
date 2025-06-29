@@ -1,3 +1,40 @@
+/**
+ * FILE: store/auth-store.ts
+ * LAST UPDATED: 2024-12-19 16:15
+ * 
+ * CURRENT STATE:
+ * Central authentication and user management store using Zustand. Handles user login,
+ * signup, profile management, tier settings, and session management. Provides
+ * tier settings access that is used by matches-store and other stores for feature
+ * permissions and limits.
+ * 
+ * RECENT CHANGES:
+ * - No changes needed - auth-store already properly provides getTierSettings()
+ * - Function correctly returns tier settings for current user's membership tier
+ * - Used by matches-store for global discovery and other tier-based features
+ * - Maintains compatibility with prefetching fixes in matches-store
+ * 
+ * FILE INTERACTIONS:
+ * - Imports from: user types (UserProfile, MembershipTier, TierSettings, UserRole)
+ * - Imports from: supabase lib (authentication, database operations)
+ * - Imports from: usage-store (usage tracking initialization and sync)
+ * - Imports from: notification-store (success notifications)
+ * - Imports from: error-utils, network-utils (error handling and network checks)
+ * - Exports to: All stores and screens that need user data or tier settings
+ * - Dependencies: AsyncStorage (persistence), Zustand (state management)
+ * - Data flow: Manages user authentication state, provides tier settings to other
+ *   stores, coordinates with usage tracking, handles profile updates
+ * 
+ * KEY FUNCTIONS/COMPONENTS:
+ * - login/signup: User authentication with profile creation
+ * - getTierSettings: Returns tier settings for current user (used by matches-store)
+ * - fetchAllTierSettings: Loads all tier settings from database
+ * - updateProfile/updateMembership: Profile and membership management
+ * - checkSession: Session validation and restoration
+ * - clearCache: Cache management for troubleshooting
+ * - Network status tracking and error handling
+ */
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
