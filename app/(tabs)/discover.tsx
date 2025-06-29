@@ -1,3 +1,38 @@
+/**
+ * FILE: app/(tabs)/discover.tsx
+ * LAST UPDATED: 2024-12-19 16:15
+ * 
+ * CURRENT STATE:
+ * Main discovery screen for the app. Displays potential matches in a swipeable card interface.
+ * Handles user interactions (like/pass), match notifications, and profile viewing.
+ * Fixed prefetching infinite loop by removing function from useEffect dependencies.
+ * 
+ * RECENT CHANGES:
+ * - Fixed useEffect dependency array to prevent infinite prefetch loops
+ * - Removed prefetchNextBatch from dependencies to prevent re-triggers
+ * - Maintained existing functionality while fixing the loop issue
+ * 
+ * FILE INTERACTIONS:
+ * - Imports from: matches-store (potential matches, swipe actions)
+ * - Imports from: auth-store (user authentication, tier settings)
+ * - Imports from: usage-store (usage tracking and limits)
+ * - Imports from: components (SwipeCards, Button, ProfileDetailCard)
+ * - Imports from: utils (error handling, notifications)
+ * - Exports to: Main tab navigation
+ * - Dependencies: React Native, Expo Router, Haptics
+ * - Data flow: Fetches matches from store, displays in swipe interface,
+ *   handles user actions, shows modals for matches and limits
+ * 
+ * KEY FUNCTIONS/COMPONENTS:
+ * - Main discovery interface with swipeable cards
+ * - Match notification modal handling
+ * - Limit reached modal handling
+ * - Profile detail viewing
+ * - Global/local search toggle
+ * - Distance filter application
+ * - Debug information logging
+ */
+
 import React, { useEffect, useState } from 'react';
 import { 
   View, 
@@ -22,43 +57,6 @@ import { Platform } from 'react-native';
 import { ProfileDetailCard } from '@/components/ProfileDetailCard';
 import { X, ArrowLeft, RefreshCw, MapPin } from 'lucide-react-native';
 import { Input } from '@/components/Input';
-
-/**
- * FILE: app/(tabs)/discover.tsx
- * LAST UPDATED: 2024-12-19 15:45
- * 
- * CURRENT STATE:
- * Main discovery screen for the app. Displays potential matches as swipeable cards,
- * handles user interactions (like/pass), manages loading states, and controls
- * global search functionality based on user tier settings. Currently includes
- * comprehensive debugging features for troubleshooting loading issues.
- * 
- * RECENT CHANGES:
- * - Added comprehensive debugging system with real-time on-screen display
- * - Added console logging for all major events and state changes
- * - Added timeout detection for loading states (5-second warning)
- * - Added debug state tracking for user info, tier settings, loading states
- * - Fixed tier settings access pattern to use allTierSettings[user.membershipTier]
- * - Removed unnecessary useState, useEffect, and TierSettings import
- * 
- * FILE INTERACTIONS:
- * - Imports from: matches-store (potentialMatches, fetchPotentialMatches, likeUser, passUser, etc.)
- * - Imports from: auth-store (user, isReady, allTierSettings for tier settings)
- * - Imports from: user types (UserProfile, MatchWithProfile)
- * - Exports to: Tab navigation system
- * - Dependencies: SwipeCards component, ProfileDetailCard, Button components
- * - Data flow: Receives user data from auth store, fetches matches from matches store, 
- *   sends user actions back to matches store, navigates to chat/profile screens
- * 
- * KEY FUNCTIONS/COMPONENTS:
- * - DiscoverScreen: Main component handling discovery UI and logic
- * - handleSwipeRight/Left: Process user swipe actions
- * - handleModalAction: Handle various modal actions (message, upgrade, filters)
- * - handleRefresh: Manual refresh of potential matches
- * - handleToggleGlobalSearch: Toggle global search based on tier permissions
- * - DEBUG: addDebugInfo: Logs debug information to console and screen
- * - DEBUG: Real-time debug display showing current state and recent actions
- */
 
 export default function DiscoverScreen() {
   const router = useRouter();
@@ -141,7 +139,7 @@ export default function DiscoverScreen() {
       console.log('[Discover] Running low on matches, prefetching more', { currentMatches: potentialMatches.length });
       prefetchNextBatch();
     }
-  }, [potentialMatches.length, isPrefetching, isLoading, user, prefetchNextBatch, noMoreProfiles]);
+  }, [potentialMatches.length, isPrefetching, isLoading, user, noMoreProfiles]);
   
   useEffect(() => {
     // Check for new matches and display modal
