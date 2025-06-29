@@ -211,17 +211,20 @@ export interface AppSettings {
 }
 
 export interface TierSettings {
+  id?: string;
+  tier: MembershipTier;
   daily_swipe_limit: number;
   daily_match_limit: number;
+  daily_like_limit: number;
   message_sending_limit: number;
   can_see_who_liked_you: boolean;
   can_rewind_last_swipe: boolean;
-  boost_duration: number;
-  boost_frequency: number;
   profile_visibility_control: boolean;
   priority_listing: boolean;
   premium_filters_access: boolean;
   global_discovery: boolean;
+  boost_duration: number;
+  boost_frequency: number;
   groups_limit: number;
   groups_creation_limit: number;
   featured_portfolio_limit: number;
@@ -379,5 +382,8 @@ export interface UsageStats {
   messageCount: number;
   messageLimit: number;
   messageRemaining: number;
+  likeCount: number;
+  likeLimit: number;
+  likeRemaining: number;
   timestamp: number;
 }
