@@ -15,6 +15,13 @@ interface CacheViewModalProps {
   onClose: () => void;
 }
 
+const formatTimeRemaining = (ms: number): string => {
+  if (ms <= 0) return '0m';
+  const hours = Math.floor(ms / (1000 * 60 * 60));
+  const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+};
+
 export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose }) => {
   const { usageCache, lastSyncError, isSyncing, syncUsageData } = useUsageStore();
   const { allTierSettings, tierSettingsTimestamp, fetchAllTierSettings, user, isLoading } = useAuthStore();
@@ -86,7 +93,7 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
   const renderUsageData = () => {
     if (!usageCache) return <Text style={styles.noDataText}>No usage data available</Text>;
 
-    const usageTypes = ['swipe', 'match', 'message'];
+    const usageTypes = ['swipe', 'match', 'message', 'like'];
     return usageTypes.map(type => {
       const data = usageCache.usageData[type];
       if (!data) return null;
@@ -95,17 +102,23 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
         ? tierSettings?.daily_swipe_limit || 'N/A'
         : type === 'match'
         ? tierSettings?.daily_match_limit || 'N/A'
+        : type === 'like'
+        ? tierSettings?.daily_like_limit || 'N/A'
         : tierSettings?.message_sending_limit || 'N/A';
       const isCloseToLimit = typeof limit === 'number' && data.currentCount >= limit * 0.8;
 
       return (
         <View key={type} style={styles.row}>
           <Text style={styles.cell}>{type.charAt(0).toUpperCase() + type.slice(1)}</Text>
-          <Text style={[styles.cell, isCloseToLimit && styles.closeToLimit]}>
+          <Text style={[styles.cell, isCloseToLimit && styles.warningText]}>
             {data.currentCount} / {limit}
           </Text>
-          <Text style={styles.cell}>{getTimeUntilReset(data.resetTimestamp)}</Text>
-          <Text style={styles.cell}>{formatTimestamp(data.lastActionTimestamp)}</Text>
+          <Text style={styles.cell}>
+            {data.resetTimestamp ? formatTimeRemaining(data.resetTimestamp - Date.now()) : 'N/A'}
+          </Text>
+          <Text style={styles.cell}>
+            {data.lastActionTimestamp ? new Date(data.lastActionTimestamp).toLocaleString() : 'Never'}
+          </Text>
         </View>
       );
     });
@@ -354,5 +367,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 12,
     textAlign: 'center',
+  },
+  warningText: {
+    color: Colors.dark.warning,
+    fontWeight: 'bold',
   },
 });
