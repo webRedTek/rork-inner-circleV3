@@ -20,6 +20,45 @@ import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory } 
 import { withNetworkCheck } from '@/utils/network-utils';
 import type { StoreApi, StateCreator } from 'zustand';
 
+/**
+ * FILE: store/matches-store.ts
+ * LAST UPDATED: 2024-12-19 15:45
+ * 
+ * CURRENT STATE:
+ * Central matches management store using Zustand. Handles fetching potential matches,
+ * user interactions (like/pass), batch processing, caching, and prefetching.
+ * Manages swipe limits, match creation, and coordinates with usage tracking.
+ * Currently includes comprehensive debugging for troubleshooting loading issues.
+ * 
+ * RECENT CHANGES:
+ * - Added extensive console logging throughout fetchPotentialMatches function
+ * - Added detailed debugging for user authentication, tier settings, and database calls
+ * - Added step-by-step process tracking for Supabase interactions
+ * - Added error tracking with detailed logging for troubleshooting
+ * - Enhanced state monitoring for loading, prefetching, and error states
+ * 
+ * FILE INTERACTIONS:
+ * - Imports from: user types (UserProfile, MatchWithProfile, MembershipTier)
+ * - Imports from: supabase lib (database operations, authentication)
+ * - Imports from: auth-store (user data, tier settings access)
+ * - Imports from: usage-store (usage tracking and limits)
+ * - Imports from: error-utils, network-utils (error handling and network checks)
+ * - Exports to: All discovery and matching screens
+ * - Dependencies: AsyncStorage (persistence), Zustand (state management)
+ * - Data flow: Receives user actions, fetches matches from database, manages
+ *   swipe queues, coordinates with usage tracking, provides match data to UI
+ * 
+ * KEY FUNCTIONS/COMPONENTS:
+ * - fetchPotentialMatches: Main function to load potential matches with debugging
+ * - prefetchNextBatch: Load additional matches for caching
+ * - likeUser/passUser: Handle user swipe actions
+ * - queueSwipe: Queue swipe actions for batch processing
+ * - processSwipeBatch: Process queued swipes in batches
+ * - getMatches: Fetch user's actual matches
+ * - refreshCandidates: Force refresh of potential matches
+ * - DEBUG: Extensive console logging throughout all functions
+ */
+
 // Define PassedUser interface
 interface PassedUser {
   id: string;
@@ -178,110 +217,125 @@ const matchesStoreCreator: StateCreator<
 
   fetchPotentialMatches: async (maxDistance = 50, forceRefresh = false) => {
     return await withErrorHandling(async () => {
+      const { user, isReady } = useAuthStore.getState();
+      console.log('[MatchesStore] fetchPotentialMatches called', { 
+        userId: user?.id, 
+        isReady, 
+        maxDistance, 
+        forceRefresh,
+        currentMatches: get().potentialMatches.length 
+      });
+      
+      if (!isReady || !user) {
+        console.log('[MatchesStore] User not ready or authenticated');
+        throw {
+          category: ErrorCategory.AUTH,
+          code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
+          message: 'User not ready or authenticated for fetching potential matches'
+        };
+      }
+
+      // Don't fetch if already loading and not forcing refresh
+      if (get().isLoading && !forceRefresh) {
+        console.log('[MatchesStore] Already loading, skipping fetch');
+        return;
+      }
+
       set({ isLoading: true, error: null });
+      console.log('[MatchesStore] Starting fetch with loading state');
 
       try {
-        const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) {
+        // Use user's preferred distance if available
+        const userMaxDistance = user.preferredDistance || maxDistance;
+        console.log('[MatchesStore] Using distance', { userMaxDistance, userPreferred: user.preferredDistance });
+
+        if (!isSupabaseConfigured() || !supabase) {
+          console.log('[MatchesStore] Supabase not configured');
           throw {
-            category: ErrorCategory.AUTH,
-            code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-            message: 'Please log in to view potential matches'
+            category: ErrorCategory.DATABASE,
+            code: ErrorCodes.DB_CONNECTION_ERROR,
+            message: 'Database connection not configured. Please check your Supabase setup.'
           };
         }
 
-        await withNetworkCheck(async () => {
-          // Clean up expired passes first
-          await get().cleanupExpiredPasses();
-          
-          // Get current passed users and pending likes
-          const passedUserIds = get().passedUsers.map((pass: PassedUser) => pass.id);
-          const pendingLikeIds = Array.from(get().pendingLikes);
-          
-          // If we have cached matches and not forcing refresh, use them
-          if (!forceRefresh && get().cachedMatches.length > 0) {
-            const { cachedMatches } = get();
-            // Filter out passed users and pending likes from cached matches
-            const filteredCache = cachedMatches.filter((match: UserProfile) => 
-              passedUserIds.indexOf(match.id) === -1 && 
-              pendingLikeIds.indexOf(match.id) === -1
-            );
-            const batchToShow = filteredCache.slice(0, get().batchSize);
-            const remainingCache = filteredCache.slice(get().batchSize);
-            console.log('[MatchesStore] Using cached matches', { batchToShow: batchToShow.length, remainingCache: remainingCache.length });
-            set({ 
-              potentialMatches: batchToShow, 
-              cachedMatches: remainingCache, 
-              isLoading: false,
-              noMoreProfiles: false
-            });
-            return;
-          }
+        // Use cached tier settings for global discovery
+        const tierSettings = useAuthStore.getState().getTierSettings();
+        console.log('[MatchesStore] Tier settings check', { 
+          hasTierSettings: !!tierSettings, 
+          globalDiscovery: tierSettings?.global_discovery 
+        });
+        
+        if (!tierSettings) {
+          console.log('[MatchesStore] No tier settings available');
+          throw {
+            category: ErrorCategory.VALIDATION,
+            code: ErrorCodes.VALIDATION_MISSING_FIELD,
+            message: 'Unable to load your membership settings. Please try logging out and back in.'
+          };
+        }
 
-          if (!isSupabaseConfigured() || !supabase) {
-            throw {
-              category: ErrorCategory.DATABASE,
-              code: ErrorCodes.DB_CONNECTION_ERROR,
-              message: 'Database connection not configured. Please check your Supabase setup.'
-            };
-          }
+        const isGlobalDiscovery = tierSettings.global_discovery;
+        console.log('[MatchesStore] Global discovery setting', { isGlobalDiscovery });
 
-          // Use cached tier settings for global discovery
-          const tierSettings = useAuthStore.getState().getTierSettings();
-          if (!tierSettings) {
-            throw {
-              category: ErrorCategory.VALIDATION,
-              code: ErrorCodes.VALIDATION_MISSING_FIELD,
-              message: 'Unable to load your membership settings. Please try logging out and back in.'
-            };
-          }
+        // Fetch potential matches using the Supabase function
+        console.log('[MatchesStore] Calling fetchPotentialMatchesFromSupabase');
+        const result = await withRateLimitAndRetry(() => fetchPotentialMatchesFromSupabase(
+          user.id,
+          userMaxDistance,
+          isGlobalDiscovery,
+          get().batchSize * 2 // Fetch extra for caching
+        ));
 
-          const isGlobalDiscovery = tierSettings.global_discovery;
+        console.log('[MatchesStore] Supabase result', { 
+          hasResult: !!result, 
+          hasMatches: !!result?.matches, 
+          matchCount: result?.matches?.length || 0 
+        });
 
-          // Fetch potential matches using the Supabase function
-          const result = await withRateLimitAndRetry(() => fetchPotentialMatchesFromSupabase(
-            user.id,
-            maxDistance,
-            isGlobalDiscovery,
-            get().batchSize * 2 // Fetch extra for caching
-          ));
+        if (!result || !result.matches) {
+          console.log('[MatchesStore] No result or matches from Supabase');
+          throw {
+            category: ErrorCategory.DATABASE,
+            code: ErrorCodes.DB_QUERY_ERROR,
+            message: 'Unable to fetch potential matches. Please check your network connection and try again.'
+          };
+        }
 
-          if (!result || !result.matches) {
-            throw {
-              category: ErrorCategory.DATABASE,
-              code: ErrorCodes.DB_QUERY_ERROR,
-              message: 'Unable to fetch potential matches. Please check your network connection and try again.'
-            };
-          }
-
-          if (result.matches.length === 0) {
-            set({ 
-              potentialMatches: [], 
-              cachedMatches: [],
-              isLoading: false,
-              noMoreProfiles: true,
-              error: isGlobalDiscovery ? 
-                'No potential matches found globally. Try again later.' :
-                'No potential matches found in your area. Try increasing your search distance or enabling global discovery.'
-            });
-            return;
-          }
-
-          // Convert matches to UserProfile objects
-          const userProfiles = result.matches.map(supabaseToUserProfile);
-          
-          // Split into current batch and cache
-          const batchToShow = userProfiles.slice(0, get().batchSize);
-          const remainingProfiles = userProfiles.slice(get().batchSize);
-
+        if (result.matches.length === 0) {
+          console.log('[MatchesStore] No matches found');
           set({ 
-            potentialMatches: batchToShow,
-            cachedMatches: remainingProfiles,
+            potentialMatches: [], 
+            cachedMatches: [],
             isLoading: false,
-            noMoreProfiles: false
+            noMoreProfiles: true,
+            error: isGlobalDiscovery ? 
+              'No potential matches found globally. Try again later.' :
+              'No potential matches found in your area. Try increasing your search distance or enabling global discovery.'
           });
+          return;
+        }
+
+        // Convert matches to UserProfile objects
+        console.log('[MatchesStore] Converting matches to UserProfile objects');
+        const userProfiles = result.matches.map(supabaseToUserProfile);
+        
+        // Split into current batch and cache
+        const batchToShow = userProfiles.slice(0, get().batchSize);
+        const remainingProfiles = userProfiles.slice(get().batchSize);
+
+        console.log('[MatchesStore] Setting final state', { 
+          batchToShow: batchToShow.length, 
+          remainingProfiles: remainingProfiles.length 
+        });
+
+        set({ 
+          potentialMatches: batchToShow,
+          cachedMatches: remainingProfiles,
+          isLoading: false,
+          noMoreProfiles: false
         });
       } catch (error) {
+        console.error('[MatchesStore] Error in fetchPotentialMatches:', error);
         const appError = handleError(error);
         console.error('[MatchesStore] Error fetching potential matches:', {
           category: appError.category,
