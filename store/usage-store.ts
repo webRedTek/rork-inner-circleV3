@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { StoreApi, StateCreator } from 'zustand';
-import { UsageCache, BatchUpdate, SyncStrategy, RateLimits, CacheConfig, RetryStrategy, UsageTrackingOptions, UsageResult, UsageStats, UsageStore } from '@/types/user';
+import { UsageCache, BatchUpdate, SyncStrategy, RateLimits, CacheConfig, RetryStrategy, UsageTrackingOptions, UsageResult, UsageStats, UsageStore, DatabaseTotals } from '@/types/user';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
 import { useNotificationStore } from './notification-store';
@@ -67,6 +67,7 @@ export const useUsageStore = create<UsageStore>()(
       batchUpdates: [],
       isSyncing: false,
       lastSyncError: null,
+      databaseTotals: null as DatabaseTotals | null,
       saveStrategy: {
         critical: {
           interval: 30 * 1000, // 30 seconds
@@ -76,6 +77,31 @@ export const useUsageStore = create<UsageStore>()(
       rateLimits: defaultRateLimits,
       cacheConfig: defaultCacheConfig,
       retryStrategy: defaultRetryStrategy,
+
+      fetchDatabaseTotals: async (userId: string) => {
+        if (!userId || !isSupabaseConfigured() || !supabase) {
+          console.log('Cannot fetch database totals: Invalid user ID or Supabase not configured');
+          return;
+        }
+
+        try {
+          const { data, error } = await supabase
+            .from('user_daily_usage')
+            .select('swipe_count, match_count, message_count, like_count, daily_reset_at')
+            .eq('user_id', userId)
+            .single();
+
+          if (error) {
+            throw new Error(`Failed to fetch database totals: ${handleError(error).userMessage}`);
+          }
+
+          set({ databaseTotals: data });
+          return data;
+        } catch (error) {
+          console.error('Error fetching database totals:', error);
+          set({ databaseTotals: null });
+        }
+      },
 
       initializeUsage: async (userId: string) => {
         if (!userId || !isSupabaseConfigured() || !supabase) {
