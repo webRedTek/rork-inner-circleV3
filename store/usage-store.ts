@@ -479,6 +479,8 @@ export const useUsageStore = create<UsageStore>()(
               }
             });
 
+            console.log('Syncing usage data - Current counts to add:', counts);
+
             const now = new Date();
             const tomorrow = new Date(now);
             tomorrow.setDate(tomorrow.getDate() + 1);
@@ -502,17 +504,23 @@ export const useUsageStore = create<UsageStore>()(
               }
             } else {
               // Update existing record
+              console.log('Updating usage record with increments:', counts);
               const { error: updateError } = await supabase
                 .from('user_daily_usage')
                 .update({
-                  ...counts,
+                  swipe_count: supabase.sql`swipe_count + ${counts.swipe_count}`,
+                  match_count: supabase.sql`match_count + ${counts.match_count}`,
+                  message_count: supabase.sql`message_count + ${counts.message_count}`,
+                  like_count: supabase.sql`like_count + ${counts.like_count}`,
                   last_updated: now.toISOString()
                 })
                 .eq('user_id', user.id);
 
               if (updateError) {
+                console.error('Error updating usage record:', updateError);
                 throw updateError;
               }
+              console.log('Usage record updated successfully');
             }
 
             // Clear processed batch updates
