@@ -42,7 +42,7 @@ export default function DiscoverScreen() {
     noMoreProfiles
   } = useMatchesStore();
   
-  const { user, isReady, tierSettings } = useAuthStore();
+  const { user, isReady } = useAuthStore();
   
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [matchedUser, setMatchedUser] = useState<UserProfile | null>(null);
@@ -54,6 +54,7 @@ export default function DiscoverScreen() {
   const [preferredDistance, setPreferredDistance] = useState('50');
   const [globalSearch, setGlobalSearch] = useState(false);
   const [distanceError, setDistanceError] = useState('');
+  const [tierSettings, setTierSettings] = useState<TierSettings | null>(null);
   
   const isGlobalSearchAllowed = tierSettings?.global_discovery || false;
 
@@ -73,6 +74,18 @@ export default function DiscoverScreen() {
       stopBatchProcessing();
     };
   }, [isReady, user, fetchPotentialMatches]);
+  
+  useEffect(() => {
+    if (isReady && user) {
+      try {
+        const settings = useAuthStore.getState().getTierSettings();
+        setTierSettings(settings);
+      } catch (error) {
+        console.error('[Discover] Error getting tier settings:', error);
+        setTierSettings(null);
+      }
+    }
+  }, [isReady, user]);
   
   // Add focus effect to refresh data when screen is focused
   useFocusEffect(
