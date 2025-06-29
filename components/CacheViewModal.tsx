@@ -171,6 +171,12 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
           <Text style={styles.cell}>N/A</Text>
           <Text style={styles.cell}>{formatTimestamp(tierSettingsTimestamp)}</Text>
         </View>
+				 <View style={styles.row}>
+          <Text style={styles.cell}>Daily Like Limit</Text>
+          <Text style={styles.cell}>{tierSettings.daily_like_limit}</Text>
+          <Text style={styles.cell}>N/A</Text>
+          <Text style={styles.cell}>{formatTimestamp(tierSettingsTimestamp)}</Text>
+        </View>
         <View style={styles.row}>
           <Text style={styles.cell}>Daily Match Limit</Text>
           <Text style={styles.cell}>{tierSettings.daily_match_limit}</Text>
