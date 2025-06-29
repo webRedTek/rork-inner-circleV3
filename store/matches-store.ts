@@ -186,7 +186,7 @@ const matchesStoreCreator: StateCreator<
           throw {
             category: ErrorCategory.AUTH,
             code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-            message: 'User not ready or authenticated for fetching matches'
+            message: 'Please log in to view potential matches'
           };
         }
 
@@ -222,7 +222,7 @@ const matchesStoreCreator: StateCreator<
             throw {
               category: ErrorCategory.DATABASE,
               code: ErrorCodes.DB_CONNECTION_ERROR,
-              message: 'Database is not configured'
+              message: 'Database connection not configured. Please check your Supabase setup.'
             };
           }
 
@@ -232,7 +232,7 @@ const matchesStoreCreator: StateCreator<
             throw {
               category: ErrorCategory.VALIDATION,
               code: ErrorCodes.VALIDATION_MISSING_FIELD,
-              message: 'Tier settings not available for global discovery check'
+              message: 'Unable to load your membership settings. Please try logging out and back in.'
             };
           }
 
@@ -250,7 +250,7 @@ const matchesStoreCreator: StateCreator<
             throw {
               category: ErrorCategory.DATABASE,
               code: ErrorCodes.DB_QUERY_ERROR,
-              message: 'Failed to fetch matches'
+              message: 'Unable to fetch potential matches. Please check your network connection and try again.'
             };
           }
 
@@ -259,7 +259,10 @@ const matchesStoreCreator: StateCreator<
               potentialMatches: [], 
               cachedMatches: [],
               isLoading: false,
-              noMoreProfiles: true
+              noMoreProfiles: true,
+              error: isGlobalDiscovery ? 
+                'No potential matches found globally. Try again later.' :
+                'No potential matches found in your area. Try increasing your search distance or enabling global discovery.'
             });
             return;
           }
@@ -280,6 +283,12 @@ const matchesStoreCreator: StateCreator<
         });
       } catch (error) {
         const appError = handleError(error);
+        console.error('[MatchesStore] Error fetching potential matches:', {
+          category: appError.category,
+          code: appError.code,
+          message: appError.message,
+          technical: appError.technical
+        });
         set({ 
           error: appError.userMessage,
           isLoading: false
