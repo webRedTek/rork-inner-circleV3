@@ -38,7 +38,8 @@ export default function DiscoverScreen() {
     newMatch,
     clearNewMatch,
     swipeLimitReached,
-    matchLimitReached
+    matchLimitReached,
+    noMoreProfiles
   } = useMatchesStore();
   
   const { user, isReady, tierSettings } = useAuthStore();
@@ -85,11 +86,11 @@ export default function DiscoverScreen() {
   
   useEffect(() => {
     // Prefetch more profiles if we're running low
-    if (potentialMatches.length <= 3 && !isPrefetching && !isLoading && user) {
+    if (potentialMatches.length <= 3 && !isPrefetching && !isLoading && user && !noMoreProfiles) {
       console.log('[Discover] Running low on matches, prefetching more', { currentMatches: potentialMatches.length });
       prefetchNextBatch();
     }
-  }, [potentialMatches.length, isPrefetching, isLoading, user, prefetchNextBatch]);
+  }, [potentialMatches.length, isPrefetching, isLoading, user, prefetchNextBatch, noMoreProfiles]);
   
   useEffect(() => {
     // Check for new matches and display modal
@@ -353,7 +354,9 @@ export default function DiscoverScreen() {
           {isPrefetching && (
             <View style={styles.prefetchingIndicator}>
               <ActivityIndicator size="small" color={Colors.dark.accent} />
-              <Text style={styles.prefetchingText}>Loading more entrepreneurs...</Text>
+              <Text style={styles.prefetchingText}>
+                {noMoreProfiles ? "No more entrepreneurs found" : "Loading more entrepreneurs..."}
+              </Text>
             </View>
           )}
           <SwipeCards
