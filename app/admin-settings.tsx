@@ -96,6 +96,7 @@ export default function AdminSettingsScreen() {
           tier: tierKey,
           daily_swipe_limit: settings.daily_swipe_limit || 0,
           daily_match_limit: settings.daily_match_limit || 0,
+          daily_like_limit: settings.daily_like_limit || 0,
           message_sending_limit: settings.message_sending_limit || 0,
           can_see_who_liked_you: settings.can_see_who_liked_you || false,
           can_rewind_last_swipe: settings.can_rewind_last_swipe || false,
@@ -214,6 +215,17 @@ export default function AdminSettingsScreen() {
                   style={styles.numberInput}
                   value={settingsByTier[tier as MembershipTier]?.daily_match_limit?.toString() || '0'}
                   onChangeText={text => handleSettingChange(tier as MembershipTier, 'daily_match_limit', parseInt(text) || 0)}
+                  keyboardType="numeric"
+                  placeholder="Enter number"
+                />
+              </View>
+              
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Daily Like Limit</Text>
+                <TextInput
+                  style={styles.numberInput}
+                  value={settingsByTier[tier as MembershipTier]?.daily_like_limit?.toString() || '0'}
+                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'daily_like_limit', parseInt(text) || 0)}
                   keyboardType="numeric"
                   placeholder="Enter number"
                 />
