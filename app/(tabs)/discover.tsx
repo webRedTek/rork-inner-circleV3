@@ -23,6 +23,37 @@ import { ProfileDetailCard } from '@/components/ProfileDetailCard';
 import { X, ArrowLeft, RefreshCw, MapPin } from 'lucide-react-native';
 import { Input } from '@/components/Input';
 
+/**
+ * FILE: app/(tabs)/discover.tsx
+ * LAST UPDATED: 2024-12-19 15:30
+ * 
+ * CURRENT STATE:
+ * Main discovery screen for the app. Displays potential matches as swipeable cards,
+ * handles user interactions (like/pass), manages loading states, and controls
+ * global search functionality based on user tier settings.
+ * 
+ * RECENT CHANGES:
+ * - Fixed tier settings access pattern to use allTierSettings[user.membershipTier] instead of manual fetching
+ * - Removed unnecessary useState, useEffect, and TierSettings import
+ * - Simplified tier settings access to match app-wide pattern used in CacheViewModal
+ * 
+ * FILE INTERACTIONS:
+ * - Imports from: matches-store (potentialMatches, fetchPotentialMatches, likeUser, passUser, etc.)
+ * - Imports from: auth-store (user, isReady, allTierSettings for tier settings)
+ * - Imports from: user types (UserProfile, MatchWithProfile)
+ * - Exports to: Tab navigation system
+ * - Dependencies: SwipeCards component, ProfileDetailCard, Button components
+ * - Data flow: Receives user data from auth store, fetches matches from matches store, 
+ *   sends user actions back to matches store, navigates to chat/profile screens
+ * 
+ * KEY FUNCTIONS/COMPONENTS:
+ * - DiscoverScreen: Main component handling discovery UI and logic
+ * - handleSwipeRight/Left: Process user swipe actions
+ * - handleModalAction: Handle various modal actions (message, upgrade, filters)
+ * - handleRefresh: Manual refresh of potential matches
+ * - handleToggleGlobalSearch: Toggle global search based on tier permissions
+ */
+
 export default function DiscoverScreen() {
   const router = useRouter();
   const { 
@@ -42,7 +73,7 @@ export default function DiscoverScreen() {
     noMoreProfiles
   } = useMatchesStore();
   
-  const { user, isReady } = useAuthStore();
+  const { user, isReady, allTierSettings } = useAuthStore();
   
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [matchedUser, setMatchedUser] = useState<UserProfile | null>(null);
@@ -54,8 +85,9 @@ export default function DiscoverScreen() {
   const [preferredDistance, setPreferredDistance] = useState('50');
   const [globalSearch, setGlobalSearch] = useState(false);
   const [distanceError, setDistanceError] = useState('');
-  const [tierSettings, setTierSettings] = useState<TierSettings | null>(null);
   
+  // Get the current user's tier settings from allTierSettings
+  const tierSettings = user && allTierSettings ? allTierSettings[user.membershipTier] : null;
   const isGlobalSearchAllowed = tierSettings?.global_discovery || false;
 
   useEffect(() => {
@@ -74,18 +106,6 @@ export default function DiscoverScreen() {
       stopBatchProcessing();
     };
   }, [isReady, user, fetchPotentialMatches]);
-  
-  useEffect(() => {
-    if (isReady && user) {
-      try {
-        const settings = useAuthStore.getState().getTierSettings();
-        setTierSettings(settings);
-      } catch (error) {
-        console.error('[Discover] Error getting tier settings:', error);
-        setTierSettings(null);
-      }
-    }
-  }, [isReady, user]);
   
   // Add focus effect to refresh data when screen is focused
   useFocusEffect(
