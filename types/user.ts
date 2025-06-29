@@ -217,7 +217,6 @@ export interface TierSettings {
   daily_match_limit: number;
   daily_like_limit: number;
   message_sending_limit: number;
-  like_sending_limit: number;
   can_see_who_liked_you: boolean;
   can_rewind_last_swipe: boolean;
   profile_visibility_control: boolean;
