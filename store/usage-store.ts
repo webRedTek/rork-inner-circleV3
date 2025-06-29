@@ -480,6 +480,17 @@ export const useUsageStore = create<UsageState>()(
         try {
           // Only process batch updates if any exist
           if (batchUpdates.length > 0) {
+            // First check if user has a usage record
+            const { data: existingRecord, error: fetchError } = await supabase
+              .from('user_daily_usage')
+              .select('id')
+              .eq('user_id', user.id)
+              .maybeSingle();
+
+            if (fetchError) {
+              throw fetchError;
+            }
+
             // Aggregate counts by type
             const counts = {
               swipe_count: 0,
@@ -505,17 +516,40 @@ export const useUsageStore = create<UsageState>()(
               }
             });
 
-            // Update the user's single usage record
-            const { error: updateError } = await supabase
-              .from('user_daily_usage')
-              .update({
-                ...counts,
-                last_updated: new Date().toISOString()
-              })
-              .eq('user_id', user.id);
+            const now = new Date();
+            const tomorrow = new Date(now);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(0, 0, 0, 0);
 
-            if (updateError) {
-              throw updateError;
+            if (!existingRecord) {
+              // Create new record if none exists
+              const { error: insertError } = await supabase
+                .from('user_daily_usage')
+                .insert({
+                  user_id: user.id,
+                  ...counts,
+                  created_at: now.toISOString(),
+                  last_updated: now.toISOString(),
+                  daily_reset_at: tomorrow.toISOString(),
+                  date: now.toISOString().split('T')[0] // Just the date part
+                });
+
+              if (insertError) {
+                throw insertError;
+              }
+            } else {
+              // Update existing record
+              const { error: updateError } = await supabase
+                .from('user_daily_usage')
+                .update({
+                  ...counts,
+                  last_updated: now.toISOString()
+                })
+                .eq('user_id', user.id);
+
+              if (updateError) {
+                throw updateError;
+              }
             }
 
             // Clear processed batch updates
@@ -525,15 +559,13 @@ export const useUsageStore = create<UsageState>()(
               lastSyncTimestamp: Date.now()
             }));
           }
-
-          set({ isSyncing: false, lastSyncError: null });
         } catch (error) {
-          console.error('Error saving usage data:', error);
-          set({ 
-            isSyncing: false,
-            lastSyncError: getReadableError(error)
-          });
-          throw error;
+          console.error('Error syncing usage data:', error);
+          const appError = handleError(error);
+          set({ lastSyncError: appError.userMessage });
+          throw appError;
+        } finally {
+          set({ isSyncing: false });
         }
       },
 
