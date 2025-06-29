@@ -481,124 +481,41 @@ export const useUsageStore = create<UsageStore>()(
 
             console.log('Syncing usage data - Current counts to add:', counts);
 
+            // Update existing record
+            console.log('Updating usage record with increments:', counts);
             const now = new Date();
             const tomorrow = new Date();
             tomorrow.setDate(tomorrow.getDate() + 1);
             tomorrow.setHours(0, 0, 0, 0);
 
-            if (!existingRecord) {
-              // Create new record if none exists
-              const { error: insertError } = await supabase
-                .from('user_daily_usage')
-                .insert({
-                  user_id: user.id,
-                  ...counts,
-                  created_at: now.toISOString(),
-                  last_updated: now.toISOString(),
-                  daily_reset_at: tomorrow.toISOString(),
-                  date: now.toISOString().split('T')[0] // Just the date part
-                });
+            // Update or create the usage record
+            const { error: updateError } = await supabase
+              .from('user_daily_usage')
+              .upsert({
+                user_id: user.id,
+                swipe_count: counts.swipe_count,
+                match_count: counts.match_count,
+                message_count: counts.message_count,
+                like_count: counts.like_count,
+                last_updated: now.toISOString(),
+                daily_reset_at: tomorrow.toISOString()
+              }, {
+                onConflict: 'user_id, date'
+              });
 
-              if (insertError) {
-                throw insertError;
-              }
-            } else {
-              // Update existing record
-              console.log('Updating usage record with increments:', counts);
-
-              // Create or update swipe usage
-              if (counts.swipe_count > 0) {
-                const { error: swipeError } = await supabase
-                  .from('user_daily_usage')
-                  .upsert({
-                    user_id: user.id,
-                    action_type: 'swipe',
-                    current_count: counts.swipe_count,
-                    first_action_timestamp: now,
-                    last_action_timestamp: now,
-                    reset_timestamp: tomorrow.getTime()
-                  }, {
-                    onConflict: 'user_id, action_type'
-                  });
-
-                if (swipeError) {
-                  console.error('Error updating swipe usage:', swipeError);
-                  throw swipeError;
-                }
-              }
-
-              // Create or update match usage
-              if (counts.match_count > 0) {
-                const { error: matchError } = await supabase
-                  .from('user_daily_usage')
-                  .upsert({
-                    user_id: user.id,
-                    action_type: 'match',
-                    current_count: counts.match_count,
-                    first_action_timestamp: now,
-                    last_action_timestamp: now,
-                    reset_timestamp: tomorrow.getTime()
-                  }, {
-                    onConflict: 'user_id, action_type'
-                  });
-
-                if (matchError) {
-                  console.error('Error updating match usage:', matchError);
-                  throw matchError;
-                }
-              }
-
-              // Create or update message usage
-              if (counts.message_count > 0) {
-                const { error: messageError } = await supabase
-                  .from('user_daily_usage')
-                  .upsert({
-                    user_id: user.id,
-                    action_type: 'message',
-                    current_count: counts.message_count,
-                    first_action_timestamp: now,
-                    last_action_timestamp: now,
-                    reset_timestamp: tomorrow.getTime()
-                  }, {
-                    onConflict: 'user_id, action_type'
-                  });
-
-                if (messageError) {
-                  console.error('Error updating message usage:', messageError);
-                  throw messageError;
-                }
-              }
-
-              // Create or update like usage
-              if (counts.like_count > 0) {
-                const { error: likeError } = await supabase
-                  .from('user_daily_usage')
-                  .upsert({
-                    user_id: user.id,
-                    action_type: 'like',
-                    current_count: counts.like_count,
-                    first_action_timestamp: now,
-                    last_action_timestamp: now,
-                    reset_timestamp: tomorrow.getTime()
-                  }, {
-                    onConflict: 'user_id, action_type'
-                  });
-
-                if (likeError) {
-                  console.error('Error updating like usage:', likeError);
-                  throw likeError;
-                }
-              }
-
-              console.log('Usage records updated successfully');
-
-              // Clear processed batch updates
-              set(state => ({
-                ...state,
-                batchUpdates: [],
-                lastSyncTimestamp: Date.now()
-              }));
+            if (updateError) {
+              console.error('Error updating usage record:', updateError);
+              throw updateError;
             }
+
+            console.log('Usage record updated successfully');
+
+            // Clear processed batch updates
+            set(state => ({
+              ...state,
+              batchUpdates: [],
+              lastSyncTimestamp: Date.now()
+            }));
           }
         } catch (error) {
           console.error('Error syncing usage data:', error);
