@@ -376,13 +376,24 @@ const matchesStoreCreator: StateCreator<
         }));
         
         // Check swipe limits using usage store
-        const result = await useUsageStore.getState().trackUsage({ actionType: 'swipe', batchProcess: true });
-        if (!result.isAllowed) {
+        const swipeResult = await useUsageStore.getState().trackUsage({ actionType: 'swipe', batchProcess: true });
+        if (!swipeResult.isAllowed) {
           set({ swipeLimitReached: true, isLoading: false });
           throw {
             category: ErrorCategory.BUSINESS,
             code: ErrorCodes.BUSINESS_LIMIT_REACHED,
             message: 'Daily swipe limit reached'
+          };
+        }
+
+        // Check like limits
+        const likeResult = await useUsageStore.getState().trackUsage({ actionType: 'like', batchProcess: true });
+        if (!likeResult.isAllowed) {
+          set({ swipeLimitReached: true, isLoading: false });
+          throw {
+            category: ErrorCategory.BUSINESS,
+            code: ErrorCodes.BUSINESS_LIMIT_REACHED,
+            message: 'Daily like limit reached'
           };
         }
 
