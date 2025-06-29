@@ -23,18 +23,20 @@ const formatTimeRemaining = (ms: number): string => {
 };
 
 export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose }) => {
-  const { usageCache, lastSyncError, isSyncing, syncUsageData } = useUsageStore();
+  const { usageCache, lastSyncError, isSyncing, syncUsageData, databaseTotals, fetchDatabaseTotals } = useUsageStore();
   const { allTierSettings, tierSettingsTimestamp, fetchAllTierSettings, user, isLoading } = useAuthStore();
   const [collapsedSections, setCollapsedSections] = useState<{
     usage: boolean;
     premium: boolean;
     analytics: boolean;
     tier: boolean;
+    database: boolean;
   }>({
     usage: false,
     premium: false,
     analytics: false,
     tier: false,
+    database: false,
   });
 
   // Get the current user's tier settings
@@ -43,6 +45,7 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
   useEffect(() => {
     if (visible && user) {
       fetchAllTierSettings().catch((error: unknown) => console.error('Error refreshing tier settings:', error));
+      fetchDatabaseTotals(user.id).catch((error: unknown) => console.error('Error fetching database totals:', error));
     }
   }, [visible, user]);
 
@@ -57,6 +60,7 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
     if (user) {
       await fetchAllTierSettings();
       await syncUsageData(true);
+      await fetchDatabaseTotals(user.id);
     }
   };
 
@@ -119,6 +123,38 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
           <Text style={styles.cell}>
             {data.lastActionTimestamp ? new Date(data.lastActionTimestamp).toLocaleString() : 'Never'}
           </Text>
+        </View>
+      );
+    });
+  };
+
+  const renderDatabaseTotals = () => {
+    if (!databaseTotals) return <Text style={styles.noDataText}>No database totals available</Text>;
+
+    const usageTypes = [
+      { key: 'swipe', count: databaseTotals.swipe_count },
+      { key: 'match', count: databaseTotals.match_count },
+      { key: 'message', count: databaseTotals.message_count },
+      { key: 'like', count: databaseTotals.like_count },
+    ];
+
+    return usageTypes.map(({ key, count }) => {
+      const limit = key === 'swipe' 
+        ? tierSettings?.daily_swipe_limit || 'N/A'
+        : key === 'match'
+        ? tierSettings?.daily_match_limit || 'N/A'
+        : key === 'like'
+        ? tierSettings?.daily_like_limit || 'N/A'
+        : tierSettings?.message_sending_limit || 'N/A';
+
+      return (
+        <View key={key} style={styles.row}>
+          <Text style={styles.cell}>{key.charAt(0).toUpperCase() + key.slice(1)}</Text>
+          <Text style={styles.cell}>{count} / {limit}</Text>
+          <Text style={styles.cell}>
+            {databaseTotals.daily_reset_at ? formatTimeRemaining(new Date(databaseTotals.daily_reset_at).getTime() - Date.now()) : 'N/A'}
+          </Text>
+          <Text style={styles.cell}>N/A</Text>
         </View>
       );
     });
@@ -238,10 +274,11 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
             {lastSyncError && (
               <Text style={styles.errorText}>Last Sync Error: {lastSyncError}</Text>
             )}
-            {renderSection('Usage Data', 'usage', renderUsageData)}
+            {renderSection('Current Session Usage', 'usage', renderUsageData)}
+            {renderSection('Database Totals', 'database', renderDatabaseTotals)}
             {renderSection('Premium Features', 'premium', renderPremiumFeatures)}
             {renderSection('Analytics', 'analytics', renderAnalytics)}
-            {renderSection('Tier Settings & Limits', 'tier', renderTierSettings)}
+            {renderSection('Tier Settings', 'tier', renderTierSettings)}
           </ScrollView>
           <View style={styles.modalActions}>
             <Button
