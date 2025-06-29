@@ -1,3 +1,42 @@
+/**
+ * FILE: store/matches-store.ts
+ * LAST UPDATED: 2024-12-19 16:15
+ * 
+ * CURRENT STATE:
+ * Central matches management store using Zustand. Handles fetching potential matches,
+ * user interactions (like/pass), batch processing, caching, and prefetching.
+ * Manages swipe limits, match creation, and coordinates with usage tracking.
+ * Fixed prefetching infinite loop issues with timeout and better state management.
+ * 
+ * RECENT CHANGES:
+ * - Fixed prefetchNextBatch function to prevent infinite loops
+ * - Added 10-second timeout to prevent prefetch hanging
+ * - Improved logic for detecting when no more profiles are available
+ * - Better error handling to set noMoreProfiles state correctly
+ * - Removed prefetchNextBatch from useEffect dependencies to prevent re-triggers
+ * 
+ * FILE INTERACTIONS:
+ * - Imports from: user types (UserProfile, MatchWithProfile, MembershipTier)
+ * - Imports from: supabase lib (database operations, authentication)
+ * - Imports from: auth-store (user data, tier settings access)
+ * - Imports from: usage-store (usage tracking and limits)
+ * - Imports from: error-utils, network-utils (error handling and network checks)
+ * - Exports to: All discovery and matching screens
+ * - Dependencies: AsyncStorage (persistence), Zustand (state management)
+ * - Data flow: Receives user actions, fetches matches from database, manages
+ *   swipe queues, coordinates with usage tracking, provides match data to UI
+ * 
+ * KEY FUNCTIONS/COMPONENTS:
+ * - fetchPotentialMatches: Main function to load potential matches with debugging
+ * - prefetchNextBatch: Load additional matches for caching with timeout protection
+ * - likeUser/passUser: Handle user swipe actions
+ * - queueSwipe: Queue swipe actions for batch processing
+ * - processSwipeBatch: Process queued swipes in batches
+ * - getMatches: Fetch user's actual matches
+ * - refreshCandidates: Force refresh of potential matches
+ * - DEBUG: Extensive console logging throughout all functions
+ */
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { persist, createJSONStorage, PersistOptions } from 'zustand/middleware';
@@ -19,45 +58,6 @@ import { useUsageStore } from './usage-store';
 import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
 import { withNetworkCheck } from '@/utils/network-utils';
 import type { StoreApi, StateCreator } from 'zustand';
-
-/**
- * FILE: store/matches-store.ts
- * LAST UPDATED: 2024-12-19 15:45
- * 
- * CURRENT STATE:
- * Central matches management store using Zustand. Handles fetching potential matches,
- * user interactions (like/pass), batch processing, caching, and prefetching.
- * Manages swipe limits, match creation, and coordinates with usage tracking.
- * Currently includes comprehensive debugging for troubleshooting loading issues.
- * 
- * RECENT CHANGES:
- * - Added extensive console logging throughout fetchPotentialMatches function
- * - Added detailed debugging for user authentication, tier settings, and database calls
- * - Added step-by-step process tracking for Supabase interactions
- * - Added error tracking with detailed logging for troubleshooting
- * - Enhanced state monitoring for loading, prefetching, and error states
- * 
- * FILE INTERACTIONS:
- * - Imports from: user types (UserProfile, MatchWithProfile, MembershipTier)
- * - Imports from: supabase lib (database operations, authentication)
- * - Imports from: auth-store (user data, tier settings access)
- * - Imports from: usage-store (usage tracking and limits)
- * - Imports from: error-utils, network-utils (error handling and network checks)
- * - Exports to: All discovery and matching screens
- * - Dependencies: AsyncStorage (persistence), Zustand (state management)
- * - Data flow: Receives user actions, fetches matches from database, manages
- *   swipe queues, coordinates with usage tracking, provides match data to UI
- * 
- * KEY FUNCTIONS/COMPONENTS:
- * - fetchPotentialMatches: Main function to load potential matches with debugging
- * - prefetchNextBatch: Load additional matches for caching
- * - likeUser/passUser: Handle user swipe actions
- * - queueSwipe: Queue swipe actions for batch processing
- * - processSwipeBatch: Process queued swipes in batches
- * - getMatches: Fetch user's actual matches
- * - refreshCandidates: Force refresh of potential matches
- * - DEBUG: Extensive console logging throughout all functions
- */
 
 // Define PassedUser interface
 interface PassedUser {
@@ -358,13 +358,25 @@ const matchesStoreCreator: StateCreator<
       throw new Error('User not ready or authenticated for prefetching matches');
     }
     
-    if (get().isPrefetching || get().isLoading || get().noMoreProfiles) {
-      console.log('[MatchesStore] Prefetching skipped - already in progress, loading, or no more profiles');
-      set({ isPrefetching: false });
+    // Prevent multiple simultaneous prefetch calls
+    if (get().isPrefetching || get().isLoading) {
+      console.log('[MatchesStore] Prefetching skipped - already in progress or loading');
+      return;
+    }
+    
+    // If we already know there are no more profiles, don't try to prefetch
+    if (get().noMoreProfiles) {
+      console.log('[MatchesStore] Prefetching skipped - no more profiles available');
       return;
     }
     
     set({ isPrefetching: true, error: null });
+    
+    // Add timeout to prevent infinite hanging
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Prefetch timeout - taking too long')), 10000); // 10 second timeout
+    });
+    
     try {
       // Use cached tier settings for global discovery
       const tierSettings = useAuthStore.getState().getTierSettings();
@@ -379,11 +391,12 @@ const matchesStoreCreator: StateCreator<
         // Apply rate limiting
         await rateLimitedQuery();
         
-        // Fetch potential matches with retry logic
-        const result = await withRateLimitAndRetry(() => fetchPotentialMatchesFromSupabase(user.id, userMaxDistance, isGlobalDiscovery, get().batchSize));
+        // Fetch potential matches with retry logic and timeout
+        const fetchPromise = withRateLimitAndRetry(() => fetchPotentialMatchesFromSupabase(user.id, userMaxDistance, isGlobalDiscovery, get().batchSize));
+        const result = await Promise.race([fetchPromise, timeoutPromise]) as any;
         
         if (!result || result.matches.length === 0) {
-          console.log('[MatchesStore] No additional matches found during prefetch');
+          console.log('[MatchesStore] No additional matches found during prefetch - setting noMoreProfiles to true');
           set({ 
             isPrefetching: false,
             noMoreProfiles: true,
@@ -412,6 +425,8 @@ const matchesStoreCreator: StateCreator<
       console.error('[MatchesStore] Error prefetching potential matches:', getReadableError(error));
       notifyError('Error prefetching matches: ' + getReadableError(error));
       const tierSettings = useAuthStore.getState().getTierSettings();
+      
+      // If we get an error, assume there are no more profiles to prevent infinite retries
       set({ 
         error: tierSettings?.global_discovery ? "No additional global matches found." : "No additional matches found in your area.",
         isPrefetching: false,
