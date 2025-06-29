@@ -328,7 +328,7 @@ const matchesStoreCreator: StateCreator<
         // Fetch potential matches with retry logic
         const result = await withRateLimitAndRetry(() => fetchPotentialMatchesFromSupabase(user.id, userMaxDistance, isGlobalDiscovery, get().batchSize));
         
-        if (!result || result.count === 0) {
+        if (!result || result.matches.length === 0) {
           console.log('[MatchesStore] No additional matches found during prefetch');
           set({ 
             isPrefetching: false,
