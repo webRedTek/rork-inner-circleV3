@@ -22,6 +22,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'react-native';
 import { ArrowLeft, Camera } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import { handleError, ErrorCategory, ErrorCodes } from '@/utils/error-utils';
 
 // Helper function to extract readable error message
 const getReadableError = (error: any): string => {
