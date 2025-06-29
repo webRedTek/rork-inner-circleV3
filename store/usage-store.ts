@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import { UsageCache, BatchUpdate, SyncStrategy, RateLimits, CacheConfig, RetryStrategy, UsageTrackingOptions, UsageResult, UsageStats } from '@/types/user';
+import { persist, createJSONStorage, StateCreator } from 'zustand/middleware';
+import { UsageCache, BatchUpdate, SyncStrategy, RateLimits, CacheConfig, RetryStrategy, UsageTrackingOptions, UsageResult, UsageStats, UsageStore } from '@/types/user';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
 import { useNotificationStore } from './notification-store';
+import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory, getReadableError } from '@/utils/error-utils';
 
 // Helper function to extract readable error message
 const getReadableError = (error: any): string => {
@@ -97,7 +98,7 @@ const defaultRetryStrategy: RetryStrategy = {
   criticalActions: ['swipe', 'match', 'message'],
 };
 
-export const useUsageStore = create<UsageState>()(
+export const useUsageStore = create<UsageStore>()(
   persist(
     (set, get) => ({
       usageCache: null,
