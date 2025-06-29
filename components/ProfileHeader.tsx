@@ -4,12 +4,19 @@ import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/auth-store';
 import Colors from '@/constants/colors';
 import { Shield } from 'lucide-react-native';
+import { handleError, ErrorCategory, ErrorCodes } from '@/utils/error-utils';
 
 export const ProfileHeader: React.FC = () => {
   const router = useRouter();
   const { user } = useAuthStore();
   
-  if (!user) return null;
+  if (!user) {
+    throw {
+      category: ErrorCategory.AUTH,
+      code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
+      message: 'User not authenticated'
+    };
+  }
 
   const tierColor = user.membershipTier === 'gold' 
     ? Colors.dark.gold 
@@ -59,7 +66,7 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     padding: 16,
-    backgroundColor: Colors.dark.cardBackground,
+    backgroundColor: Colors.dark.card,
     borderRadius: 12,
     marginBottom: 16,
   },
