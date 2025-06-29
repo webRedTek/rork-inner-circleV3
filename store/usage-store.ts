@@ -63,7 +63,7 @@ const defaultUsageCache: UsageCache = {
 const defaultSyncStrategy: SyncStrategy = {
   critical: {
     interval: 30 * 1000, // 30 seconds
-    features: ['swipes', 'matches', 'messages'],
+    features: ['swipes', 'matches', 'messages', 'likes'],
   },
   standard: {
     interval: 5 * 60 * 1000, // 5 minutes
@@ -107,7 +107,7 @@ export const useUsageStore = create<UsageState>()(
       saveStrategy: {
         critical: {
           interval: 30 * 1000, // 30 seconds
-          features: ['swipes', 'matches', 'messages'],
+          features: ['swipes', 'matches', 'messages', 'likes'],
         },
       },
       rateLimits: defaultRateLimits,
@@ -140,6 +140,7 @@ export const useUsageStore = create<UsageState>()(
                 swipe_count: 0,
                 match_count: 0,
                 message_count: 0,
+                like_count: 0,
                 daily_reset_at: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
                 created_at: new Date().toISOString(),
                 last_updated: new Date().toISOString()
@@ -171,6 +172,12 @@ export const useUsageStore = create<UsageState>()(
                   firstActionTimestamp: now,
                   lastActionTimestamp: now,
                   resetTimestamp: now + 24 * 60 * 60 * 1000,
+                },
+                like: {
+                  currentCount: 0,
+                  firstActionTimestamp: now,
+                  lastActionTimestamp: now,
+                  resetTimestamp: now + 24 * 60 * 60 * 1000,
                 }
               },
               premiumFeatures: {
@@ -197,6 +204,7 @@ export const useUsageStore = create<UsageState>()(
                   swipe_count: 0,
                   match_count: 0,
                   message_count: 0,
+                  like_count: 0,
                   daily_reset_at: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
                   last_updated: new Date().toISOString()
                 })
@@ -224,6 +232,12 @@ export const useUsageStore = create<UsageState>()(
                     resetTimestamp: now + 24 * 60 * 60 * 1000,
                   },
                   message: {
+                    currentCount: 0,
+                    firstActionTimestamp: now,
+                    lastActionTimestamp: now,
+                    resetTimestamp: now + 24 * 60 * 60 * 1000,
+                  },
+                  like: {
                     currentCount: 0,
                     firstActionTimestamp: now,
                     lastActionTimestamp: now,
@@ -261,6 +275,12 @@ export const useUsageStore = create<UsageState>()(
                   },
                   message: {
                     currentCount: usageData.message_count || 0,
+                    firstActionTimestamp: usageData.created_at ? new Date(usageData.created_at).getTime() : now,
+                    lastActionTimestamp: usageData.last_updated ? new Date(usageData.last_updated).getTime() : now,
+                    resetTimestamp: usageData.daily_reset_at ? new Date(usageData.daily_reset_at).getTime() : now + 24 * 60 * 60 * 1000,
+                  },
+                  like: {
+                    currentCount: usageData.like_count || 0,
                     firstActionTimestamp: usageData.created_at ? new Date(usageData.created_at).getTime() : now,
                     lastActionTimestamp: usageData.last_updated ? new Date(usageData.last_updated).getTime() : now,
                     resetTimestamp: usageData.daily_reset_at ? new Date(usageData.daily_reset_at).getTime() : now + 24 * 60 * 60 * 1000,
@@ -376,6 +396,7 @@ export const useUsageStore = create<UsageState>()(
         const swipeData = usageCache.usageData['swipe'] || { currentCount: 0 };
         const matchData = usageCache.usageData['match'] || { currentCount: 0 };
         const messageData = usageCache.usageData['message'] || { currentCount: 0 };
+        const likeData = usageCache.usageData['like'] || { currentCount: 0 };
 
         return {
           swipeCount: swipeData.currentCount,
@@ -387,6 +408,9 @@ export const useUsageStore = create<UsageState>()(
           messageCount: messageData.currentCount,
           messageLimit: tierSettings.message_sending_limit,
           messageRemaining: Math.max(0, tierSettings.message_sending_limit - messageData.currentCount),
+          likeCount: likeData.currentCount,
+          likeLimit: tierSettings.like_sending_limit,
+          likeRemaining: Math.max(0, tierSettings.like_sending_limit - likeData.currentCount),
           timestamp: Date.now(),
         };
       },
@@ -460,7 +484,8 @@ export const useUsageStore = create<UsageState>()(
             const counts = {
               swipe_count: 0,
               match_count: 0,
-              message_count: 0
+              message_count: 0,
+              like_count: 0
             };
 
             batchUpdates[0].updates.forEach(update => {
@@ -473,6 +498,9 @@ export const useUsageStore = create<UsageState>()(
                   break;
                 case 'message':
                   counts.message_count += update.count_change;
+                  break;
+                case 'like':
+                  counts.like_count += update.count_change;
                   break;
               }
             });
