@@ -16,10 +16,11 @@ import { useGroupsStore } from '@/store/groups-store';
 import { useMessagesStore } from '@/store/messages-store';
 import { useAffiliateStore } from '@/store/affiliate-store';
 import { CacheViewModal } from '@/components/CacheViewModal';
+import { handleError, ErrorCategory, ErrorCodes } from '@/utils/error-utils';
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { user, tierSettings, logout, clearCache, isLoading } = useAuthStore();
+  const { user, logout, clearCache, isLoading } = useAuthStore();
   const { resetCacheAndState } = useMatchesStore();
   const { resetUsageCache } = useUsageStore();
   const { resetGroupsCache } = useGroupsStore();
@@ -27,14 +28,27 @@ export default function ProfileScreen() {
   const { resetAffiliateCache } = useAffiliateStore();
   const [isSupabaseReady, setIsSupabaseReady] = useState<boolean | null>(null);
   const [isCacheModalVisible, setIsCacheModalVisible] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     checkSupabaseStatus();
   }, []);
 
   const checkSupabaseStatus = async () => {
-    const configured = isSupabaseConfigured();
-    setIsSupabaseReady(configured);
+    try {
+      const configured = isSupabaseConfigured();
+      setIsSupabaseReady(configured);
+      if (!configured) {
+        throw {
+          category: ErrorCategory.DATABASE,
+          code: ErrorCodes.DB_CONNECTION_ERROR,
+          message: 'Supabase is not configured'
+        };
+      }
+    } catch (err) {
+      const appError = handleError(err);
+      setError(appError.userMessage);
+    }
   };
 
   const handleLogout = async () => {
@@ -49,8 +63,13 @@ export default function ProfileScreen() {
         {
           text: 'Logout',
           onPress: async () => {
-            await logout();
-            router.replace('/(auth)');
+            try {
+              await logout();
+              router.replace('/(auth)');
+            } catch (err) {
+              const appError = handleError(err);
+              Alert.alert('Error', appError.userMessage);
+            }
           },
         },
       ]
@@ -77,55 +96,47 @@ export default function ProfileScreen() {
     router.push('/admin-settings');
   };
 
-  const handleClearCache = async () => {
-    Alert.alert(
-      'Clear Cache & Restart',
-      'Are you sure you want to clear the app cache? This will log you out and reset the app to its initial state.',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Clear & Restart',
-          onPress: async () => {
-            try {
-              // Clear all store caches
-              await clearCache();
-              await resetCacheAndState();
-              await resetUsageCache();
-              await resetGroupsCache();
-              await resetMessagesCache();
-              await resetAffiliateCache();
-              router.replace('/(auth)');
-            } catch (error) {
-              console.error('Error during full cache reset:', error);
-              Alert.alert('Error', 'Failed to clear cache completely. Please try again.', [{ text: 'OK' }]);
-            }
-          },
-          style: 'destructive',
-        },
-      ]
-    );
-  };
-
   const handleViewCache = () => {
     setIsCacheModalVisible(true);
   };
 
+  const handleClearCache = async () => {
+    try {
+      await clearCache();
+      await resetCacheAndState();
+      await resetUsageCache();
+      await resetGroupsCache();
+      await resetMessagesCache();
+      await resetAffiliateCache();
+      Alert.alert('Success', 'Cache cleared successfully');
+    } catch (err) {
+      const appError = handleError(err);
+      Alert.alert('Error', appError.userMessage);
+    }
+  };
+
   if (!user) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.dark.primary} />
-        <Text style={styles.loadingText}>Loading profile...</Text>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.dark.accent} />
+        </View>
       </SafeAreaView>
     );
+  }
+
+  // Get current user's tier settings
+  let tierSettings;
+  try {
+    tierSettings = useAuthStore.getState().getTierSettings();
+  } catch (err) {
+    // If tier settings aren't available, we'll just not show the benefits section
   }
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <ProfileHeader profile={user} />
+        <ProfileHeader />
         
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>About</Text>
@@ -325,6 +336,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.dark.background,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   scrollView: {
     flex: 1,
   },
@@ -423,16 +439,5 @@ const styles = StyleSheet.create({
   },
   logoutButton: {
     marginBottom: 0,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: Colors.dark.background,
-  },
-  loadingText: {
-    color: Colors.dark.textSecondary,
-    marginTop: 16,
-    fontSize: 16,
   },
 });
