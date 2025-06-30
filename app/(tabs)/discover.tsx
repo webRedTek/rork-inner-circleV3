@@ -458,7 +458,7 @@ export default function DiscoverScreen() {
       )}
       
       {/* DEBUG: Temporary debug display */}
-      {__DEV__ && (
+      {isDebugMode && (
         <View style={styles.debugContainer}>
           <Text style={styles.debugTitle}>DEBUG INFO:</Text>
           <Text style={styles.debugText}>User: {user?.id || 'none'}</Text>

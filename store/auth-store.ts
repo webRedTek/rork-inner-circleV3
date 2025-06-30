@@ -567,18 +567,18 @@ export const useAuthStore = create<AuthState>()(
         
         if (!allTierSettings) {
           throw {
-            category: ErrorCategory.BUSINESS,
-            code: ErrorCodes.BUSINESS_LIMIT_REACHED,
-            message: 'Tier settings not available for usage limits'
+            category: ErrorCategory.VALIDATION,
+            code: ErrorCodes.VALIDATION_MISSING_FIELD,
+            message: 'Tier settings not available yet. Please try again in a moment.'
           };
         }
         
         const tierSettings = allTierSettings[user.membershipTier];
         if (!tierSettings) {
           throw {
-            category: ErrorCategory.BUSINESS,
-            code: ErrorCodes.BUSINESS_LIMIT_REACHED,
-            message: 'Tier settings not available for usage limits'
+            category: ErrorCategory.VALIDATION,
+            code: ErrorCodes.VALIDATION_MISSING_FIELD,
+            message: 'Tier settings not available for your membership level. Please contact support.'
           };
         }
         
@@ -654,10 +654,13 @@ export const useAuthStore = create<AuthState>()(
             if (profileError) throw profileError;
 
             const userProfile = supabaseToUserProfile(profileData || {});
+            
+            // First load tier settings
+            await get().fetchAllTierSettings();
+            
+            // Then initialize usage tracking
             await useUsageStore.getState().initializeUsage(userProfile.id);
             startUsageSync();
-
-            await get().fetchAllTierSettings();
 
             set({
               user: userProfile,
