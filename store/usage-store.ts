@@ -139,60 +139,65 @@ export const useUsageStore = create<UsageStore>()(
           console.log('Initializing usage data for user:', userId);
           const now = Date.now();
           
-          // Get the user's single usage record
-          const { data: usageData, error: usageError } = await supabase
+          // First try to find any existing record for this user
+          const { data: existingData, error: findError } = await supabase
             .from('user_daily_usage')
             .select('*')
             .eq('user_id', userId)
-            .single();
+            .maybeSingle();
 
-          // If no record exists, create one
-          if (usageError || !usageData) {
-            const { data: newData, error: createError } = await supabase
+          if (findError) {
+            throw new Error(`Failed to check for existing usage record: ${handleError(findError).userMessage}`);
+          }
+
+          // If record exists, update it (including resetting if expired)
+          if (existingData) {
+            const isExpired = existingData.daily_reset_at && new Date(existingData.daily_reset_at).getTime() < now;
+            
+            const { data: updatedData, error: updateError } = await supabase
               .from('user_daily_usage')
-              .insert({
-                user_id: userId,
-                swipe_count: 0,
-                match_count: 0,
-                message_count: 0,
-                like_count: 0,
+              .update({
+                swipe_count: isExpired ? 0 : existingData.swipe_count,
+                match_count: isExpired ? 0 : existingData.match_count,
+                message_count: isExpired ? 0 : existingData.message_count,
+                like_count: isExpired ? 0 : existingData.like_count,
                 daily_reset_at: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
-                created_at: new Date().toISOString(),
                 last_updated: new Date().toISOString()
               })
+              .eq('id', existingData.id)
               .select()
               .single();
 
-            if (createError) {
-              throw new Error(`Failed to create usage record: ${handleError(createError).userMessage}`);
+            if (updateError) {
+              throw new Error(`Failed to update usage record: ${handleError(updateError).userMessage}`);
             }
 
             const usageCache: UsageCache = {
               lastSyncTimestamp: now,
               usageData: {
                 swipe: {
-                  currentCount: 0,
-                  firstActionTimestamp: now,
+                  currentCount: updatedData.swipe_count,
+                  firstActionTimestamp: new Date(updatedData.created_at).getTime(),
                   lastActionTimestamp: now,
-                  resetTimestamp: now + 24 * 60 * 60 * 1000,
+                  resetTimestamp: new Date(updatedData.daily_reset_at).getTime(),
                 },
                 match: {
-                  currentCount: 0,
-                  firstActionTimestamp: now,
+                  currentCount: updatedData.match_count,
+                  firstActionTimestamp: new Date(updatedData.created_at).getTime(),
                   lastActionTimestamp: now,
-                  resetTimestamp: now + 24 * 60 * 60 * 1000,
+                  resetTimestamp: new Date(updatedData.daily_reset_at).getTime(),
                 },
                 message: {
-                  currentCount: 0,
-                  firstActionTimestamp: now,
+                  currentCount: updatedData.message_count,
+                  firstActionTimestamp: new Date(updatedData.created_at).getTime(),
                   lastActionTimestamp: now,
-                  resetTimestamp: now + 24 * 60 * 60 * 1000,
+                  resetTimestamp: new Date(updatedData.daily_reset_at).getTime(),
                 },
                 like: {
-                  currentCount: 0,
-                  firstActionTimestamp: now,
+                  currentCount: updatedData.like_count,
+                  firstActionTimestamp: new Date(updatedData.created_at).getTime(),
                   lastActionTimestamp: now,
-                  resetTimestamp: now + 24 * 60 * 60 * 1000,
+                  resetTimestamp: new Date(updatedData.daily_reset_at).getTime(),
                 }
               },
               premiumFeatures: {
@@ -205,116 +210,71 @@ export const useUsageStore = create<UsageStore>()(
               },
             };
 
-            console.log('New usage record created:', usageCache);
+            console.log('Updated existing usage record:', usageCache);
             set({ usageCache });
-          } else {
-            // Check if we need to reset counts (24 hours passed)
-            const shouldReset = usageData.daily_reset_at && new Date(usageData.daily_reset_at).getTime() < now;
-            
-            if (shouldReset) {
-              // Reset counts and update reset timestamp
-              const { data: resetData, error: resetError } = await supabase
-                .from('user_daily_usage')
-                .update({
-                  swipe_count: 0,
-                  match_count: 0,
-                  message_count: 0,
-                  like_count: 0,
-                  daily_reset_at: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
-                  last_updated: new Date().toISOString()
-                })
-                .eq('user_id', userId)
-                .select()
-                .single();
-
-              if (resetError) {
-                throw new Error(`Failed to reset usage counts: ${handleError(resetError).userMessage}`);
-              }
-
-              const usageCache: UsageCache = {
-                lastSyncTimestamp: now,
-                usageData: {
-                  swipe: {
-                    currentCount: 0,
-                    firstActionTimestamp: now,
-                    lastActionTimestamp: now,
-                    resetTimestamp: now + 24 * 60 * 60 * 1000,
-                  },
-                  match: {
-                    currentCount: 0,
-                    firstActionTimestamp: now,
-                    lastActionTimestamp: now,
-                    resetTimestamp: now + 24 * 60 * 60 * 1000,
-                  },
-                  message: {
-                    currentCount: 0,
-                    firstActionTimestamp: now,
-                    lastActionTimestamp: now,
-                    resetTimestamp: now + 24 * 60 * 60 * 1000,
-                  },
-                  like: {
-                    currentCount: 0,
-                    firstActionTimestamp: now,
-                    lastActionTimestamp: now,
-                    resetTimestamp: now + 24 * 60 * 60 * 1000,
-                  }
-                },
-                premiumFeatures: {
-                  boostMinutesRemaining: 0,
-                  boostUsesRemaining: 0,
-                },
-                analytics: {
-                  profileViews: 0,
-                  searchAppearances: 0,
-                },
-              };
-
-              console.log('Usage counts reset after 24 hours:', usageCache);
-              set({ usageCache });
-            } else {
-              // Use existing counts
-              const usageCache: UsageCache = {
-                lastSyncTimestamp: now,
-                usageData: {
-                  swipe: {
-                    currentCount: usageData.swipe_count || 0,
-                    firstActionTimestamp: usageData.created_at ? new Date(usageData.created_at).getTime() : now,
-                    lastActionTimestamp: usageData.last_updated ? new Date(usageData.last_updated).getTime() : now,
-                    resetTimestamp: usageData.daily_reset_at ? new Date(usageData.daily_reset_at).getTime() : now + 24 * 60 * 60 * 1000,
-                  },
-                  match: {
-                    currentCount: usageData.match_count || 0,
-                    firstActionTimestamp: usageData.created_at ? new Date(usageData.created_at).getTime() : now,
-                    lastActionTimestamp: usageData.last_updated ? new Date(usageData.last_updated).getTime() : now,
-                    resetTimestamp: usageData.daily_reset_at ? new Date(usageData.daily_reset_at).getTime() : now + 24 * 60 * 60 * 1000,
-                  },
-                  message: {
-                    currentCount: usageData.message_count || 0,
-                    firstActionTimestamp: usageData.created_at ? new Date(usageData.created_at).getTime() : now,
-                    lastActionTimestamp: usageData.last_updated ? new Date(usageData.last_updated).getTime() : now,
-                    resetTimestamp: usageData.daily_reset_at ? new Date(usageData.daily_reset_at).getTime() : now + 24 * 60 * 60 * 1000,
-                  },
-                  like: {
-                    currentCount: usageData.like_count || 0,
-                    firstActionTimestamp: usageData.created_at ? new Date(usageData.created_at).getTime() : now,
-                    lastActionTimestamp: usageData.last_updated ? new Date(usageData.last_updated).getTime() : now,
-                    resetTimestamp: usageData.daily_reset_at ? new Date(usageData.daily_reset_at).getTime() : now + 24 * 60 * 60 * 1000,
-                  }
-                },
-                premiumFeatures: {
-                  boostMinutesRemaining: 0,
-                  boostUsesRemaining: 0,
-                },
-                analytics: {
-                  profileViews: 0,
-                  searchAppearances: 0,
-                },
-              };
-
-              console.log('Using existing usage record:', usageCache);
-              set({ usageCache });
-            }
+            return;
           }
+
+          // Only create new record if none exists
+          const { data: newData, error: createError } = await supabase
+            .from('user_daily_usage')
+            .insert({
+              user_id: userId,
+              swipe_count: 0,
+              match_count: 0,
+              message_count: 0,
+              like_count: 0,
+              daily_reset_at: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
+              created_at: new Date().toISOString(),
+              last_updated: new Date().toISOString()
+            })
+            .select()
+            .single();
+
+          if (createError) {
+            throw new Error(`Failed to create usage record: ${handleError(createError).userMessage}`);
+          }
+
+          const usageCache: UsageCache = {
+            lastSyncTimestamp: now,
+            usageData: {
+              swipe: {
+                currentCount: 0,
+                firstActionTimestamp: now,
+                lastActionTimestamp: now,
+                resetTimestamp: now + 24 * 60 * 60 * 1000,
+              },
+              match: {
+                currentCount: 0,
+                firstActionTimestamp: now,
+                lastActionTimestamp: now,
+                resetTimestamp: now + 24 * 60 * 60 * 1000,
+              },
+              message: {
+                currentCount: 0,
+                firstActionTimestamp: now,
+                lastActionTimestamp: now,
+                resetTimestamp: now + 24 * 60 * 60 * 1000,
+              },
+              like: {
+                currentCount: 0,
+                firstActionTimestamp: now,
+                lastActionTimestamp: now,
+                resetTimestamp: now + 24 * 60 * 60 * 1000,
+              }
+            },
+            premiumFeatures: {
+              boostMinutesRemaining: 0,
+              boostUsesRemaining: 0,
+            },
+            analytics: {
+              profileViews: 0,
+              searchAppearances: 0,
+            },
+          };
+
+          console.log('Created new usage record:', usageCache);
+          set({ usageCache });
         } catch (error) {
           console.error('Error initializing usage:', handleError(error).userMessage);
           set({ lastSyncError: handleError(error).userMessage });
