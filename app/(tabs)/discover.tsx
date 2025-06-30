@@ -143,9 +143,17 @@ export default function DiscoverScreen() {
     if (potentialMatches.length <= 3 && !isPrefetching && !isLoading && user && !noMoreProfiles) {
       addDebugInfo(`Prefetching triggered - matches: ${potentialMatches.length}, prefetching: ${isPrefetching}, loading: ${isLoading}, noMore: ${noMoreProfiles}`);
       console.log('[Discover] Running low on matches, prefetching more', { currentMatches: potentialMatches.length });
-      prefetchNextBatch();
+      
+      // If global search is enabled for the tier, pass undefined for maxDistance
+      // Otherwise use the user's preferred distance
+      const distance = isGlobalSearchAllowed && globalSearch 
+        ? undefined 
+        : (user.preferredDistance || parseInt(preferredDistance) || 50);
+      
+      addDebugInfo(`Prefetching with distance: ${distance === undefined ? 'global' : distance}mi`);
+      prefetchNextBatch(distance);
     }
-  }, [potentialMatches.length, isPrefetching, isLoading, user, noMoreProfiles]);
+  }, [potentialMatches.length, isPrefetching, isLoading, user, noMoreProfiles, preferredDistance, isGlobalSearchAllowed, globalSearch]);
   
   useEffect(() => {
     // Check for new matches and display modal
