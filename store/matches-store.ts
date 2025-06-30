@@ -1,18 +1,18 @@
 /**
  * FILE: store/matches-store.ts
- * LAST UPDATED: 2024-12-20 10:30
+ * LAST UPDATED: 2024-12-20 11:45
  * 
  * CURRENT STATE:
- * Central matches management store using Zustand. Handles fetching potential matches,
- * user interactions (like/pass), batch processing, caching, and prefetching.
- * Manages swipe limits, match creation, and coordinates with usage tracking.
- * Fixed prefetching infinite loop issues with timeout and better state management.
+ * Central matches management store using Zustand with proper persistence and hydration.
+ * Handles fetching potential matches, user interactions (like/pass), batch processing,
+ * caching, and prefetching. Added robust hydration handling with initial state fallback
+ * to prevent undefined functions during store initialization.
  * 
  * RECENT CHANGES:
- * - Modified to use cached tier settings from auth store instead of getTierSettings()
- * - Removed unnecessary tier settings validation that was causing errors
- * - Improved error handling for missing tier settings
- * - Maintains compatibility with existing usage tracking
+ * - Added initialState to provide default values during store creation and rehydration
+ * - Improved hydration error handling with proper fallbacks
+ * - Added state reset during rehydration to prevent stale states
+ * - Maintained compatibility with existing usage tracking
  * 
  * FILE INTERACTIONS:
  * - Imports from: user types (UserProfile, MatchWithProfile, MembershipTier)
@@ -26,6 +26,7 @@
  *   swipe queues, coordinates with usage tracking, provides match data to UI
  * 
  * KEY FUNCTIONS/COMPONENTS:
+ * - Store Creation: Zustand store with persistence and hydration handling
  * - fetchPotentialMatches: Main function to load potential matches with debugging
  * - prefetchNextBatch: Load additional matches for caching with timeout protection
  * - likeUser/passUser: Handle user swipe actions
@@ -33,7 +34,13 @@
  * - processSwipeBatch: Process queued swipes in batches
  * - getMatches: Fetch user's actual matches
  * - refreshCandidates: Force refresh of potential matches
- * - DEBUG: Extensive console logging throughout all functions
+ * 
+ * HYDRATION FLOW:
+ * 1. Store created with initialState
+ * 2. Attempt to load persisted state from AsyncStorage
+ * 3. If error/no state, fall back to initialState
+ * 4. Convert persisted data types (arrays to Sets)
+ * 5. Reset loading states to prevent stale state
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -191,6 +198,26 @@ const PASSED_USERS_KEY = 'passed_users';
 
 type MatchesPersistedState = Omit<MatchesStateData, 'pendingLikes'> & {
   pendingLikes: string[];
+};
+
+// Initial state
+const initialState: MatchesStateData = {
+  potentialMatches: [],
+  cachedMatches: [],
+  matches: [],
+  swipeQueue: [],
+  batchSize: 10,
+  prefetchThreshold: 3,
+  batchProcessingInterval: 5000,
+  isLoading: false,
+  isPrefetching: false,
+  error: null,
+  newMatch: null,
+  swipeLimitReached: false,
+  matchLimitReached: false,
+  noMoreProfiles: false,
+  passedUsers: [],
+  pendingLikes: new Set()
 };
 
 // Define the store creator with proper typing for Zustand persist
@@ -888,7 +915,7 @@ const matchesStoreCreator: StateCreator<
 
 export const useMatchesStore = create<MatchesState>()(
   persist(
-    matchesStoreCreator as any, // Use type assertion to bypass complex type mismatch
+    matchesStoreCreator as any,
     {
       name: 'matches-store',
       storage: createJSONStorage(() => AsyncStorage),
@@ -911,13 +938,31 @@ export const useMatchesStore = create<MatchesState>()(
         newMatch: state.newMatch
       }),
       onRehydrateStorage: () => (state: MatchesPersistedState | undefined, error: unknown) => {
-        if (state && Array.isArray(state.pendingLikes)) {
+        if (error) {
+          console.error('Error rehydrating matches store:', error);
+          // Use initial state if there's an error
+          useMatchesStore.setState(initialState);
+          return;
+        }
+
+        if (!state) {
+          // Use initial state if no persisted state
+          useMatchesStore.setState(initialState);
+          return;
+        }
+
+        // Convert pendingLikes array back to Set
+        if (Array.isArray(state.pendingLikes)) {
           useMatchesStore.setState({
-            pendingLikes: new Set(state.pendingLikes)
+            ...state,
+            pendingLikes: new Set(state.pendingLikes),
+            // Reset loading states on rehydration
+            isLoading: false,
+            isPrefetching: false
           });
         }
       }
-    } as unknown as PersistOptions<MatchesState, MatchesPersistedState> // Use type assertion to resolve PersistOptions mismatch
+    } as unknown as PersistOptions<MatchesState, MatchesPersistedState>
   )
 );
 

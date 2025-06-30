@@ -1,16 +1,18 @@
 /**
  * FILE: app/(tabs)/discover.tsx
- * LAST UPDATED: 2024-12-19 16:15
+ * LAST UPDATED: 2024-12-20 11:45
  * 
  * CURRENT STATE:
  * Main discovery screen for the app. Displays potential matches in a swipeable card interface.
  * Handles user interactions (like/pass), match notifications, and profile viewing.
- * Fixed prefetching infinite loop by removing function from useEffect dependencies.
+ * Uses matches-store with proper hydration handling to prevent undefined function errors.
+ * Supports both local and global discovery based on user tier settings.
  * 
  * RECENT CHANGES:
- * - Fixed useEffect dependency array to prevent infinite prefetch loops
- * - Removed prefetchNextBatch from dependencies to prevent re-triggers
- * - Maintained existing functionality while fixing the loop issue
+ * - Added proper distance handling for global vs local discovery
+ * - Added debug logging for prefetch operations and distance settings
+ * - Improved error handling for store function availability
+ * - Added proper handling of tier-based global discovery settings
  * 
  * FILE INTERACTIONS:
  * - Imports from: matches-store (potential matches, swipe actions)
@@ -28,9 +30,15 @@
  * - Match notification modal handling
  * - Limit reached modal handling
  * - Profile detail viewing
- * - Global/local search toggle
+ * - Global/local search toggle based on tier
  * - Distance filter application
  * - Debug information logging
+ * 
+ * STORE INTERACTIONS:
+ * - Uses matches-store for all match-related operations
+ * - Handles store hydration gracefully
+ * - Respects tier settings for global discovery
+ * - Manages prefetching based on remaining matches
  */
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
