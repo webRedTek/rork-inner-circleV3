@@ -1,0 +1,108 @@
+# Cursor Rules Configuration
+
+# Ignore patterns for search and indexing
+ignore:
+  - "**/node_modules/**"
+  - "**/build/**"
+  - "**/dist/**"
+  - "**/.expo/**"
+  - "**/.next/**"
+  - "**/coverage/**"
+  - "**/.git/**"
+  - "**/android/**"
+  - "**/ios/**"
+  - "**/*.log"
+  - "**/*.lock"
+  - "**/*.map"
+
+# File type associations
+associations:
+  - ext: ".tsx"
+    type: "typescript-react"
+  - ext: ".ts"
+    type: "typescript"
+  - ext: ".jsx"
+    type: "javascript-react"
+  - ext: ".js"
+    type: "javascript"
+  - ext: ".json"
+    type: "json"
+  - ext: ".md"
+    type: "markdown"
+
+# Editor settings
+settings:
+  tabSize: 2
+  insertSpaces: true
+  trimTrailingWhitespace: true
+  insertFinalNewline: true
+
+# Language-specific settings
+languages:
+  typescript:
+    tabSize: 2
+    insertSpaces: true
+    formatOnSave: true
+  javascript:
+    tabSize: 2
+    insertSpaces: true
+    formatOnSave: true
+  json:
+    tabSize: 2
+    insertSpaces: true
+    formatOnSave: true
+
+# Search settings
+search:
+  excludePatterns:
+    - "**/*.min.js"
+    - "**/*.min.css"
+    - "**/package-lock.json"
+    - "**/yarn.lock"
+    - "**/bun.lockb"
+  includeHidden: false
+
+# Custom rules
+rules:
+  - name: "1. No Supabase Real-time"
+    description: "This app does not use Supabase real-time features"
+    patterns:
+      - "supabase.channel"
+      - "supabase.subscribe"
+      - "supabase.removeChannel"
+      - "postgres_changes"
+      - "subscription"
+    action: "warn"
+    message: "Supabase real-time features are not used in this app. Use regular database queries instead."
+
+  - name: "2. No Root Node Modules"
+    description: "Prevent installing node_modules in the root directory"
+    patterns:
+      - "package.json"
+      - "package-lock.json"
+      - "yarn.lock"
+      - "bun.lockb"
+      - "node_modules"
+    action: "error"
+    message: "Node modules and package management files should not be installed in any directory."
+
+  - name: "3. Protected Import Statements"
+    description: "Prevent adding new external dependencies that aren't already installed"
+    patterns:
+      - "^import.*from\\s+['\"](?!@/|\\./|\\.\\./)"
+      - "^import\\s+['\"](?!@/|\\./|\\.\\./)"
+      - "^require\\(['\"](?!@/|\\./|\\.\\./)"
+    action: "warn"
+    message: "Do not add new external dependencies. You can use dependencies that are already imported in the file (as they are installed in the Expo app), but do not add new ones as they would break the build."
+
+  - name: "4. Supabase CLI Connection"
+    description: "Always connect to Supabase via CLI online using specified credentials"
+    patterns:
+      - "supabase.*connect"
+      - "supabase.*link"
+      - "supabase.*login"
+    action: "info"
+    message: "Use Supabase CLI with id: mlkjjdsfnunrpvfoebky and pass: K7UgDdQzdpGDpguI"
+    credentials:
+      id: "mlkjjdsfnunrpvfoebky"
+      pass: "K7UgDdQzdpGDpguI"

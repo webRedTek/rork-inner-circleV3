@@ -1,0 +1,177 @@
+# Cursor Rules Configuration
+
+# Ignore patterns for search and indexing
+ignore:
+  - "**/node_modules/**"
+  - "**/build/**"
+  - "**/dist/**"
+  - "**/.expo/**"
+  - "**/.next/**"
+  - "**/coverage/**"
+  - "**/.git/**"
+  - "**/android/**"
+  - "**/ios/**"
+  - "**/*.log"
+  - "**/*.lock"
+  - "**/*.map"
+
+# File type associations
+associations:
+  - ext: ".tsx"
+    type: "typescript-react"
+  - ext: ".ts"
+    type: "typescript"
+  - ext: ".jsx"
+    type: "javascript-react"
+  - ext: ".js"
+    type: "javascript"
+  - ext: ".json"
+    type: "json"
+  - ext: ".md"
+    type: "markdown"
+
+# Editor settings
+settings:
+  tabSize: 2
+  insertSpaces: true
+  trimTrailingWhitespace: true
+  insertFinalNewline: true
+
+# Language-specific settings
+languages:
+  typescript:
+    tabSize: 2
+    insertSpaces: true
+    formatOnSave: true
+  javascript:
+    tabSize: 2
+    insertSpaces: true
+    formatOnSave: true
+  json:
+    tabSize: 2
+    insertSpaces: true
+    formatOnSave: true
+
+# Search settings
+search:
+  excludePatterns:
+    - "**/*.min.js"
+    - "**/*.min.css"
+    - "**/package-lock.json"
+    - "**/yarn.lock"
+    - "**/bun.lockb"
+  includeHidden: false
+
+# Custom rules
+rules:
+  - name: "1. No Supabase Real-time"
+    description: "This app does not use Supabase real-time features"
+    patterns:
+      - "supabase.channel"
+      - "supabase.subscribe"
+      - "supabase.removeChannel"
+      - "postgres_changes"
+      - "subscription"
+    action: "warn"
+    message: "Supabase real-time features are not used in this app. Use regular database queries instead."
+
+  - name: "2. No Root Node Modules"
+    description: "Prevent installing node_modules in the root directory"
+    patterns:
+      - "package.json"
+      - "package-lock.json"
+      - "yarn.lock"
+      - "bun.lockb"
+      - "node_modules"
+    action: "error"
+    message: "Node modules and package management files should not be installed in any directory."
+
+  - name: "3. Protected Import Statements"
+    description: "Prevent adding new external dependencies that aren't already installed"
+    patterns:
+      - "^import.*from\\s+['\"](?!@/|\\./|\\.\\./)"
+      - "^import\\s+['\"](?!@/|\\./|\\.\\./)"
+      - "^require\\(['\"](?!@/|\\./|\\.\\./)"
+    action: "warn"
+    message: "Do not add new external dependencies. You can use dependencies that are already imported in the file (as they are installed in the Expo app), but do not add new ones as they would break the build."
+
+  - name: "4. Supabase CLI Connection"
+    description: "Always connect to Supabase via CLI online using specified credentials"
+    patterns:
+      - "supabase.*connect"
+      - "supabase.*link"
+      - "supabase.*login"
+    action: "info"
+    message: "Use Supabase CLI with id: mlkjjdsfnunrpvfoebky and pass: K7UgDdQzdpGDpguI"
+    credentials:
+      id: "mlkjjdsfnunrpvfoebky"
+      pass: "K7UgDdQzdpGDpguI"
+    command: "supabase link --project-ref mlkjjdsfnunrpvfoebky --password K7UgDdQzdpGDpguI"
+    notes: |
+      EXACT COMMAND TO USE:
+      supabase link --project-ref mlkjjdsfnunrpvfoebky --password K7UgDdQzdpGDpguI
+      
+      This command:
+      1. Links to the remote Supabase project using the project reference ID
+      2. Uses the password for authentication
+      3. Establishes connection to the online database (not local Docker)
+      4. Shows warnings about config differences which are normal
+      5. After connection, you can use other supabase commands to interact with the remote database
+
+  - name: "5. Git Pull for icV3"
+    description: "When git pull is typed, do a full pull and overwrite only files in the icV3 folder"
+    patterns:
+      - "git pull"
+    action: "execute"
+    message: "Performing full git pull and overwriting files in icV3 folder"
+    command: "cd icV3 && git pull origin main"
+
+  - name: "6. File Documentation Header"
+    description: "After editing any file, add/update a documentation header at the top with current state, changes made, and file interactions"
+    patterns:
+      - "edit_file"
+      - "update.*file"
+      - "modify.*file"
+    action: "execute"
+    message: "Adding/updating file documentation header with current state and interactions"
+    documentation:
+      format: |
+        /**
+         * FILE: [filename]
+         * LAST UPDATED: [datetime]
+         * 
+         * CURRENT STATE:
+         * [Brief description of what this file does and its current functionality]
+         * 
+         * RECENT CHANGES:
+         * [Summary of what was changed in this edit]
+         * 
+         * FILE INTERACTIONS:
+         * - Imports from: [list files this imports from]
+         * - Exports to: [list files that import this]
+         * - Dependencies: [key dependencies and how they're used]
+         * - Data flow: [how data flows in/out of this file]
+         * 
+         * KEY FUNCTIONS/COMPONENTS:
+         * [List main functions/components and their purposes]
+         */
+      required: true
+      location: "top of file after imports"
+
+  - name: "7. Post-Commit Verification"
+    description: "Enforce verification steps after each commit and push"
+    patterns:
+      - "git commit"
+      - "do rule 7"
+    action: "execute"
+    message: "After each commit, you must:\n1. Run 'git log' to verify commit message and changes\n2. Run 'git status' to check for any remaining changes\n3. Compare file timestamps with git log to ensure changes were captured\n4. Check that documentation headers were properly updated\n5. Verify all intended files were included in the commit\n6. Push changes with 'git push origin main'\n7. Verify push was successful with 'git status'"
+    required_checks:
+      - "git add ."
+      - "git commit -m 'auto: applying changes with Rule 7'"
+      - "git log --oneline -n 1"
+      - "git status"
+      - "git show --name-status HEAD"
+      - "ls -l {changed_files}"
+      - "git push origin main"
+      - "git status"
+    auto_commit: true

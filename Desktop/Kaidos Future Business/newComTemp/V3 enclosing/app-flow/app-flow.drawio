@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="2024-02-20T00:00:00.000Z" agent="AI Assistant" version="22.1.21" type="device">
+  <diagram id="complete-flow" name="Complete Flow">
+    <mxGraphModel dx="1422" dy="798" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="850" background="#ffffff">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        
+        <!-- User Actions -->
+        <mxCell id="user-swipe" value="User Swipes" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="120" height="60" as="geometry"/>
+        </mxCell>
+        
+        <!-- App Layer -->
+        <mxCell id="batch-process" value="Batch Processing" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbf;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="240" y="40" width="120" height="60" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="check-limits" value="Check Limits" style="rhombus;whiteSpace=wrap;html=1;fillColor=#dfd;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="260" y="160" width="80" height="80" as="geometry"/>
+        </mxCell>
+        
+        <!-- Database Layer -->
+        <mxCell id="record-like" value="Record Like" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffd;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="440" y="40" width="120" height="60" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="check-mutual" value="Check Mutual Like" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffd;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="460" y="160" width="80" height="80" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="create-match" value="Create Match" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffd;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="440" y="300" width="120" height="60" as="geometry"/>
+        </mxCell>
+        
+        <!-- Connections -->
+        <mxCell id="conn1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="user-swipe" target="batch-process">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="conn2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="batch-process" target="check-limits">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="conn3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="check-limits" target="record-like">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="conn4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="record-like" target="check-mutual">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="conn5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="check-mutual" target="create-match">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  
+  <diagram id="limits-tracking" name="Limits and Tracking">
+    <mxGraphModel dx="1422" dy="798" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="850" background="#ffffff">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        
+        <!-- Tiers -->
+        <mxCell id="bronze" value="Bronze Tier&#xa;10 Likes/day" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffd;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="120" height="60" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="silver" value="Silver Tier&#xa;50 Likes/day" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffd;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="40" y="140" width="120" height="60" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="gold" value="Gold Tier&#xa;100 Likes/day" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffd;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="40" y="240" width="120" height="60" as="geometry"/>
+        </mxCell>
+        
+        <!-- Usage Tracking -->
+        <mxCell id="daily-reset" value="Daily Reset" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dfd;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="240" y="40" width="120" height="60" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="track-likes" value="Track Likes" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dfd;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="240" y="140" width="120" height="60" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="track-matches" value="Track Matches" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dfd;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="240" y="240" width="120" height="60" as="geometry"/>
+        </mxCell>
+        
+        <!-- Rules -->
+        <mxCell id="check-mutual" value="Check Mutual" style="rhombus;whiteSpace=wrap;html=1;fillColor=#bbf;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="460" y="30" width="80" height="80" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="check-limits" value="Check Limits" style="rhombus;whiteSpace=wrap;html=1;fillColor=#bbf;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="460" y="130" width="80" height="80" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="create-match" value="Create Match" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="440" y="240" width="120" height="60" as="geometry"/>
+        </mxCell>
+        
+        <!-- Connections -->
+        <mxCell id="conn1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="bronze" target="daily-reset">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="conn2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="silver" target="track-likes">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="conn3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="gold" target="track-matches">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="conn4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="daily-reset" target="check-mutual">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="conn5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="track-likes" target="check-limits">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="conn6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="track-matches" target="create-match">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile> 

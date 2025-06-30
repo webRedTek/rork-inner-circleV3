@@ -1,0 +1,42 @@
+graph TD
+    subgraph "User Actions"
+        A[User Swipes Right] --> B[App Queue]
+        A2[User Swipes Left] --> B
+    end
+
+    subgraph "App Layer"
+        B --> C[Batch Processing]
+        C --> D{Check Limits}
+        D -->|Within Limits| E[Send to Database]
+        D -->|Exceeded| F[Show Limit Notice]
+    end
+
+    subgraph "Database Layer"
+        E --> G[Record Like]
+        G --> H{Check for<br/>Mutual Like}
+        H -->|Yes| I[Create Match]
+        H -->|No| J[Wait for<br/>Future Like]
+        I --> K[Update Usage<br/>for Both Users]
+    end
+
+    subgraph "Response Flow"
+        K --> L[Return Result]
+        L --> M[Update UI]
+        M --> N[Show Match<br/>Notification]
+    end
+
+    style A fill:#f9f,stroke:#333,stroke-width:2px
+    style A2 fill:#f9f,stroke:#333,stroke-width:2px
+    style B fill:#bbf,stroke:#333,stroke-width:2px
+    style C fill:#bbf,stroke:#333,stroke-width:2px
+    style D fill:#dfd,stroke:#333,stroke-width:2px
+    style E fill:#bbf,stroke:#333,stroke-width:2px
+    style F fill:#fdd,stroke:#333,stroke-width:2px
+    style G fill:#ffd,stroke:#333,stroke-width:2px
+    style H fill:#dfd,stroke:#333,stroke-width:2px
+    style I fill:#ffd,stroke:#333,stroke-width:2px
+    style J fill:#ffd,stroke:#333,stroke-width:2px
+    style K fill:#ffd,stroke:#333,stroke-width:2px
+    style L fill:#bbf,stroke:#333,stroke-width:2px
+    style M fill:#bbf,stroke:#333,stroke-width:2px
+    style N fill:#f9f,stroke:#333,stroke-width:2px 
