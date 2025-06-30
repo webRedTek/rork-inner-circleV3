@@ -253,6 +253,9 @@ export const useAuthStore = create<AuthState>()(
 
               // Initialize usage tracking
               await useUsageStore.getState().initializeUsage(data.user.id);
+              
+              // Only start usage sync after confirming profile creation
+              startUsageSync();
             } else if (profileError) {
               throw {
                 category: ErrorCategory.DATABASE,
@@ -269,6 +272,9 @@ export const useAuthStore = create<AuthState>()(
                 isLoading: false,
                 error: null
               });
+
+              // Only start usage sync after confirming we have the profile
+              startUsageSync();
             }
           });
         } catch (error) {
@@ -658,9 +664,13 @@ export const useAuthStore = create<AuthState>()(
             // First load tier settings
             await get().fetchAllTierSettings();
             
-            // Then initialize usage tracking
+            // Initialize usage tracking
             await useUsageStore.getState().initializeUsage(userProfile.id);
-            startUsageSync();
+            
+            // Only start usage sync after we confirm we have a valid profile
+            if (profileData) {
+              startUsageSync();
+            }
 
             set({
               user: userProfile,
