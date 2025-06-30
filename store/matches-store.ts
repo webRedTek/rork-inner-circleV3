@@ -94,42 +94,186 @@ const getReadableError = (error: unknown): string => {
   }
 };
 
-// Helper function to convert Supabase response to UserProfile type
-const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
-  const camelCaseData = convertToCamelCase(data);
-  
-  return {
-    id: String(camelCaseData.id || ''),
-    email: String(camelCaseData.email || ''),
-    name: String(camelCaseData.name || ''),
-    bio: String(camelCaseData.bio || ''),
-    location: String(camelCaseData.location || ''),
-    zipCode: String(camelCaseData.zipCode || ''),
-    latitude: Number(camelCaseData.latitude || 0),
-    longitude: Number(camelCaseData.longitude || 0),
-    preferredDistance: Number(camelCaseData.preferredDistance || 50),
-    locationPrivacy: String(camelCaseData.locationPrivacy || 'public') as UserProfile["locationPrivacy"],
-    businessField: String(camelCaseData.businessField || 'Technology') as UserProfile["businessField"],
-    entrepreneurStatus: String(camelCaseData.entrepreneurStatus || 'upcoming') as UserProfile["entrepreneurStatus"],
-    photoUrl: camelCaseData.photoUrl,
-    membershipTier: String(camelCaseData.membershipTier || 'basic') as MembershipTier,
-    businessVerified: Boolean(camelCaseData.businessVerified || false),
-    joinedGroups: Array.isArray(camelCaseData.joinedGroups) ? camelCaseData.joinedGroups : [],
-    createdAt: Number(camelCaseData.createdAt || Date.now()),
-    lookingFor: Array.isArray(camelCaseData.lookingFor) ? camelCaseData.lookingFor : [],
-    businessStage: camelCaseData.businessStage,
-    skillsOffered: Array.isArray(camelCaseData.skillsOffered) ? camelCaseData.skillsOffered : [],
-    skillsSeeking: Array.isArray(camelCaseData.skillsSeeking) ? camelCaseData.skillsSeeking : [],
-    keyChallenge: camelCaseData.keyChallenge,
-    industryFocus: camelCaseData.industryFocus,
-    availabilityLevel: Array.isArray(camelCaseData.availabilityLevel) ? camelCaseData.availabilityLevel : [],
-    timezone: camelCaseData.timezone,
-    successHighlight: camelCaseData.successHighlight,
-  };
-};
+/**
+ * Cache management
+ */
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+  version: number;
+  hits: number;
+  lastAccess: number;
+}
 
-// In-memory cache for user profiles
-const userProfileCache = new Map<string, UserProfile>();
+interface CacheConfig {
+  maxAge: number;
+  maxSize: number;
+  version: number;
+}
+
+class ProfileCache {
+  private cache = new Map<string, CacheEntry<UserProfile>>();
+  private config: CacheConfig = {
+    maxAge: 1000 * 60 * 30, // 30 minutes
+    maxSize: 100, // Maximum number of profiles to cache
+    version: 1
+  };
+  
+  constructor() {
+    // Start cache cleanup interval
+    setInterval(() => this.cleanup(), 1000 * 60 * 5); // Every 5 minutes
+  }
+  
+  get(id: string): UserProfile | null {
+    const entry = this.cache.get(id);
+    if (!entry) return null;
+    
+    // Check if entry is valid
+    if (this.isEntryValid(entry)) {
+      entry.hits++;
+      entry.lastAccess = Date.now();
+      return entry.data;
+    }
+    
+    // Entry is invalid, remove it
+    this.cache.delete(id);
+    return null;
+  }
+  
+  set(id: string, profile: UserProfile): void {
+    // Ensure cache doesn't exceed max size
+    if (this.cache.size >= this.config.maxSize) {
+      this.evictLeastUsed();
+    }
+    
+    this.cache.set(id, {
+      data: profile,
+      timestamp: Date.now(),
+      version: this.config.version,
+      hits: 1,
+      lastAccess: Date.now()
+    });
+  }
+  
+  private isEntryValid(entry: CacheEntry<UserProfile>): boolean {
+    const now = Date.now();
+    return (
+      entry.version === this.config.version &&
+      now - entry.timestamp < this.config.maxAge
+    );
+  }
+  
+  private evictLeastUsed(): void {
+    let leastUsedId: string | null = null;
+    let leastHits = Infinity;
+    let oldestAccess = Infinity;
+    
+    for (const [id, entry] of this.cache.entries()) {
+      if (
+        entry.hits < leastHits ||
+        (entry.hits === leastHits && entry.lastAccess < oldestAccess)
+      ) {
+        leastUsedId = id;
+        leastHits = entry.hits;
+        oldestAccess = entry.lastAccess;
+      }
+    }
+    
+    if (leastUsedId) {
+      this.cache.delete(leastUsedId);
+    }
+  }
+  
+  private cleanup(): void {
+    const now = Date.now();
+    for (const [id, entry] of this.cache.entries()) {
+      if (!this.isEntryValid(entry)) {
+        this.cache.delete(id);
+      }
+    }
+  }
+  
+  clear(): void {
+    this.cache.clear();
+  }
+  
+  invalidate(id: string): void {
+    this.cache.delete(id);
+  }
+  
+  updateVersion(newVersion: number): void {
+    this.config.version = newVersion;
+    this.cleanup(); // This will remove all entries with old versions
+  }
+  
+  getStats(): {
+    size: number;
+    hitRate: number;
+    averageAge: number;
+  } {
+    const now = Date.now();
+    let totalHits = 0;
+    let totalAge = 0;
+    
+    for (const entry of this.cache.values()) {
+      totalHits += entry.hits;
+      totalAge += now - entry.timestamp;
+    }
+    
+    return {
+      size: this.cache.size,
+      hitRate: totalHits / Math.max(this.cache.size, 1),
+      averageAge: totalAge / Math.max(this.cache.size, 1)
+    };
+  }
+}
+
+// Replace the simple Map cache with the new ProfileCache
+const profileCache = new ProfileCache();
+
+// Update the supabaseToUserProfile function to use the new cache
+const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
+  const id = String(data.id || '');
+  
+  // Check cache first
+  const cached = profileCache.get(id);
+  if (cached) return cached;
+  
+  // Convert the data
+  const profile = {
+    id,
+    email: String(data.email || ''),
+    name: String(data.name || ''),
+    bio: String(data.bio || ''),
+    location: String(data.location || ''),
+    zipCode: String(data.zipCode || ''),
+    latitude: Number(data.latitude || 0),
+    longitude: Number(data.longitude || 0),
+    preferredDistance: Number(data.preferredDistance || 50),
+    locationPrivacy: String(data.locationPrivacy || 'public') as UserProfile["locationPrivacy"],
+    businessField: String(data.businessField || 'Technology') as UserProfile["businessField"],
+    entrepreneurStatus: String(data.entrepreneurStatus || 'upcoming') as UserProfile["entrepreneurStatus"],
+    photoUrl: data.photoUrl,
+    membershipTier: String(data.membershipTier || 'basic') as MembershipTier,
+    businessVerified: Boolean(data.businessVerified || false),
+    joinedGroups: Array.isArray(data.joinedGroups) ? data.joinedGroups : [],
+    createdAt: Number(data.createdAt || Date.now()),
+    lookingFor: Array.isArray(data.lookingFor) ? data.lookingFor : [],
+    businessStage: data.businessStage,
+    skillsOffered: Array.isArray(data.skillsOffered) ? data.skillsOffered : [],
+    skillsSeeking: Array.isArray(data.skillsSeeking) ? data.skillsSeeking : [],
+    keyChallenge: data.keyChallenge,
+    industryFocus: data.industryFocus,
+    availabilityLevel: Array.isArray(data.availabilityLevel) ? data.availabilityLevel : [],
+    timezone: data.timezone,
+    successHighlight: data.successHighlight,
+  };
+  
+  // Cache the converted profile
+  profileCache.set(id, profile);
+  
+  return profile;
+};
 
 // Rate limiting setup
 const RATE_LIMIT = 1000; // 1 second
@@ -200,8 +344,43 @@ type MatchesPersistedState = Omit<MatchesStateData, 'pendingLikes'> & {
   pendingLikes: string[];
 };
 
-// Initial state
-const initialState: MatchesStateData = {
+/**
+ * State version for migration handling
+ */
+const STATE_VERSION = 1;
+
+/**
+ * State validation schema
+ */
+const validateState = (state: any): boolean => {
+  if (!state) return false;
+  
+  // Basic structure validation
+  const requiredArrays = ['potentialMatches', 'cachedMatches', 'matches', 'swipeQueue', 'passedUsers'];
+  const requiredNumbers = ['batchSize', 'prefetchThreshold', 'batchProcessingInterval'];
+  const requiredBooleans = ['isLoading', 'isPrefetching', 'swipeLimitReached', 'matchLimitReached', 'noMoreProfiles'];
+  
+  for (const key of requiredArrays) {
+    if (!Array.isArray(state[key])) return false;
+  }
+  
+  for (const key of requiredNumbers) {
+    if (typeof state[key] !== 'number') return false;
+  }
+  
+  for (const key of requiredBooleans) {
+    if (typeof state[key] !== 'boolean') return false;
+  }
+  
+  // Validate pendingLikes is a Set
+  if (!(state.pendingLikes instanceof Set)) return false;
+  
+  return true;
+};
+
+// Initial state with version
+const initialState: MatchesStateData & { version: number } = {
+  version: STATE_VERSION,
   potentialMatches: [],
   cachedMatches: [],
   matches: [],
@@ -218,6 +397,32 @@ const initialState: MatchesStateData = {
   noMoreProfiles: false,
   passedUsers: [],
   pendingLikes: new Set()
+};
+
+// Recovery mechanisms
+const recoverState = (state: any): MatchesStateData => {
+  // Reset loading states
+  state.isLoading = false;
+  state.isPrefetching = false;
+  
+  // Ensure arrays exist
+  state.potentialMatches = Array.isArray(state.potentialMatches) ? state.potentialMatches : [];
+  state.cachedMatches = Array.isArray(state.cachedMatches) ? state.cachedMatches : [];
+  state.matches = Array.isArray(state.matches) ? state.matches : [];
+  state.swipeQueue = Array.isArray(state.swipeQueue) ? state.swipeQueue : [];
+  state.passedUsers = Array.isArray(state.passedUsers) ? state.passedUsers : [];
+  
+  // Convert pendingLikes to Set if needed
+  state.pendingLikes = state.pendingLikes instanceof Set ? 
+    state.pendingLikes : 
+    new Set(Array.isArray(state.pendingLikes) ? state.pendingLikes : []);
+  
+  // Ensure numbers are valid
+  state.batchSize = Number(state.batchSize) || initialState.batchSize;
+  state.prefetchThreshold = Number(state.prefetchThreshold) || initialState.prefetchThreshold;
+  state.batchProcessingInterval = Number(state.batchProcessingInterval) || initialState.batchProcessingInterval;
+  
+  return state;
 };
 
 // Define the store creator with proper typing for Zustand persist
@@ -664,92 +869,104 @@ const matchesStoreCreator: StateCreator<
 
   processSwipeBatch: async () => {
     return await withErrorHandling(async () => {
-      const { user, isReady } = useAuthStore.getState();
-      if (!isReady || !user) {
+      const { user } = useAuthStore.getState();
+      const { isDebugMode } = useDebugStore.getState();
+      
+      if (!user?.id) {
         throw {
           category: ErrorCategory.AUTH,
           code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-          message: 'User not ready or authenticated for processing swipe batch'
+          message: 'User not authenticated for batch processing'
         };
       }
       
-      set({ isLoading: true, error: null });
-      
-      const { swipeQueue } = get();
-      if (swipeQueue.length === 0) {
-        set({ isLoading: false });
+      // Check if batch processing is already in progress
+      if (batchState.inProgress) {
+        if (isDebugMode) {
+          console.log('[MatchesStore] Batch processing already in progress');
+        }
         return;
       }
       
-      if (!isSupabaseConfigured() || !supabase) {
-        throw {
-          category: ErrorCategory.DATABASE,
-          code: ErrorCodes.DB_CONNECTION_ERROR,
-          message: 'Database is not configured'
-        };
+      // Check cooldown period
+      const timeSinceLastProcess = Date.now() - batchState.lastProcessed;
+      if (timeSinceLastProcess < BATCH_COOLDOWN) {
+        if (isDebugMode) {
+          console.log('[MatchesStore] Batch processing in cooldown');
+        }
+        return;
       }
-
-      // Process swipe batch using the optimized stored procedure
-      const result = await withRateLimitAndRetry(
-        () => processSwipeBatchFromSupabase(swipeQueue)
-      );
       
-      if (!result) {
+      const currentBatch = [...get().swipeQueue];
+      if (currentBatch.length === 0) return;
+      
+      // Validate batch
+      if (!validateBatch(currentBatch)) {
         throw {
-          category: ErrorCategory.DATABASE,
-          code: ErrorCodes.DB_QUERY_ERROR,
-          message: 'Failed to process swipe batch'
+          category: ErrorCategory.VALIDATION,
+          code: ErrorCodes.VALIDATION_INVALID_INPUT,
+          message: 'Invalid batch data'
         };
       }
-
-      // Convert any new matches to the correct type and update state
-      if (result.new_matches && result.new_matches.length > 0) {
-        const typedMatches = result.new_matches.map(match => ({
-          ...match,
-          profile: supabaseToUserProfile(match.profile)
-        })) as MatchWithProfile[];
+      
+      batchState.inProgress = true;
+      const batchCopy = [...currentBatch]; // For rollback
+      
+      try {
+        // Process the batch
+        const result = await withCircuitBreaker(
+          () => processSwipeBatchFromSupabase(currentBatch),
+          'batch_processing'
+        );
         
-        set((state: MatchesState) => ({
-          matches: [...state.matches, ...typedMatches],
-          newMatch: typedMatches[0] // Set the first new match for UI notification
+        if (!result) throw new Error('No result from batch processing');
+        
+        // Update state based on results
+        set((state) => ({
+          swipeQueue: state.swipeQueue.filter(
+            action => !currentBatch.some(
+              processed => processed.swipee_id === action.swipee_id
+            )
+          )
         }));
+        
+        // Reset batch state on success
+        batchState.inProgress = false;
+        batchState.lastProcessed = Date.now();
+        batchState.retryCount = 0;
+        
+        // Process any new matches from the batch
+        if (result.new_matches && result.new_matches.length > 0) {
+          const newMatch = result.new_matches[0];
+          set({ newMatch });
+        }
+        
+        return result;
+      } catch (error) {
+        // Handle batch failure
+        batchState.retryCount++;
+        batchState.failedBatches.push(batchCopy);
+        
+        if (batchState.retryCount >= MAX_BATCH_RETRIES) {
+          // Move failed batch to error state and continue with next batch
+          set((state) => ({
+            swipeQueue: state.swipeQueue.filter(
+              action => !batchCopy.some(
+                failed => failed.swipee_id === action.swipee_id
+              )
+            ),
+            error: 'Failed to process some swipes. They will be retried later.'
+          }));
+          
+          batchState.retryCount = 0;
+        }
+        
+        batchState.inProgress = false;
+        throw error;
       }
-
-      // Update match limit reached status
-      const matchStats = useUsageStore.getState().getUsageStats();
-      if (!matchStats) {
-        throw {
-          category: ErrorCategory.VALIDATION,
-          code: ErrorCodes.VALIDATION_MISSING_FIELD,
-          message: 'Usage stats not available for match limit update'
-        };
-      }
-      set((state: MatchesState) => ({
-        matchLimitReached: matchStats.matchCount >= matchStats.matchLimit
-      }));
-
-      // Update swipe limit reached status
-      const swipeStats = useUsageStore.getState().getUsageStats();
-      if (!swipeStats) {
-        throw {
-          category: ErrorCategory.VALIDATION,
-          code: ErrorCodes.VALIDATION_MISSING_FIELD,
-          message: 'Usage stats not available for swipe limit update'
-        };
-      }
-      set((state: MatchesState) => ({
-        swipeLimitReached: swipeStats.swipeCount >= swipeStats.swipeLimit,
-        swipeQueue: [],
-        isLoading: false
-      }));
-      
-      // Clear pending likes for processed swipes
-      const processedIds = result.processed_swipes.map(swipe => swipe.swipee_id);
-      set((state: MatchesState) => {
-        const newPendingLikes = new Set(state.pendingLikes);
-        processedIds.forEach(id => newPendingLikes.delete(id));
-        return { pendingLikes: newPendingLikes };
-      });
+    }, {
+      maxRetries: 3,
+      circuitBreakerKey: 'batch_processing'
     });
   },
 
@@ -879,7 +1096,7 @@ const matchesStoreCreator: StateCreator<
       }));
 
       // Clear the user profile cache
-      userProfileCache.clear();
+      profileCache.clear();
     });
   },
 
@@ -981,3 +1198,145 @@ export const stopBatchProcessing = () => {
     }
   });
 };
+
+/**
+ * Batch processing state tracking
+ */
+interface BatchState {
+  inProgress: boolean;
+  lastProcessed: number;
+  failedBatches: SwipeAction[][];
+  retryCount: number;
+}
+
+const batchState: BatchState = {
+  inProgress: false,
+  lastProcessed: 0,
+  failedBatches: [],
+  retryCount: 0
+};
+
+const MAX_BATCH_RETRIES = 3;
+const BATCH_COOLDOWN = 5000; // 5 seconds
+
+/**
+ * Validates a batch of swipe actions
+ */
+const validateBatch = (batch: SwipeAction[]): boolean => {
+  if (!batch || !Array.isArray(batch) || batch.length === 0) return false;
+  
+  return batch.every(action => (
+    action &&
+    typeof action === 'object' &&
+    typeof action.swiper_id === 'string' &&
+    typeof action.swipee_id === 'string' &&
+    (action.direction === 'left' || action.direction === 'right') &&
+    typeof action.swipe_timestamp === 'number'
+  ));
+};
+
+/**
+ * Enhanced batch processing with validation and rollback
+ */
+processSwipeBatch: async () => {
+  return await withEnhancedRetry(async () => {
+    const { user } = useAuthStore.getState();
+    const { isDebugMode } = useDebugStore.getState();
+    
+    if (!user?.id) {
+      throw {
+        category: ErrorCategory.AUTH,
+        code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
+        message: 'User not authenticated for batch processing'
+      };
+    }
+    
+    // Check if batch processing is already in progress
+    if (batchState.inProgress) {
+      if (isDebugMode) {
+        console.log('[MatchesStore] Batch processing already in progress');
+      }
+      return;
+    }
+    
+    // Check cooldown period
+    const timeSinceLastProcess = Date.now() - batchState.lastProcessed;
+    if (timeSinceLastProcess < BATCH_COOLDOWN) {
+      if (isDebugMode) {
+        console.log('[MatchesStore] Batch processing in cooldown');
+      }
+      return;
+    }
+    
+    const currentBatch = [...get().swipeQueue];
+    if (currentBatch.length === 0) return;
+    
+    // Validate batch
+    if (!validateBatch(currentBatch)) {
+      throw {
+        category: ErrorCategory.VALIDATION,
+        code: ErrorCodes.VALIDATION_INVALID_INPUT,
+        message: 'Invalid batch data'
+      };
+    }
+    
+    batchState.inProgress = true;
+    const batchCopy = [...currentBatch]; // For rollback
+    
+    try {
+      // Process the batch
+      const result = await withCircuitBreaker(
+        () => processSwipeBatchFromSupabase(currentBatch),
+        'batch_processing'
+      );
+      
+      if (!result) throw new Error('No result from batch processing');
+      
+      // Update state based on results
+      set((state) => ({
+        swipeQueue: state.swipeQueue.filter(
+          action => !currentBatch.some(
+            processed => processed.swipee_id === action.swipee_id
+          )
+        )
+      }));
+      
+      // Reset batch state on success
+      batchState.inProgress = false;
+      batchState.lastProcessed = Date.now();
+      batchState.retryCount = 0;
+      
+      // Process any new matches from the batch
+      if (result.new_matches && result.new_matches.length > 0) {
+        const newMatch = result.new_matches[0];
+        set({ newMatch });
+      }
+      
+      return result;
+    } catch (error) {
+      // Handle batch failure
+      batchState.retryCount++;
+      batchState.failedBatches.push(batchCopy);
+      
+      if (batchState.retryCount >= MAX_BATCH_RETRIES) {
+        // Move failed batch to error state and continue with next batch
+        set((state) => ({
+          swipeQueue: state.swipeQueue.filter(
+            action => !batchCopy.some(
+              failed => failed.swipee_id === action.swipee_id
+            )
+          ),
+          error: 'Failed to process some swipes. They will be retried later.'
+        }));
+        
+        batchState.retryCount = 0;
+      }
+      
+      batchState.inProgress = false;
+      throw error;
+    }
+  }, {
+    maxRetries: 3,
+    circuitBreakerKey: 'batch_processing'
+  });
+},

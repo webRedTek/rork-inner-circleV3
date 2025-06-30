@@ -101,6 +101,7 @@ export default function DiscoverScreen() {
   const [preferredDistance, setPreferredDistance] = useState('50');
   const [globalSearch, setGlobalSearch] = useState(false);
   const [distanceError, setDistanceError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
   
   // Get the current user's tier settings from allTierSettings
   const tierSettings = user && allTierSettings ? allTierSettings[user.membershipTier] : null;
@@ -286,9 +287,19 @@ export default function DiscoverScreen() {
     if (isDebugMode) {
       console.log('[Discover] Manual refresh triggered');
     }
+    addDebugInfo('Manual refresh triggered');
+    
     setRefreshing(true);
     try {
-      await fetchPotentialMatches();
+      await fetchPotentialMatches(
+        isGlobalSearchAllowed && globalSearch 
+          ? undefined 
+          : (user?.preferredDistance || parseInt(preferredDistance) || 50),
+        true
+      );
+    } catch (error) {
+      addDebugInfo(`Refresh error: ${error}`);
+      console.error('[Discover] Refresh error:', error);
     } finally {
       setRefreshing(false);
     }
@@ -305,13 +316,14 @@ export default function DiscoverScreen() {
     }
   };
   
-  if ((isLoading && potentialMatches.length === 0) || initialLoad || !isReady) {
+  if (isLoading && potentialMatches.length === 0) {
     return (
       <SafeAreaView style={styles.loadingContainer} edges={['bottom']}>
         <ActivityIndicator size="large" color={Colors.dark.accent} />
-        <Text style={styles.loadingText}>
-          {tierSettings?.global_discovery ? "Searching for global matches..." : "Finding entrepreneurs in your area..."}
-        </Text>
+        <Text style={styles.loadingText}>Finding entrepreneurs...</Text>
+        {isDebugMode && (
+          <Text style={styles.debugText}>Initial load in progress...</Text>
+        )}
       </SafeAreaView>
     );
   }
@@ -319,14 +331,16 @@ export default function DiscoverScreen() {
   if (error) {
     return (
       <SafeAreaView style={styles.errorContainer} edges={['bottom']}>
-        <Text style={styles.errorText}>Something went wrong</Text>
-        <Text style={styles.errorSubtext}>{error}</Text>
-        <Button
-          title="Try Again"
-          onPress={fetchPotentialMatches}
+        <Text style={styles.errorText}>{error}</Text>
+        <Button 
+          title="Try Again" 
+          onPress={handleManualRefresh}
+          loading={refreshing}
           variant="primary"
-          style={styles.retryButton}
         />
+        {isDebugMode && (
+          <Text style={styles.debugText}>Error: {error}</Text>
+        )}
       </SafeAreaView>
     );
   }
@@ -452,28 +466,54 @@ export default function DiscoverScreen() {
             profiles={potentialMatches}
             onSwipeLeft={handleSwipeLeft}
             onSwipeRight={handleSwipeRight}
-            onEmpty={() => fetchPotentialMatches()}
             onProfilePress={handleProfilePress}
+            isLoading={isLoading}
+            isPrefetching={isPrefetching}
+            error={error}
+            onRetry={handleManualRefresh}
           />
-          <TouchableOpacity 
-            style={styles.refreshButton}
-            onPress={handleManualRefresh}
-            disabled={isLoading || isPrefetching}
-          >
-            <RefreshCw size={24} color={Colors.dark.accent} />
-            <Text style={styles.refreshButtonText}>Refresh</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.filterButton}
-            onPress={() => setShowFilterModal(true)}
-          >
-            <MapPin size={24} color={Colors.dark.accent} />
-            <Text style={styles.filterButtonText}>{preferredDistance} km</Text>
-          </TouchableOpacity>
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity 
+              style={[
+                styles.actionButton,
+                styles.refreshButton,
+                (refreshing || isLoading || isPrefetching) && styles.buttonDisabled
+              ]}
+              onPress={handleManualRefresh}
+              disabled={refreshing || isLoading || isPrefetching}
+            >
+              <RefreshCw 
+                size={24} 
+                color={refreshing || isLoading || isPrefetching ? Colors.dark.disabled : Colors.dark.accent} 
+                style={refreshing ? styles.spinningIcon : undefined}
+              />
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[
+                styles.actionButton,
+                styles.filterButton,
+                (refreshing || isLoading) && styles.buttonDisabled
+              ]}
+              onPress={() => setShowFilterModal(true)}
+              disabled={refreshing || isLoading}
+            >
+              <MapPin 
+                size={24} 
+                color={refreshing || isLoading ? Colors.dark.disabled : Colors.dark.accent} 
+              />
+              <Text style={[
+                styles.filterButtonText,
+                (refreshing || isLoading) && styles.textDisabled
+              ]}>
+                {preferredDistance} km
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
       
-      {/* DEBUG: Temporary debug display */}
+      {/* Debug information */}
       {isDebugMode && (
         <View style={styles.debugContainer}>
           <Text style={styles.debugTitle}>DEBUG INFO:</Text>
@@ -628,91 +668,106 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.dark.background,
   },
   loadingText: {
     marginTop: 16,
-    fontSize: 16,
-    color: Colors.dark.textSecondary,
+    fontSize: 18,
+    color: Colors.dark.text,
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.dark.background,
-    padding: 24,
+    padding: 20,
   },
   errorText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: Colors.dark.text,
-    marginBottom: 8,
-  },
-  errorSubtext: {
-    fontSize: 16,
-    color: Colors.dark.textSecondary,
+    marginBottom: 16,
+    fontSize: 18,
+    color: Colors.dark.error,
     textAlign: 'center',
-    marginBottom: 24,
-  },
-  retryButton: {
-    minWidth: 150,
   },
   cardsContainer: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   prefetchingIndicator: {
     position: 'absolute',
-    top: 10,
+    top: 16,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.dark.card,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
+    gap: 8,
     zIndex: 10,
   },
   prefetchingText: {
-    marginLeft: 8,
+    color: Colors.dark.text,
     fontSize: 14,
-    color: Colors.dark.textSecondary,
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+    marginTop: 16,
+    marginBottom: 16,
+  },
+  actionButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.dark.card,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   refreshButton: {
-    position: 'absolute',
-    bottom: 20,
-    left: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: Colors.dark.card,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 25,
-    zIndex: 10,
-  },
-  refreshButtonText: {
-    marginLeft: 8,
-    fontSize: 16,
-    color: Colors.dark.accent,
-    fontWeight: '500',
   },
   filterButton: {
-    position: 'absolute',
-    bottom: 20,
-    right: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: Colors.dark.card,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 25,
-    zIndex: 10,
+    paddingHorizontal: 16,
+    gap: 8,
   },
   filterButtonText: {
-    marginLeft: 8,
-    fontSize: 16,
     color: Colors.dark.accent,
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  textDisabled: {
+    color: Colors.dark.disabled,
+  },
+  spinningIcon: {
+    transform: [{ rotate: '45deg' }],
+  },
+  debugContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    padding: 16,
+  },
+  debugTitle: {
+    color: Colors.dark.accent,
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  debugText: {
+    color: Colors.dark.text,
+    fontSize: 12,
+    marginBottom: 4,
   },
   matchModalContainer: {
     flex: 1,
@@ -815,24 +870,5 @@ const styles = StyleSheet.create({
   },
   passButton: {
     borderColor: Colors.dark.error,
-  },
-  debugContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: Colors.dark.background,
-    padding: 16,
-  },
-  debugTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.dark.accent,
-    marginBottom: 8,
-  },
-  debugText: {
-    fontSize: 16,
-    color: Colors.dark.textSecondary,
-    marginBottom: 4,
   },
 });

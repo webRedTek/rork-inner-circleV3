@@ -343,6 +343,134 @@ export function showError(error: AppError | any): AppError {
 }
 
 /**
+ * Circuit breaker state tracking
+ */
+interface CircuitBreakerState {
+  failures: number;
+  lastFailure: number;
+  status: 'CLOSED' | 'HALF_OPEN' | 'OPEN';
+}
+
+const circuitBreakers = new Map<string, CircuitBreakerState>();
+
+const CIRCUIT_BREAKER_CONFIG = {
+  failureThreshold: 5,
+  resetTimeout: 60000, // 1 minute
+  halfOpenTimeout: 30000, // 30 seconds
+};
+
+/**
+ * Circuit breaker implementation
+ */
+export const withCircuitBreaker = async <T>(
+  operation: () => Promise<T>,
+  key: string,
+  options: {
+    failureThreshold?: number;
+    resetTimeout?: number;
+    halfOpenTimeout?: number;
+  } = {}
+): Promise<T> => {
+  const config = {
+    ...CIRCUIT_BREAKER_CONFIG,
+    ...options
+  };
+  
+  let breaker = circuitBreakers.get(key) || {
+    failures: 0,
+    lastFailure: 0,
+    status: 'CLOSED'
+  };
+  
+  // Check if circuit is OPEN
+  if (breaker.status === 'OPEN') {
+    const timeSinceLastFailure = Date.now() - breaker.lastFailure;
+    
+    if (timeSinceLastFailure >= config.resetTimeout) {
+      // Move to HALF-OPEN
+      breaker.status = 'HALF_OPEN';
+    } else {
+      throw {
+        category: ErrorCategory.RATE_LIMIT,
+        code: ErrorCodes.RATE_LIMIT_EXCEEDED,
+        message: 'Circuit breaker is open'
+      };
+    }
+  }
+  
+  try {
+    const result = await operation();
+    
+    // Success in HALF-OPEN means we can close the circuit
+    if (breaker.status === 'HALF_OPEN') {
+      breaker = {
+        failures: 0,
+        lastFailure: 0,
+        status: 'CLOSED'
+      };
+    }
+    
+    circuitBreakers.set(key, breaker);
+    return result;
+  } catch (error) {
+    breaker.failures++;
+    breaker.lastFailure = Date.now();
+    
+    if (breaker.failures >= config.failureThreshold) {
+      breaker.status = 'OPEN';
+    }
+    
+    circuitBreakers.set(key, breaker);
+    throw error;
+  }
+};
+
+/**
+ * Enhanced retry mechanism with circuit breaker
+ */
+export async function withEnhancedRetry<T>(
+  operation: () => Promise<T>,
+  options: {
+    maxRetries?: number;
+    baseDelay?: number;
+    maxDelay?: number;
+    shouldRetry?: (error: AppError) => boolean;
+    circuitBreakerKey?: string;
+  } = {}
+): Promise<T> {
+  const {
+    maxRetries = 3,
+    baseDelay = 1000,
+    maxDelay = 10000,
+    shouldRetry = (error: AppError) => error.category === ErrorCategory.NETWORK,
+    circuitBreakerKey
+  } = options;
+
+  let lastError: AppError;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      // If circuit breaker key is provided, use circuit breaker
+      if (circuitBreakerKey) {
+        return await withCircuitBreaker(operation, circuitBreakerKey);
+      }
+      return await operation();
+    } catch (error) {
+      lastError = handleError(error);
+      
+      if (!shouldRetry(lastError) || attempt === maxRetries - 1) {
+        throw lastError;
+      }
+      
+      const delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  throw lastError!;
+}
+
+/**
  * Example usage of the error handling system for different scenarios.
  * 
  * // API Call Example
