@@ -30,20 +30,29 @@
  * - Prefetching logic with proper state management
  */
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { 
   View, 
   StyleSheet, 
   Animated, 
   PanResponder, 
   Dimensions,
-  Text
+  Text,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { UserProfile } from '@/types/user';
 import { EntrepreneurCard } from './EntrepreneurCard';
 import Colors from '@/constants/colors';
-import { X, Heart } from 'lucide-react-native';
+import { X, Heart, Star, MessageCircle } from 'lucide-react-native';
 import { useMatchesStore } from '@/store/matches-store';
+import { useDebugStore } from '@/store/debug-store';
+import { useUsageStore } from '@/store/usage-store';
+import { useAuthStore } from '@/store/auth-store';
+import { Button } from './Button';
+import * as Haptics from 'expo-haptics';
+import { withErrorHandling, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
 
 interface SwipeCardsProps {
   profiles: UserProfile[];
@@ -64,71 +73,110 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   onEmpty,
   onProfilePress
 }) => {
+  const { isDebugMode } = useDebugStore();
   const [currentIndex, setCurrentIndex] = useState(0);
-  const position = useRef(new Animated.ValueXY()).current;
-  const { prefetchNextBatch, prefetchThreshold, isPrefetching, noMoreProfiles } = useMatchesStore();
-  
-  const rotate = position.x.interpolate({
+  const [renderedProfiles, setRenderedProfiles] = useState<Set<string>>(new Set());
+  const [isPrefetching, setIsPrefetching] = useState(false);
+  const [noMoreProfiles, setNoMoreProfiles] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const { prefetchNextBatch } = useMatchesStore();
+  const { user } = useAuthStore();
+  const { checkAndUpdateUsage, getCurrentUsage } = useUsageStore();
+
+  const panResponder = useRef<Animated.ValueXY>(new Animated.ValueXY());
+  const position = useRef<Animated.ValueXY>(new Animated.ValueXY());
+  const scale = useRef<Animated.Value>(new Animated.Value(1));
+  const opacity = useRef<Animated.Value>(new Animated.Value(1));
+  const rotation = useRef<Animated.Value>(new Animated.Value(0));
+
+  const prefetchThreshold = 3; // Start prefetching when 3 or fewer profiles remain
+
+  const rotate = position.current.x.interpolate({
     inputRange: [-SCREEN_WIDTH * 1.5, 0, SCREEN_WIDTH * 1.5],
     outputRange: ['-30deg', '0deg', '30deg'],
     extrapolate: 'clamp'
   });
   
-  const likeOpacity = position.x.interpolate({
+  const likeOpacity = position.current.x.interpolate({
     inputRange: [0, SCREEN_WIDTH * 0.25],
     outputRange: [0, 1],
     extrapolate: 'clamp'
   });
   
-  const nopeOpacity = position.x.interpolate({
+  const nopeOpacity = position.current.x.interpolate({
     inputRange: [-SCREEN_WIDTH * 0.25, 0],
     outputRange: [1, 0],
     extrapolate: 'clamp'
   });
   
-  const nextCardOpacity = position.x.interpolate({
+  const nextCardOpacity = position.current.x.interpolate({
     inputRange: [-SCREEN_WIDTH * 1.5, 0, SCREEN_WIDTH * 1.5],
     outputRange: [1, 0.5, 1],
     extrapolate: 'clamp'
   });
   
-  const nextCardScale = position.x.interpolate({
+  const nextCardScale = position.current.x.interpolate({
     inputRange: [-SCREEN_WIDTH * 1.5, 0, SCREEN_WIDTH * 1.5],
     outputRange: [1, 0.9, 1],
     extrapolate: 'clamp'
   });
   
+  // Reset currentIndex when profiles change
   useEffect(() => {
-    // Reset current index when profiles array changes significantly
     if (profiles.length > 0 && currentIndex >= profiles.length) {
-      console.log('[SwipeCards] Resetting currentIndex due to profiles change', { oldIndex: currentIndex, profilesCount: profiles.length });
+      if (isDebugMode) {
+        console.log('[SwipeCards] Resetting currentIndex due to profiles change', { oldIndex: currentIndex, profilesCount: profiles.length });
+      }
       setCurrentIndex(0);
+      setRenderedProfiles(new Set());
     }
-  }, [profiles.length]);
-  
+  }, [profiles.length, currentIndex, isDebugMode]);
+
+  // Prefetch effect
   useEffect(() => {
-    // Trigger prefetch if we're running low on profiles, but only if not already prefetching and there are more profiles to load
-    if (profiles.length - currentIndex <= prefetchThreshold && !isPrefetching && !noMoreProfiles) {
-      console.log('[SwipeCards] Triggering prefetch due to low profiles', { currentIndex, profilesCount: profiles.length, threshold: prefetchThreshold });
-      prefetchNextBatch();
-    } else if (isPrefetching) {
-      console.log('[SwipeCards] Prefetch skipped - already in progress', { currentIndex, profilesCount: profiles.length });
-    } else if (noMoreProfiles) {
-      console.log('[SwipeCards] Prefetch skipped - no more profiles to load', { currentIndex, profilesCount: profiles.length });
+    const remainingProfiles = profiles.length - currentIndex;
+    
+    if (remainingProfiles <= prefetchThreshold && !isPrefetching && !noMoreProfiles) {
+      if (isDebugMode) {
+        console.log('[SwipeCards] Triggering prefetch due to low profiles', { currentIndex, profilesCount: profiles.length, threshold: prefetchThreshold });
+      }
+      
+      if (isPrefetching) {
+        if (isDebugMode) {
+          console.log('[SwipeCards] Prefetch skipped - already in progress', { currentIndex, profilesCount: profiles.length });
+        }
+        return;
+      }
+      
+      if (noMoreProfiles) {
+        if (isDebugMode) {
+          console.log('[SwipeCards] Prefetch skipped - no more profiles to load', { currentIndex, profilesCount: profiles.length });
+        }
+        return;
+      }
+
+      setIsPrefetching(true);
+      prefetchNextBatch().finally(() => {
+        setIsPrefetching(false);
+      });
     }
-  }, [currentIndex, profiles.length, isPrefetching, noMoreProfiles, prefetchThreshold]);
-  
+  }, [currentIndex, profiles.length, isPrefetching, noMoreProfiles, prefetchNextBatch, isDebugMode]);
+
+  // Debug effect
   useEffect(() => {
-    console.log('[SwipeCards] Profiles or index updated', { currentIndex, profilesCount: profiles.length });
-  }, [profiles, currentIndex]);
+    if (isDebugMode) {
+      console.log('[SwipeCards] Profiles or index updated', { currentIndex, profilesCount: profiles.length });
+    }
+  }, [currentIndex, profiles.length, isDebugMode]);
   
-  const panResponder = useRef(
+  const panResponderHandler = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onPanResponderMove: (_, gesture) => {
         // Only allow horizontal movement for swiping
         // This prevents diagonal swipes from triggering profile opens
-        position.setValue({ x: gesture.dx, y: 0 });
+        position.current.setValue({ x: gesture.dx, y: 0 });
       },
       onPanResponderRelease: (_, gesture) => {
         if (gesture.dx > SWIPE_THRESHOLD) {
@@ -144,7 +192,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   
   const forceSwipe = (direction: 'left' | 'right') => {
     const x = direction === 'right' ? SCREEN_WIDTH * 1.5 : -SCREEN_WIDTH * 1.5;
-    Animated.timing(position, {
+    Animated.timing(position.current, {
       toValue: { x, y: 0 },
       duration: SWIPE_OUT_DURATION,
       useNativeDriver: false
@@ -160,7 +208,9 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     setCurrentIndex(prevIndex => {
       const nextIndex = prevIndex + 1;
       if (nextIndex >= profiles.length && onEmpty) {
-        console.log('[SwipeCards] Reached end of profiles, triggering onEmpty', { nextIndex, profilesCount: profiles.length });
+        if (isDebugMode) {
+          console.log('[SwipeCards] Reached end of profiles, triggering onEmpty', { nextIndex, profilesCount: profiles.length });
+        }
         onEmpty();
       }
       return nextIndex;
@@ -182,10 +232,14 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   };
   
   const renderCards = () => {
-    console.log('[SwipeCards] Rendering cards', { currentIndex, profilesCount: profiles.length });
+    if (isDebugMode) {
+      console.log('[SwipeCards] Rendering cards', { currentIndex, profilesCount: profiles.length });
+    }
     
     if (currentIndex >= profiles.length) {
-      console.log('[SwipeCards] Showing empty state');
+      if (isDebugMode) {
+        console.log('[SwipeCards] Showing empty state');
+      }
       return (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No more entrepreneurs to show</Text>
@@ -196,12 +250,16 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     
     return profiles.map((item, index) => {
       if (index < currentIndex) {
-        console.log('[SwipeCards] Skipping rendered profile', { index, id: item.id });
+        if (isDebugMode) {
+          console.log('[SwipeCards] Skipping rendered profile', { index, id: item.id });
+        }
         return null;
       }
       
       if (index === currentIndex) {
-        console.log('[SwipeCards] Rendering current card', { index, id: item.id, name: item.name });
+        if (isDebugMode) {
+          console.log('[SwipeCards] Rendering current card', { index, id: item.id, name: item.name });
+        }
         return (
           <Animated.View
             key={item.id}
@@ -234,7 +292,9 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       
       // Next card in stack
       if (index === currentIndex + 1) {
-        console.log('[SwipeCards] Rendering next card', { index, id: item.id, name: item.name });
+        if (isDebugMode) {
+          console.log('[SwipeCards] Rendering next card', { index, id: item.id, name: item.name });
+        }
         return (
           <Animated.View
             key={item.id}
@@ -254,7 +314,9 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       
       // Other cards in stack (show max 3)
       if (index < currentIndex + 3) {
-        console.log('[SwipeCards] Rendering background card', { index, id: item.id, name: item.name });
+        if (isDebugMode) {
+          console.log('[SwipeCards] Rendering background card', { index, id: item.id, name: item.name });
+        }
         return (
           <Animated.View
             key={item.id}
@@ -272,7 +334,9 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
         );
       }
       
-      console.log('[SwipeCards] Skipping non-visible card', { index, id: item.id });
+      if (isDebugMode) {
+        console.log('[SwipeCards] Skipping non-visible card', { index, id: item.id });
+      }
       return null;
     }).reverse();
   };

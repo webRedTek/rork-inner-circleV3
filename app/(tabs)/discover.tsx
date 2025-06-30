@@ -33,7 +33,7 @@
  * - Debug information logging
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { 
   View, 
   StyleSheet, 
@@ -42,7 +42,8 @@ import {
   TouchableOpacity,
   Modal,
   Switch,
-  Alert
+  Alert,
+  RefreshControl
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -57,6 +58,8 @@ import { Platform } from 'react-native';
 import { ProfileDetailCard } from '@/components/ProfileDetailCard';
 import { X, ArrowLeft, RefreshCw, MapPin } from 'lucide-react-native';
 import { Input } from '@/components/Input';
+import { useDebugStore } from '@/store/debug-store';
+import { withErrorHandling, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
 
 export default function DiscoverScreen() {
   const router = useRouter();
@@ -78,6 +81,7 @@ export default function DiscoverScreen() {
   } = useMatchesStore();
   
   const { user, isReady, allTierSettings } = useAuthStore();
+  const { isDebugMode } = useDebugStore();
   
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [matchedUser, setMatchedUser] = useState<UserProfile | null>(null);
@@ -97,7 +101,9 @@ export default function DiscoverScreen() {
   // DEBUG: Add temporary debugging state
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
   const addDebugInfo = (info: string) => {
-    console.log(`[DEBUG] ${info}`);
+    if (isDebugMode) {
+      console.log(`[DEBUG] ${info}`);
+    }
     setDebugInfo(prev => [...prev, `${new Date().toLocaleTimeString()}: ${info}`]);
   };
 
@@ -260,9 +266,16 @@ export default function DiscoverScreen() {
     setShowProfileDetail(true);
   };
   
-  const handleRefresh = () => {
-    console.log('[Discover] Manual refresh triggered');
-    refreshCandidates();
+  const handleManualRefresh = async () => {
+    if (isDebugMode) {
+      console.log('[Discover] Manual refresh triggered');
+    }
+    setRefreshing(true);
+    try {
+      await fetchPotentialMatches();
+    } finally {
+      setRefreshing(false);
+    }
   };
   
   const handleToggleGlobalSearch = () => {
@@ -428,7 +441,7 @@ export default function DiscoverScreen() {
           />
           <TouchableOpacity 
             style={styles.refreshButton}
-            onPress={handleRefresh}
+            onPress={handleManualRefresh}
             disabled={isLoading || isPrefetching}
           >
             <RefreshCw size={24} color={Colors.dark.accent} />

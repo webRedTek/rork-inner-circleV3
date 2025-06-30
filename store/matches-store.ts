@@ -52,6 +52,7 @@ import {
   PotentialMatchesResult
 } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
+import { useDebugStore } from './debug-store';
 import { notifyError } from '@/utils/notify';
 import { useNotificationStore } from './notification-store';
 import { useUsageStore } from './usage-store';
@@ -218,16 +219,21 @@ const matchesStoreCreator: StateCreator<
   fetchPotentialMatches: async (maxDistance = 50, forceRefresh = false) => {
     return await withErrorHandling(async () => {
       const { user, isReady } = useAuthStore.getState();
-      console.log('[MatchesStore] fetchPotentialMatches called', { 
-        userId: user?.id, 
-        isReady, 
-        maxDistance, 
-        forceRefresh,
-        currentMatches: get().potentialMatches.length 
-      });
+      const { isDebugMode } = useDebugStore.getState();
       
+      if (isDebugMode) {
+        console.log('[MatchesStore] fetchPotentialMatches called', {
+          currentUser: user?.id,
+          currentMatches: get().potentialMatches.length,
+          loading: get().isLoading,
+          noMoreProfiles: get().noMoreProfiles
+        });
+      }
+
       if (!isReady || !user) {
-        console.log('[MatchesStore] User not ready or authenticated');
+        if (isDebugMode) {
+          console.log('[MatchesStore] User not ready or authenticated');
+        }
         throw {
           category: ErrorCategory.AUTH,
           code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
@@ -237,20 +243,29 @@ const matchesStoreCreator: StateCreator<
 
       // Don't fetch if already loading and not forcing refresh
       if (get().isLoading && !forceRefresh) {
-        console.log('[MatchesStore] Already loading, skipping fetch');
+        if (isDebugMode) {
+          console.log('[MatchesStore] Already loading, skipping fetch');
+        }
         return;
       }
 
       set({ isLoading: true, error: null });
-      console.log('[MatchesStore] Starting fetch with loading state');
+      
+      if (isDebugMode) {
+        console.log('[MatchesStore] Starting fetch with loading state');
+      }
 
       try {
         // Use user's preferred distance if available
         const userMaxDistance = user.preferredDistance || maxDistance;
-        console.log('[MatchesStore] Using distance', { userMaxDistance, userPreferred: user.preferredDistance });
+        if (isDebugMode) {
+          console.log('[MatchesStore] Using distance', { userMaxDistance, userPreferred: user.preferredDistance });
+        }
 
         if (!isSupabaseConfigured() || !supabase) {
-          console.log('[MatchesStore] Supabase not configured');
+          if (isDebugMode) {
+            console.log('[MatchesStore] Supabase not configured');
+          }
           throw {
             category: ErrorCategory.DATABASE,
             code: ErrorCodes.DB_CONNECTION_ERROR,
@@ -260,13 +275,17 @@ const matchesStoreCreator: StateCreator<
 
         // Use cached tier settings for global discovery
         const tierSettings = useAuthStore.getState().getTierSettings();
-        console.log('[MatchesStore] Tier settings check', { 
-          hasTierSettings: !!tierSettings, 
-          globalDiscovery: tierSettings?.global_discovery 
-        });
+        if (isDebugMode) {
+          console.log('[MatchesStore] Tier settings check', {
+            hasTierSettings: !!tierSettings,
+            globalDiscovery: tierSettings?.global_discovery
+          });
+        }
         
         if (!tierSettings) {
-          console.log('[MatchesStore] No tier settings available');
+          if (isDebugMode) {
+            console.log('[MatchesStore] No tier settings available');
+          }
           throw {
             category: ErrorCategory.VALIDATION,
             code: ErrorCodes.VALIDATION_MISSING_FIELD,
@@ -275,10 +294,14 @@ const matchesStoreCreator: StateCreator<
         }
 
         const isGlobalDiscovery = tierSettings.global_discovery;
-        console.log('[MatchesStore] Global discovery setting', { isGlobalDiscovery });
+        if (isDebugMode) {
+          console.log('[MatchesStore] Global discovery setting', { isGlobalDiscovery });
+        }
 
         // Fetch potential matches using the Supabase function
-        console.log('[MatchesStore] Calling fetchPotentialMatchesFromSupabase');
+        if (isDebugMode) {
+          console.log('[MatchesStore] Calling fetchPotentialMatchesFromSupabase');
+        }
         const result = await withRateLimitAndRetry(() => fetchPotentialMatchesFromSupabase(
           user.id,
           userMaxDistance,
@@ -286,14 +309,18 @@ const matchesStoreCreator: StateCreator<
           get().batchSize * 2 // Fetch extra for caching
         ));
 
-        console.log('[MatchesStore] Supabase result', { 
-          hasResult: !!result, 
-          hasMatches: !!result?.matches, 
-          matchCount: result?.matches?.length || 0 
-        });
+        if (isDebugMode) {
+          console.log('[MatchesStore] Supabase result', {
+            hasResult: !!result,
+            hasMatches: !!result?.matches,
+            matchCount: result?.matches?.length || 0
+          });
+        }
 
         if (!result || !result.matches) {
-          console.log('[MatchesStore] No result or matches from Supabase');
+          if (isDebugMode) {
+            console.log('[MatchesStore] No result or matches from Supabase');
+          }
           throw {
             category: ErrorCategory.DATABASE,
             code: ErrorCodes.DB_QUERY_ERROR,
@@ -302,13 +329,15 @@ const matchesStoreCreator: StateCreator<
         }
 
         if (result.matches.length === 0) {
-          console.log('[MatchesStore] No matches found');
-          set({ 
-            potentialMatches: [], 
+          if (isDebugMode) {
+            console.log('[MatchesStore] No matches found');
+          }
+          set({
+            potentialMatches: [],
             cachedMatches: [],
             isLoading: false,
             noMoreProfiles: true,
-            error: isGlobalDiscovery ? 
+            error: isGlobalDiscovery ?
               'No potential matches found globally. Try again later.' :
               'No potential matches found in your area. Try increasing your search distance or enabling global discovery.'
           });
@@ -316,34 +345,42 @@ const matchesStoreCreator: StateCreator<
         }
 
         // Convert matches to UserProfile objects
-        console.log('[MatchesStore] Converting matches to UserProfile objects');
+        if (isDebugMode) {
+          console.log('[MatchesStore] Converting matches to UserProfile objects');
+        }
         const userProfiles = result.matches.map(supabaseToUserProfile);
         
         // Split into current batch and cache
         const batchToShow = userProfiles.slice(0, get().batchSize);
         const remainingProfiles = userProfiles.slice(get().batchSize);
 
-        console.log('[MatchesStore] Setting final state', { 
-          batchToShow: batchToShow.length, 
-          remainingProfiles: remainingProfiles.length 
-        });
+        if (isDebugMode) {
+          console.log('[MatchesStore] Setting final state', {
+            batchToShow: batchToShow.length,
+            remainingProfiles: remainingProfiles.length
+          });
+        }
 
-        set({ 
+        set({
           potentialMatches: batchToShow,
           cachedMatches: remainingProfiles,
           isLoading: false,
           noMoreProfiles: false
         });
       } catch (error) {
-        console.error('[MatchesStore] Error in fetchPotentialMatches:', error);
+        if (isDebugMode) {
+          console.error('[MatchesStore] Error in fetchPotentialMatches:', error);
+        }
         const appError = handleError(error);
-        console.error('[MatchesStore] Error fetching potential matches:', {
-          category: appError.category,
-          code: appError.code,
-          message: appError.message,
-          technical: appError.technical
-        });
-        set({ 
+        if (isDebugMode) {
+          console.error('[MatchesStore] Error fetching potential matches:', {
+            category: appError.category,
+            code: appError.code,
+            message: appError.message,
+            technical: appError.technical
+          });
+        }
+        set({
           error: appError.userMessage,
           isLoading: false
         });
@@ -352,88 +389,110 @@ const matchesStoreCreator: StateCreator<
     });
   },
 
-  prefetchNextBatch: async (maxDistance = 50) => {
-    const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) {
-      throw new Error('User not ready or authenticated for prefetching matches');
-    }
-    
-    // Prevent multiple simultaneous prefetch calls
-    if (get().isPrefetching || get().isLoading) {
-      console.log('[MatchesStore] Prefetching skipped - already in progress or loading');
-      return;
-    }
-    
-    // If we already know there are no more profiles, don't try to prefetch
-    if (get().noMoreProfiles) {
-      console.log('[MatchesStore] Prefetching skipped - no more profiles available');
-      return;
-    }
-    
-    set({ isPrefetching: true, error: null });
-    
-    // Add timeout to prevent infinite hanging
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Prefetch timeout - taking too long')), 10000); // 10 second timeout
-    });
-    
-    try {
-      // Use cached tier settings for global discovery
-      const tierSettings = useAuthStore.getState().getTierSettings();
-      if (!tierSettings) {
-        throw new Error('Tier settings not available for global discovery check');
-      }
-      const isGlobalDiscovery = tierSettings.global_discovery;
-      // Use user's preferred distance if available
-      const userMaxDistance = user.preferredDistance || maxDistance;
-      
-      if (isSupabaseConfigured() && supabase) {
-        // Apply rate limiting
-        await rateLimitedQuery();
+  prefetchNextBatch: withErrorHandling(
+    withRetry(
+      withNetworkCheck(async () => {
+        const { isDebugMode } = useDebugStore.getState();
         
-        // Fetch potential matches with retry logic and timeout
-        const fetchPromise = withRateLimitAndRetry(() => fetchPotentialMatchesFromSupabase(user.id, userMaxDistance, isGlobalDiscovery, get().batchSize));
-        const result = await Promise.race([fetchPromise, timeoutPromise]) as any;
-        
-        if (!result || result.matches.length === 0) {
-          console.log('[MatchesStore] No additional matches found during prefetch - setting noMoreProfiles to true');
-          set({ 
-            isPrefetching: false,
-            noMoreProfiles: true,
-            error: tierSettings.global_discovery ? "No additional global matches found." : "No additional matches found in your area."
-          });
+        if (get().isPrefetching || get().isLoading) {
+          if (isDebugMode) {
+            console.log('[MatchesStore] Prefetching skipped - already in progress or loading');
+          }
           return;
         }
-        
-        // Convert raw matches to UserProfile type and cache
-        const potentialMatches = result.matches.map((match: Record<string, any>) => {
-          const profile = supabaseToUserProfile(match);
-          userProfileCache.set(profile.id, profile);
-          return profile;
-        });
-        
-        console.log('[MatchesStore] Prefetched additional matches', { count: potentialMatches.length });
-        set({ 
-          cachedMatches: [...get().cachedMatches, ...potentialMatches].slice(0, 50), 
-          isPrefetching: false,
-          noMoreProfiles: false
-        });
-      } else {
-        throw new Error('Supabase is not configured');
-      }
-    } catch (error) {
-      console.error('[MatchesStore] Error prefetching potential matches:', getReadableError(error));
-      notifyError('Error prefetching matches: ' + getReadableError(error));
-      const tierSettings = useAuthStore.getState().getTierSettings();
-      
-      // If we get an error, assume there are no more profiles to prevent infinite retries
-      set({ 
-        error: tierSettings?.global_discovery ? "No additional global matches found." : "No additional matches found in your area.",
-        isPrefetching: false,
-        noMoreProfiles: true
-      });
-    }
-  },
+
+        if (get().noMoreProfiles) {
+          if (isDebugMode) {
+            console.log('[MatchesStore] Prefetching skipped - no more profiles available');
+          }
+          return;
+        }
+
+        set({ isPrefetching: true, error: null });
+
+        try {
+          const user = useAuthStore.getState().user;
+          if (!user?.id) {
+            set({ isPrefetching: false });
+            return;
+          }
+
+          const userMaxDistance = user.preferredDistance || 50;
+          const tierSettings = useAuthStore.getState().allTierSettings[user.membershipTier];
+          
+          if (!tierSettings) {
+            set({ isPrefetching: false });
+            return;
+          }
+
+          const isGlobalDiscovery = tierSettings.is_global_discovery || false;
+
+          const result = await fetchPotentialMatchesFromSupabase(
+            user.id,
+            userMaxDistance,
+            isGlobalDiscovery,
+            get().potentialMatches.length
+          );
+
+          if (!result || !result.matches || result.matches.length === 0) {
+            if (isDebugMode) {
+              console.log('[MatchesStore] No additional matches found during prefetch - setting noMoreProfiles to true');
+            }
+            set({
+              isPrefetching: false,
+              noMoreProfiles: true,
+              error: tierSettings.global_discovery ? "No additional global matches found." : "No additional matches found in your area."
+            });
+            return;
+          }
+
+          const newMatches = result.matches.map(match => ({
+            id: match.id,
+            email: match.email,
+            firstName: match.first_name,
+            lastName: match.last_name,
+            bio: match.bio,
+            avatarUrl: match.avatar_url,
+            location: match.location,
+            industry: match.industry,
+            company: match.company,
+            jobTitle: match.job_title,
+            membershipTier: match.membership_tier as MembershipTier,
+            isVerified: match.is_verified,
+            createdAt: new Date(match.created_at),
+            updatedAt: new Date(match.updated_at),
+            lastActiveAt: match.last_active_at ? new Date(match.last_active_at) : null,
+            preferredDistance: match.preferred_distance,
+            isGlobalDiscovery: match.is_global_discovery,
+            businessVerificationStatus: match.business_verification_status,
+            businessVerificationDate: match.business_verification_date ? new Date(match.business_verification_date) : null
+          }));
+
+          set({
+            potentialMatches: [...get().potentialMatches, ...newMatches],
+            cachedMatches: [...get().cachedMatches, ...newMatches],
+            isLoading: false,
+            noMoreProfiles: !result.hasMore
+          });
+          
+          if (isDebugMode) {
+            console.log('[MatchesStore] Prefetched additional matches', { count: newMatches.length });
+          }
+
+          set({ isPrefetching: false });
+        } catch (error) {
+          if (isDebugMode) {
+            console.error('[MatchesStore] Error during prefetch:', error);
+          }
+          set({ isPrefetching: false });
+        }
+      }),
+      3,
+      1000
+    ),
+    ErrorCodes.MATCHES_PREFETCH_FAILED,
+    ErrorCategory.NETWORK
+  ),
 
   likeUser: async (userId: string) => {
     return await withErrorHandling(async () => {
@@ -510,10 +569,10 @@ const matchesStoreCreator: StateCreator<
           newCachedMatches = newCachedMatches.slice(additionalMatches.length);
         }
         
-        set({ 
-          potentialMatches: updatedPotentialMatches, 
-          cachedMatches: newCachedMatches, 
-          isLoading: false 
+        set({
+          potentialMatches: updatedPotentialMatches,
+          cachedMatches: newCachedMatches,
+          isLoading: false
         });
         
         // Return null for now - match will be processed in batch
@@ -526,9 +585,9 @@ const matchesStoreCreator: StateCreator<
           return { pendingLikes: newPendingLikes };
         });
         const appError = handleError(error);
-        set({ 
-          error: appError.userMessage, 
-          isLoading: false 
+        set({
+          error: appError.userMessage,
+          isLoading: false
         });
         throw appError;
       }
@@ -587,16 +646,16 @@ const matchesStoreCreator: StateCreator<
           newCachedMatches = newCachedMatches.slice(additionalMatches.length);
         }
         
-        set({ 
-          potentialMatches: updatedPotentialMatches, 
-          cachedMatches: newCachedMatches, 
-          isLoading: false 
+        set({
+          potentialMatches: updatedPotentialMatches,
+          cachedMatches: newCachedMatches,
+          isLoading: false
         });
       } catch (error) {
         const appError = handleError(error);
-        set({ 
-          error: appError.userMessage, 
-          isLoading: false 
+        set({
+          error: appError.userMessage,
+          isLoading: false
         });
         throw appError;
       }
@@ -709,8 +768,8 @@ const matchesStoreCreator: StateCreator<
       }
       set((state: MatchesState) => ({
         swipeLimitReached: swipeStats.swipeCount >= swipeStats.swipeLimit,
-        swipeQueue: [], 
-        isLoading: false 
+        swipeQueue: [],
+        isLoading: false
       }));
       
       // Clear pending likes for processed swipes
@@ -757,9 +816,9 @@ const matchesStoreCreator: StateCreator<
           };
         }
 
-        set({ 
+        set({
           matches: result,
-          isLoading: false 
+          isLoading: false
         });
       });
     });
@@ -823,7 +882,7 @@ const matchesStoreCreator: StateCreator<
         const batchToShow = userProfiles.slice(0, get().batchSize);
         const remainingProfiles = userProfiles.slice(get().batchSize);
 
-        set({ 
+        set({
           potentialMatches: batchToShow,
           cachedMatches: remainingProfiles,
           isLoading: false,

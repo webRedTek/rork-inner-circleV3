@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TextInput, Switch, Alert, ActivityI
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/auth-store';
+import { useDebugStore } from '@/store/debug-store';
 import Colors from '@/constants/colors';
 import { Button } from '@/components/Button';
 import { supabase } from '@/lib/supabase';
@@ -12,6 +13,7 @@ import { MembershipTier } from '@/types/user';
 export default function AdminSettingsScreen() {
   const router = useRouter();
   const { user, invalidateTierSettingsCache } = useAuthStore();
+  const { isDebugMode, setDebugMode } = useDebugStore();
   const [settingsByTier, setSettingsByTier] = useState<Record<MembershipTier, Record<string, any>>>({
     bronze: {},
     silver: {},
@@ -475,6 +477,25 @@ export default function AdminSettingsScreen() {
           </View>
         ))}
         
+        <View style={styles.tierSection}>
+          <Text style={styles.tierTitle}>Debug Settings</Text>
+          
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Development Tools</Text>
+            
+            <View style={styles.settingItem}>
+              <Text style={styles.settingLabel}>Debug Mode</Text>
+              <Text style={styles.settingDescription}>Enable debug logging and UI elements for troubleshooting</Text>
+              <Switch
+                value={isDebugMode}
+                onValueChange={setDebugMode}
+                trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
+                thumbColor={Colors.dark.background}
+              />
+            </View>
+          </View>
+        </View>
+        
         <Button
           title="Save Changes"
           onPress={handleSave}
@@ -555,6 +576,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.dark.text,
     flex: 1,
+  },
+  settingDescription: {
+    fontSize: 14,
+    color: Colors.dark.textSecondary,
+    flex: 2,
   },
   numberInput: {
     backgroundColor: Colors.dark.card,
