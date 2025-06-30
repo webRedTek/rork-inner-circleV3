@@ -381,104 +381,89 @@ const matchesStoreCreator: StateCreator<
     });
   },
 
-  prefetchNextBatch: withErrorHandling(
-    withRetry(
-      withNetworkCheck(async () => {
-        const { isDebugMode } = useDebugStore.getState();
-        
-        if (get().isPrefetching || get().isLoading) {
-          if (isDebugMode) {
-            console.log('[MatchesStore] Prefetching skipped - already in progress or loading');
-          }
-          return;
-        }
-
-        if (get().noMoreProfiles) {
-          if (isDebugMode) {
-            console.log('[MatchesStore] Prefetching skipped - no more profiles available');
-          }
-          return;
-        }
-
-        set({ isPrefetching: true, error: null });
-
-        try {
-          const { user, allTierSettings } = useAuthStore.getState();
-          if (!user?.id) {
-            set({ isPrefetching: false });
-            return;
-          }
-
-          const userMaxDistance = user.preferredDistance || 50;
-          const tierSettings = allTierSettings?.[user.membershipTier];
-          const isGlobalDiscovery = tierSettings?.global_discovery || false;
-
-          const result = await fetchPotentialMatchesFromSupabase(
-            user.id,
-            userMaxDistance,
-            isGlobalDiscovery,
-            get().potentialMatches.length
-          );
-
-          if (!result || !result.matches || result.matches.length === 0) {
-            if (isDebugMode) {
-              console.log('[MatchesStore] No additional matches found during prefetch - setting noMoreProfiles to true');
-            }
-            set({
-              isPrefetching: false,
-              noMoreProfiles: true,
-              error: tierSettings?.global_discovery ? "No additional global matches found." : "No additional matches found in your area."
-            });
-            return;
-          }
-
-          const newMatches = result.matches.map(match => ({
-            id: match.id,
-            email: match.email,
-            firstName: match.first_name,
-            lastName: match.last_name,
-            bio: match.bio,
-            avatarUrl: match.avatar_url,
-            location: match.location,
-            industry: match.industry,
-            company: match.company,
-            jobTitle: match.job_title,
-            membershipTier: match.membership_tier as MembershipTier,
-            isVerified: match.is_verified,
-            createdAt: new Date(match.created_at),
-            updatedAt: new Date(match.updated_at),
-            lastActiveAt: match.last_active_at ? new Date(match.last_active_at) : null,
-            preferredDistance: match.preferred_distance,
-            isGlobalDiscovery: match.is_global_discovery,
-            businessVerificationStatus: match.business_verification_status,
-            businessVerificationDate: match.business_verification_date ? new Date(match.business_verification_date) : null
-          }));
-
-          set({
-            potentialMatches: [...get().potentialMatches, ...newMatches],
-            cachedMatches: [...get().cachedMatches, ...newMatches],
-            isLoading: false,
-            noMoreProfiles: !result.hasMore
-          });
+  prefetchNextBatch: async (maxDistance?: number) => {
+    return await withErrorHandling(async () => {
+      return await withRetry(async () => {
+        return await withNetworkCheck(async () => {
+          const { isDebugMode } = useDebugStore.getState();
           
-          if (isDebugMode) {
-            console.log('[MatchesStore] Prefetched additional matches', { count: newMatches.length });
+          if (get().isPrefetching || get().isLoading) {
+            if (isDebugMode) {
+              console.log('[MatchesStore] Prefetching skipped - already in progress or loading');
+            }
+            return;
           }
 
-          set({ isPrefetching: false });
-        } catch (error) {
-          if (isDebugMode) {
-            console.error('[MatchesStore] Error during prefetch:', error);
+          if (get().noMoreProfiles) {
+            if (isDebugMode) {
+              console.log('[MatchesStore] Prefetching skipped - no more profiles available');
+            }
+            return;
           }
-          set({ isPrefetching: false });
-        }
-      }),
-      3,
-      1000
-    ),
-    ErrorCodes.MATCHES_PREFETCH_FAILED,
-    ErrorCategory.NETWORK
-  ),
+
+          set({ isPrefetching: true, error: null });
+
+          try {
+            const { user, allTierSettings } = useAuthStore.getState();
+            if (!user?.id) {
+              set({ isPrefetching: false });
+              return;
+            }
+
+            const userMaxDistance = user.preferredDistance || maxDistance || 50;
+            const tierSettings = allTierSettings?.[user.membershipTier];
+            const isGlobalDiscovery = tierSettings?.global_discovery || false;
+
+            const result = await fetchPotentialMatchesFromSupabase(
+              user.id,
+              userMaxDistance,
+              isGlobalDiscovery,
+              get().potentialMatches.length
+            );
+
+            if (!result || !result.matches || result.matches.length === 0) {
+              if (isDebugMode) {
+                console.log('[MatchesStore] No additional matches found during prefetch - setting noMoreProfiles to true');
+              }
+              set({
+                isPrefetching: false,
+                noMoreProfiles: true,
+                error: tierSettings?.global_discovery ? "No additional global matches found." : "No additional matches found in your area."
+              });
+              return;
+            }
+
+            const newMatches = result.matches.map(supabaseToUserProfile);
+
+            set({
+              potentialMatches: [...get().potentialMatches, ...newMatches],
+              cachedMatches: [...get().cachedMatches, ...newMatches],
+              isLoading: false,
+              noMoreProfiles: !result.hasMore
+            });
+            
+            if (isDebugMode) {
+              console.log('[MatchesStore] Prefetched additional matches', { count: newMatches.length });
+            }
+
+            set({ isPrefetching: false });
+          } catch (error) {
+            if (isDebugMode) {
+              console.error('[MatchesStore] Error during prefetch:', error);
+            }
+            set({ isPrefetching: false });
+            throw error;
+          }
+        });
+      }, {
+        maxRetries: 3,
+        baseDelay: 1000
+      });
+    }, {
+      rethrow: true,
+      customErrorMessage: "Failed to prefetch next batch of profiles"
+    });
+  },
 
   likeUser: async (userId: string) => {
     return await withErrorHandling(async () => {
