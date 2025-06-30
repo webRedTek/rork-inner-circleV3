@@ -449,29 +449,50 @@ const matchesStoreCreator: StateCreator<
 
   fetchPotentialMatches: async (maxDistance = 50, forceRefresh = false) => {
     return await withErrorHandling(async () => {
-      const { user, allTierSettings } = useAuthStore.getState();
-      const { isDebugMode } = useDebugStore.getState();
-      
-      if (!user?.id) {
-        if (isDebugMode) {
-          console.log('[MatchesStore] No user found');
-        }
+      const { user, isReady } = useAuthStore.getState();
+      if (!isReady || !user) {
+        set({ isLoading: false });
         throw {
           category: ErrorCategory.AUTH,
           code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-          message: 'User not authenticated'
+          message: 'User not ready or authenticated'
         };
       }
 
+      set({ isLoading: true, error: null });
+
       try {
+        // If we have cached matches and don't need a refresh, use those
+        if (!forceRefresh && get().cachedMatches.length > 0) {
+          const matches = get().cachedMatches.slice(0, get().batchSize);
+          const remaining = get().cachedMatches.slice(get().batchSize);
+          
+          // Ensure all required fields are present
+          const validMatches = matches.filter(profile => 
+            profile && 
+            profile.id && 
+            profile.name && 
+            typeof profile.distance !== 'undefined'
+          );
+
+          set({
+            potentialMatches: validMatches,
+            cachedMatches: remaining,
+            isLoading: false,
+            error: null
+          });
+          
+          return validMatches;
+        }
+
         // Use user's preferred distance if available
         const userMaxDistance = user.preferredDistance || maxDistance;
-        if (isDebugMode) {
+        if (get().isDebugMode) {
           console.log('[MatchesStore] Using distance', { userMaxDistance, userPreferred: user.preferredDistance });
         }
 
         if (!isSupabaseConfigured() || !supabase) {
-          if (isDebugMode) {
+          if (get().isDebugMode) {
             console.log('[MatchesStore] Supabase not configured');
           }
           throw {
@@ -482,8 +503,8 @@ const matchesStoreCreator: StateCreator<
         }
 
         // Use cached tier settings for global discovery
-        const tierSettings = allTierSettings?.[user.membershipTier];
-        if (isDebugMode) {
+        const tierSettings = user.allTierSettings?.[user.membershipTier];
+        if (get().isDebugMode) {
           console.log('[MatchesStore] Tier settings check', {
             hasTierSettings: !!tierSettings,
             globalDiscovery: tierSettings?.global_discovery
@@ -491,12 +512,12 @@ const matchesStoreCreator: StateCreator<
         }
 
         const isGlobalDiscovery = tierSettings?.global_discovery || false;
-        if (isDebugMode) {
+        if (get().isDebugMode) {
           console.log('[MatchesStore] Global discovery setting', { isGlobalDiscovery });
         }
 
         // Fetch potential matches using the Supabase function
-        if (isDebugMode) {
+        if (get().isDebugMode) {
           console.log('[MatchesStore] Calling fetchPotentialMatchesFromSupabase');
         }
         const result = await withRateLimitAndRetry(() => fetchPotentialMatchesFromSupabase(
@@ -506,7 +527,7 @@ const matchesStoreCreator: StateCreator<
           get().batchSize * 2 // Fetch extra for caching
         ));
 
-        if (isDebugMode) {
+        if (get().isDebugMode) {
           console.log('[MatchesStore] Supabase result', {
             hasResult: !!result,
             hasMatches: !!result?.matches,
@@ -515,7 +536,7 @@ const matchesStoreCreator: StateCreator<
         }
 
         if (!result || !result.matches) {
-          if (isDebugMode) {
+          if (get().isDebugMode) {
             console.log('[MatchesStore] No result or matches from Supabase');
           }
           throw {
@@ -526,7 +547,7 @@ const matchesStoreCreator: StateCreator<
         }
 
         if (result.matches.length === 0) {
-          if (isDebugMode) {
+          if (get().isDebugMode) {
             console.log('[MatchesStore] No matches found');
           }
           set({
@@ -542,7 +563,7 @@ const matchesStoreCreator: StateCreator<
         }
 
         // Convert matches to UserProfile objects
-        if (isDebugMode) {
+        if (get().isDebugMode) {
           console.log('[MatchesStore] Converting matches to UserProfile objects');
         }
         const userProfiles = result.matches.map(supabaseToUserProfile);
@@ -551,7 +572,7 @@ const matchesStoreCreator: StateCreator<
         const batchToShow = userProfiles.slice(0, get().batchSize);
         const remainingProfiles = userProfiles.slice(get().batchSize);
 
-        if (isDebugMode) {
+        if (get().isDebugMode) {
           console.log('[MatchesStore] Setting final state', {
             batchToShow: batchToShow.length,
             remainingProfiles: remainingProfiles.length
@@ -565,11 +586,11 @@ const matchesStoreCreator: StateCreator<
           noMoreProfiles: false
         });
       } catch (error) {
-        if (isDebugMode) {
+        if (get().isDebugMode) {
           console.error('[MatchesStore] Error in fetchPotentialMatches:', error);
         }
         const appError = handleError(error);
-        if (isDebugMode) {
+        if (get().isDebugMode) {
           console.error('[MatchesStore] Error fetching potential matches:', {
             category: appError.category,
             code: appError.code,
@@ -579,7 +600,9 @@ const matchesStoreCreator: StateCreator<
         }
         set({
           error: appError.userMessage,
-          isLoading: false
+          isLoading: false,
+          potentialMatches: [],
+          cachedMatches: []
         });
         throw appError;
       }

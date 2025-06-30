@@ -157,9 +157,13 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       }
 
       setIsPrefetching(true);
-      prefetchNextBatch().finally(() => {
-        setIsPrefetching(false);
-      });
+      prefetchNextBatch()
+        .catch(error => {
+          console.error('[SwipeCards] Error prefetching:', error);
+        })
+        .finally(() => {
+          setIsPrefetching(false);
+        });
     }
   }, [currentIndex, profiles.length, isPrefetching, noMoreProfiles, prefetchNextBatch, isDebugMode]);
 

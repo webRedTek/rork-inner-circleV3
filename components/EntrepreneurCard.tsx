@@ -31,11 +31,13 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import type { FC } from 'react';
 import { View, Text, StyleSheet, Dimensions, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
+import type { ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { UserProfile } from '@/types/user';
+import type { UserProfile } from '@/types/user';
 import Colors from '@/constants/colors';
-import { ChevronDown, AlertCircle } from 'lucide-react-native';
+import { ChevronDown, AlertCircle, MapPin } from 'lucide-react-native';
 import { withErrorHandling } from '@/utils/error-utils';
 
 interface EntrepreneurCardProps {
@@ -49,7 +51,7 @@ interface EntrepreneurCardProps {
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width * 0.9;
 
-export const EntrepreneurCard: React.FC<EntrepreneurCardProps> = ({
+export const EntrepreneurCard: FC<EntrepreneurCardProps> = ({
   profile,
   onProfilePress,
   isLoading = false,
@@ -61,9 +63,11 @@ export const EntrepreneurCard: React.FC<EntrepreneurCardProps> = ({
   
   // Reset states when profile changes
   useEffect(() => {
-    setImageLoading(true);
-    setImageError(false);
-  }, [profile.id]);
+    if (profile?.id) {
+      setImageLoading(true);
+      setImageError(false);
+    }
+  }, [profile?.id]);
   
   if (error) {
     return (
@@ -93,8 +97,8 @@ export const EntrepreneurCard: React.FC<EntrepreneurCardProps> = ({
   
   return (
     <View style={styles.cardContainer}>
-      {imageLoading && (
-        <View style={styles.imageLoadingContainer}>
+      {imageLoading && !imageError && (
+        <View style={[styles.imageLoadingContainer, styles.absoluteFill]}>
           <ActivityIndicator size="large" color={Colors.dark.accent} />
         </View>
       )}
@@ -137,6 +141,13 @@ export const EntrepreneurCard: React.FC<EntrepreneurCardProps> = ({
             {profile.businessStage && (
               <View style={styles.tag}>
                 <Text style={styles.tagText}>{profile.businessStage}</Text>
+              </View>
+            )}
+            
+            {profile.distance !== undefined && (
+              <View style={[styles.tag, styles.distanceTag]}>
+                <MapPin size={14} color={Colors.dark.text} style={styles.distanceIcon} />
+                <Text style={styles.tagText}>{Math.round(profile.distance)}mi away</Text>
               </View>
             )}
           </View>
@@ -203,44 +214,43 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  imageLoadingContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: Colors.dark.card,
-    zIndex: 1,
-  },
   image: {
     width: '100%',
     height: '100%',
-    position: 'absolute',
+    resizeMode: 'cover',
   },
   imagePlaceholder: {
-    backgroundColor: Colors.dark.card,
+    backgroundColor: Colors.dark.cardDark,
+  },
+  imageLoadingContainer: {
+    position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.dark.cardDark,
+  },
+  absoluteFill: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
   },
   gradient: {
     position: 'absolute',
+    bottom: 0,
     left: 0,
     right: 0,
-    bottom: 0,
-    height: '30%',
+    height: '50%',
     justifyContent: 'flex-end',
+    padding: 16,
   },
   infoContainer: {
-    padding: 20,
+    gap: 8,
   },
   header: {
-    marginBottom: 8,
+    gap: 4,
   },
   name: {
     fontSize: 24,
     fontWeight: 'bold',
     color: Colors.dark.text,
-    marginBottom: 4,
   },
   field: {
     fontSize: 16,
@@ -252,27 +262,33 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   tag: {
-    backgroundColor: 'rgba(157, 78, 221, 0.6)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  distanceTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  distanceIcon: {
+    marginRight: 2,
   },
   tagText: {
+    fontSize: 14,
     color: Colors.dark.text,
-    fontSize: 12,
-    fontWeight: '600',
   },
   profileDetailButton: {
     position: 'absolute',
     bottom: 16,
     right: 16,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     width: 40,
     height: 40,
     borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 10,
   },
   buttonDisabled: {
     opacity: 0.5,
