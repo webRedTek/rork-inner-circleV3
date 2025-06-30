@@ -1,3 +1,35 @@
+/**
+ * FILE: components/EntrepreneurCard.tsx
+ * LAST UPDATED: 2024-12-20 11:45
+ * 
+ * CURRENT STATE:
+ * Reusable card component for displaying entrepreneur profiles in the discovery interface.
+ * Handles loading states, error states, and image loading with fallbacks.
+ * Supports profile detail expansion and retry functionality for failed loads.
+ * 
+ * RECENT CHANGES:
+ * - Added loading state handling for profile data
+ * - Added error state with retry functionality
+ * - Improved image loading states and fallbacks
+ * - Enhanced accessibility with proper hit slops
+ * 
+ * FILE INTERACTIONS:
+ * - Imports from: types (UserProfile interface)
+ * - Imports from: constants (Colors)
+ * - Imports from: utils (error handling)
+ * - Exports to: discover.tsx and other profile display screens
+ * - Dependencies: React Native, Expo LinearGradient
+ * - Data flow: Receives profile data and callbacks from parent,
+ *   manages internal loading states, triggers parent callbacks
+ * 
+ * KEY FUNCTIONS/COMPONENTS:
+ * - Profile image display with loading states
+ * - Business information display
+ * - Error state handling with retry
+ * - Loading state display
+ * - Profile expansion trigger
+ */
+
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Dimensions, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';

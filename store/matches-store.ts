@@ -966,7 +966,7 @@ const matchesStoreCreator: StateCreator<
       }
     }, {
       maxRetries: 3,
-      circuitBreakerKey: 'batch_processing'
+      customErrorMessage: 'Failed to process swipe batch'
     });
   },
 
@@ -1234,109 +1234,3 @@ const validateBatch = (batch: SwipeAction[]): boolean => {
     typeof action.swipe_timestamp === 'number'
   ));
 };
-
-/**
- * Enhanced batch processing with validation and rollback
- */
-processSwipeBatch: async () => {
-  return await withEnhancedRetry(async () => {
-    const { user } = useAuthStore.getState();
-    const { isDebugMode } = useDebugStore.getState();
-    
-    if (!user?.id) {
-      throw {
-        category: ErrorCategory.AUTH,
-        code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-        message: 'User not authenticated for batch processing'
-      };
-    }
-    
-    // Check if batch processing is already in progress
-    if (batchState.inProgress) {
-      if (isDebugMode) {
-        console.log('[MatchesStore] Batch processing already in progress');
-      }
-      return;
-    }
-    
-    // Check cooldown period
-    const timeSinceLastProcess = Date.now() - batchState.lastProcessed;
-    if (timeSinceLastProcess < BATCH_COOLDOWN) {
-      if (isDebugMode) {
-        console.log('[MatchesStore] Batch processing in cooldown');
-      }
-      return;
-    }
-    
-    const currentBatch = [...get().swipeQueue];
-    if (currentBatch.length === 0) return;
-    
-    // Validate batch
-    if (!validateBatch(currentBatch)) {
-      throw {
-        category: ErrorCategory.VALIDATION,
-        code: ErrorCodes.VALIDATION_INVALID_INPUT,
-        message: 'Invalid batch data'
-      };
-    }
-    
-    batchState.inProgress = true;
-    const batchCopy = [...currentBatch]; // For rollback
-    
-    try {
-      // Process the batch
-      const result = await withCircuitBreaker(
-        () => processSwipeBatchFromSupabase(currentBatch),
-        'batch_processing'
-      );
-      
-      if (!result) throw new Error('No result from batch processing');
-      
-      // Update state based on results
-      set((state) => ({
-        swipeQueue: state.swipeQueue.filter(
-          action => !currentBatch.some(
-            processed => processed.swipee_id === action.swipee_id
-          )
-        )
-      }));
-      
-      // Reset batch state on success
-      batchState.inProgress = false;
-      batchState.lastProcessed = Date.now();
-      batchState.retryCount = 0;
-      
-      // Process any new matches from the batch
-      if (result.new_matches && result.new_matches.length > 0) {
-        const newMatch = result.new_matches[0];
-        set({ newMatch });
-      }
-      
-      return result;
-    } catch (error) {
-      // Handle batch failure
-      batchState.retryCount++;
-      batchState.failedBatches.push(batchCopy);
-      
-      if (batchState.retryCount >= MAX_BATCH_RETRIES) {
-        // Move failed batch to error state and continue with next batch
-        set((state) => ({
-          swipeQueue: state.swipeQueue.filter(
-            action => !batchCopy.some(
-              failed => failed.swipee_id === action.swipee_id
-            )
-          ),
-          error: 'Failed to process some swipes. They will be retried later.'
-        }));
-        
-        batchState.retryCount = 0;
-      }
-      
-      batchState.inProgress = false;
-      throw error;
-    }
-  }, {
-    maxRetries: 3,
-    circuitBreakerKey: 'batch_processing'
-  });
-},
