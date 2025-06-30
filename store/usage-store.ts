@@ -8,6 +8,37 @@ import { useAuthStore } from './auth-store';
 import { useNotificationStore } from './notification-store';
 import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
 
+/**
+ * FILE: store/usage-store.ts
+ * LAST UPDATED: 2024-12-20 10:30
+ * 
+ * CURRENT STATE:
+ * Central usage tracking store using Zustand. Handles tracking and limiting
+ * user actions based on their membership tier. Uses cached tier settings
+ * from auth store for feature permissions and limits.
+ * 
+ * RECENT CHANGES:
+ * - Modified to use cached tier settings from auth store instead of getTierSettings()
+ * - Removed unnecessary tier settings validation that was causing errors
+ * - Improved error handling for missing tier settings
+ * - Maintains compatibility with existing usage tracking
+ * 
+ * FILE INTERACTIONS:
+ * - Imports from: user types (UserProfile, MembershipTier)
+ * - Imports from: supabase lib (database operations)
+ * - Imports from: auth-store (user data, tier settings access)
+ * - Imports from: error-utils, network-utils (error handling and network checks)
+ * - Exports to: All stores and screens that need usage tracking
+ * - Dependencies: AsyncStorage (persistence), Zustand (state management)
+ * - Data flow: Tracks user actions, enforces limits, provides usage data to UI
+ * 
+ * KEY FUNCTIONS/COMPONENTS:
+ * - getUsageStats: Get current usage stats with tier limits
+ * - syncUsageData: Sync usage data with database
+ * - checkUsageLimits: Check if action is allowed based on limits
+ * - resetUsageCache: Reset usage tracking data
+ */
+
 // Default usage cache
 const defaultUsageCache: UsageCache = {
   lastSyncTimestamp: 0,
@@ -367,13 +398,22 @@ export const useUsageStore = create<UsageStore>()(
 
       getUsageStats: (): UsageStats | null => {
         const { usageCache } = get();
-        const tierSettings = useAuthStore.getState().getTierSettings();
+        const { user, allTierSettings } = useAuthStore.getState();
         
-        if (!usageCache || !tierSettings) {
+        if (!usageCache || !user || !allTierSettings) {
           throw {
-            category: 'BUSINESS',
-            code: 'BUSINESS_LIMIT_REACHED',
+            category: ErrorCategory.BUSINESS,
+            code: ErrorCodes.BUSINESS_LIMIT_REACHED,
             message: 'Usage cache or tier settings not available for stats'
+          };
+        }
+
+        const tierSettings = allTierSettings[user.membershipTier];
+        if (!tierSettings) {
+          throw {
+            category: ErrorCategory.BUSINESS,
+            code: ErrorCodes.BUSINESS_LIMIT_REACHED,
+            message: 'Tier settings not available for your membership level'
           };
         }
 

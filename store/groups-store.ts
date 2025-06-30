@@ -8,6 +8,37 @@ import { useNotificationStore } from './notification-store';
 import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
 import { withNetworkCheck } from '@/utils/network-utils';
 
+/**
+ * FILE: store/groups-store.ts
+ * LAST UPDATED: 2024-12-20 10:30
+ * 
+ * CURRENT STATE:
+ * Central groups management store using Zustand. Handles group creation,
+ * joining/leaving groups, and enforcing tier-based limits on group actions.
+ * Uses cached tier settings from auth store for feature permissions and limits.
+ * 
+ * RECENT CHANGES:
+ * - Modified to use cached tier settings from auth store instead of getTierSettings()
+ * - Removed unnecessary tier settings validation that was causing errors
+ * - Improved error handling for missing tier settings
+ * - Maintains compatibility with existing group functionality
+ * 
+ * FILE INTERACTIONS:
+ * - Imports from: user types (UserProfile, Group, MembershipTier)
+ * - Imports from: supabase lib (database operations)
+ * - Imports from: auth-store (user data, tier settings access)
+ * - Imports from: error-utils, network-utils (error handling and network checks)
+ * - Exports to: Group screens and components
+ * - Dependencies: AsyncStorage (persistence), Zustand (state management)
+ * - Data flow: Manages group operations, enforces tier limits, provides group data to UI
+ * 
+ * KEY FUNCTIONS/COMPONENTS:
+ * - joinGroup: Handle user joining a group with tier limit checks
+ * - createGroup: Create new group with tier permission checks
+ * - leaveGroup: Handle user leaving a group
+ * - fetchGroups: Load user's groups and available groups
+ */
+
 // Helper function to extract readable error message from Supabase error
 const getReadableError = (error: any): string => {
   if (!error) return 'Unknown error occurred';
@@ -228,26 +259,17 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     
     try {
       await withErrorHandling(async () => {
-        const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) {
+        const { user, allTierSettings } = useAuthStore.getState();
+        if (!user) {
           throw {
             category: ErrorCategory.AUTH,
             code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-            message: 'User not ready or authenticated for joining group'
+            message: 'User not authenticated for joining group'
           };
         }
         
-        const tierSettings = useAuthStore.getState().getTierSettings();
-        if (!tierSettings) {
-          throw {
-            category: ErrorCategory.BUSINESS,
-            code: ErrorCodes.BUSINESS_LOGIC_VIOLATION,
-            message: 'Tier settings not available for group limit check'
-          };
-        }
-        
-        // Check membership tier restrictions using tier settings
-        if (tierSettings.groups_limit <= 0) {
+        const tierSettings = allTierSettings?.[user.membershipTier];
+        if (!tierSettings?.groups_limit) {
           throw {
             category: ErrorCategory.BUSINESS,
             code: ErrorCodes.BUSINESS_LIMIT_REACHED,
@@ -514,26 +536,17 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     
     try {
       await withErrorHandling(async () => {
-        const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) {
+        const { user, allTierSettings } = useAuthStore.getState();
+        if (!user) {
           throw {
             category: ErrorCategory.AUTH,
             code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-            message: 'User not ready or authenticated for creating group'
+            message: 'User not authenticated for creating group'
           };
         }
         
-        const tierSettings = useAuthStore.getState().getTierSettings();
-        if (!tierSettings) {
-          throw {
-            category: ErrorCategory.BUSINESS,
-            code: ErrorCodes.BUSINESS_LOGIC_VIOLATION,
-            message: 'Tier settings not available for group creation limit check'
-          };
-        }
-        
-        // Check membership tier restrictions
-        if (!tierSettings.can_create_groups) {
+        const tierSettings = allTierSettings?.[user.membershipTier];
+        if (!tierSettings?.can_create_groups) {
           throw {
             category: ErrorCategory.BUSINESS,
             code: ErrorCodes.BUSINESS_LIMIT_REACHED,

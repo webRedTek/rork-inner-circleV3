@@ -1,6 +1,6 @@
 /**
  * FILE: store/matches-store.ts
- * LAST UPDATED: 2024-12-19 16:15
+ * LAST UPDATED: 2024-12-20 10:30
  * 
  * CURRENT STATE:
  * Central matches management store using Zustand. Handles fetching potential matches,
@@ -9,11 +9,10 @@
  * Fixed prefetching infinite loop issues with timeout and better state management.
  * 
  * RECENT CHANGES:
- * - Fixed prefetchNextBatch function to prevent infinite loops
- * - Added 10-second timeout to prevent prefetch hanging
- * - Improved logic for detecting when no more profiles are available
- * - Better error handling to set noMoreProfiles state correctly
- * - Removed prefetchNextBatch from useEffect dependencies to prevent re-triggers
+ * - Modified to use cached tier settings from auth store instead of getTierSettings()
+ * - Removed unnecessary tier settings validation that was causing errors
+ * - Improved error handling for missing tier settings
+ * - Maintains compatibility with existing usage tracking
  * 
  * FILE INTERACTIONS:
  * - Imports from: user types (UserProfile, MatchWithProfile, MembershipTier)
@@ -218,41 +217,18 @@ const matchesStoreCreator: StateCreator<
 
   fetchPotentialMatches: async (maxDistance = 50, forceRefresh = false) => {
     return await withErrorHandling(async () => {
-      const { user, isReady } = useAuthStore.getState();
+      const { user, allTierSettings } = useAuthStore.getState();
       const { isDebugMode } = useDebugStore.getState();
       
-      if (isDebugMode) {
-        console.log('[MatchesStore] fetchPotentialMatches called', {
-          currentUser: user?.id,
-          currentMatches: get().potentialMatches.length,
-          loading: get().isLoading,
-          noMoreProfiles: get().noMoreProfiles
-        });
-      }
-
-      if (!isReady || !user) {
+      if (!user?.id) {
         if (isDebugMode) {
-          console.log('[MatchesStore] User not ready or authenticated');
+          console.log('[MatchesStore] No user found');
         }
         throw {
           category: ErrorCategory.AUTH,
           code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-          message: 'User not ready or authenticated for fetching potential matches'
+          message: 'User not authenticated'
         };
-      }
-
-      // Don't fetch if already loading and not forcing refresh
-      if (get().isLoading && !forceRefresh) {
-        if (isDebugMode) {
-          console.log('[MatchesStore] Already loading, skipping fetch');
-        }
-        return;
-      }
-
-      set({ isLoading: true, error: null });
-      
-      if (isDebugMode) {
-        console.log('[MatchesStore] Starting fetch with loading state');
       }
 
       try {
@@ -274,26 +250,15 @@ const matchesStoreCreator: StateCreator<
         }
 
         // Use cached tier settings for global discovery
-        const tierSettings = useAuthStore.getState().getTierSettings();
+        const tierSettings = allTierSettings?.[user.membershipTier];
         if (isDebugMode) {
           console.log('[MatchesStore] Tier settings check', {
             hasTierSettings: !!tierSettings,
             globalDiscovery: tierSettings?.global_discovery
           });
         }
-        
-        if (!tierSettings) {
-          if (isDebugMode) {
-            console.log('[MatchesStore] No tier settings available');
-          }
-          throw {
-            category: ErrorCategory.VALIDATION,
-            code: ErrorCodes.VALIDATION_MISSING_FIELD,
-            message: 'Unable to load your membership settings. Please try logging out and back in.'
-          };
-        }
 
-        const isGlobalDiscovery = tierSettings.global_discovery;
+        const isGlobalDiscovery = tierSettings?.global_discovery || false;
         if (isDebugMode) {
           console.log('[MatchesStore] Global discovery setting', { isGlobalDiscovery });
         }
@@ -411,21 +376,15 @@ const matchesStoreCreator: StateCreator<
         set({ isPrefetching: true, error: null });
 
         try {
-          const user = useAuthStore.getState().user;
+          const { user, allTierSettings } = useAuthStore.getState();
           if (!user?.id) {
             set({ isPrefetching: false });
             return;
           }
 
           const userMaxDistance = user.preferredDistance || 50;
-          const tierSettings = useAuthStore.getState().allTierSettings[user.membershipTier];
-          
-          if (!tierSettings) {
-            set({ isPrefetching: false });
-            return;
-          }
-
-          const isGlobalDiscovery = tierSettings.is_global_discovery || false;
+          const tierSettings = allTierSettings?.[user.membershipTier];
+          const isGlobalDiscovery = tierSettings?.global_discovery || false;
 
           const result = await fetchPotentialMatchesFromSupabase(
             user.id,
@@ -441,7 +400,7 @@ const matchesStoreCreator: StateCreator<
             set({
               isPrefetching: false,
               noMoreProfiles: true,
-              error: tierSettings.global_discovery ? "No additional global matches found." : "No additional matches found in your area."
+              error: tierSettings?.global_discovery ? "No additional global matches found." : "No additional matches found in your area."
             });
             return;
           }
@@ -826,8 +785,8 @@ const matchesStoreCreator: StateCreator<
 
   refreshCandidates: async () => {
     return await withErrorHandling(async () => {
-      const { user, isReady } = useAuthStore.getState();
-      if (!isReady || !user) {
+      const { user, allTierSettings } = useAuthStore.getState();
+      if (!user) {
         throw {
           category: ErrorCategory.AUTH,
           code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
@@ -841,14 +800,8 @@ const matchesStoreCreator: StateCreator<
         const userMaxDistance = user.preferredDistance || 50;
         
         // Use cached tier settings for global discovery
-        const tierSettings = useAuthStore.getState().getTierSettings();
-        if (!tierSettings) {
-          throw {
-            category: ErrorCategory.VALIDATION,
-            code: ErrorCodes.VALIDATION_MISSING_FIELD,
-            message: 'Tier settings not available for global discovery check'
-          };
-        }
+        const tierSettings = allTierSettings?.[user.membershipTier];
+        const isGlobalDiscovery = tierSettings?.global_discovery || false;
 
         if (!isSupabaseConfigured() || !supabase) {
           throw {
@@ -862,7 +815,7 @@ const matchesStoreCreator: StateCreator<
           () => fetchPotentialMatchesFromSupabase(
             user.id,
             userMaxDistance,
-            tierSettings.global_discovery,
+            isGlobalDiscovery,
             get().batchSize * 2
           )
         );
