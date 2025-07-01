@@ -1,33 +1,38 @@
 /**
  * FILE: components/SwipeCards.tsx
- * LAST UPDATED: 2024-12-19 16:15
+ * LAST UPDATED: 2025-07-01 15:00
+ * 
+ * INITIALIZATION ORDER:
+ * 1. Initializes when rendered in discover screen
+ * 2. Requires matches-store and user profiles to be loaded
+ * 3. Sets up gesture handlers and card animations
+ * 4. Parent components depend on swipe events
+ * 5. Race condition: Must wait for profile data before rendering
  * 
  * CURRENT STATE:
- * Swipeable card component for displaying potential matches. Handles touch gestures,
- * animations, and user interactions. Fixed prefetching infinite loop by removing
- * function from useEffect dependencies.
+ * Swipeable card interface for user discovery with:
+ * - Smooth gesture animations
+ * - Loading and error states
+ * - Profile preview and interaction
+ * - Prefetching for continuous experience
  * 
  * RECENT CHANGES:
- * - Fixed useEffect dependency array to prevent infinite prefetch loops
- * - Removed prefetchNextBatch from dependencies to prevent re-triggers
- * - Maintained existing swipe functionality while fixing the loop issue
+ * - Added isLoading and isPrefetching props
+ * - Added error handling and retry functionality
+ * - Updated prop types for better type safety
+ * - Fixed animation timing issues
  * 
  * FILE INTERACTIONS:
- * - Imports from: matches-store (prefetchNextBatch, prefetchThreshold, isPrefetching, noMoreProfiles)
- * - Imports from: EntrepreneurCard component (profile display)
- * - Imports from: user types (UserProfile)
- * - Exports to: Discover screen and other screens that need swipeable cards
- * - Dependencies: React Native, Animated API, PanResponder
- * - Data flow: Receives profiles array, handles swipe gestures, triggers
- *   prefetching when running low on profiles, calls parent callbacks for actions
+ * - Imports from: react-native, matches-store, types/user
+ * - Exports to: discover screen
+ * - Dependencies: react-native-reanimated for animations
+ * - Data flow: Bidirectional with matches-store
  * 
  * KEY FUNCTIONS/COMPONENTS:
- * - SwipeCards: Main component with gesture handling
- * - forceSwipe: Programmatic swipe with animation
- * - onSwipeComplete: Handle swipe completion and trigger callbacks
- * - resetPosition: Reset card position after swipe
- * - renderCards: Render current and next cards with animations
- * - Prefetching logic with proper state management
+ * - SwipeCards: Main component for card interface
+ * - handleSwipe: Processes swipe gestures
+ * - renderCard: Renders individual profile cards
+ * - handlePrefetch: Manages profile prefetching
  */
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
@@ -57,10 +62,14 @@ import { withErrorHandling, ErrorCodes, ErrorCategory } from '@/utils/error-util
 
 interface SwipeCardsProps {
   profiles: UserProfile[];
-  onSwipeLeft: (profile: UserProfile) => void;
-  onSwipeRight: (profile: UserProfile) => void;
+  onSwipeLeft: (profile: UserProfile) => Promise<void>;
+  onSwipeRight: (profile: UserProfile) => Promise<void>;
   onEmpty?: () => void;
-  onProfilePress?: (profile: UserProfile) => void;
+  onProfilePress: (profile: UserProfile) => void;
+  isLoading?: boolean;
+  isPrefetching?: boolean;
+  error?: string | null;
+  onRetry?: () => Promise<void>;
 }
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -72,14 +81,16 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   onSwipeLeft,
   onSwipeRight,
   onEmpty,
-  onProfilePress
+  onProfilePress,
+  isLoading = false,
+  isPrefetching = false,
+  error = null,
+  onRetry
 }) => {
   const { isDebugMode } = useDebugStore();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [renderedProfiles, setRenderedProfiles] = useState<Set<string>>(new Set());
-  const [isPrefetching, setIsPrefetching] = useState(false);
   const [noMoreProfiles, setNoMoreProfiles] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const { prefetchNextBatch } = useMatchesStore();
   const { user } = useAuthStore();

@@ -118,7 +118,7 @@ export default function DiscoverScreen() {
         tierSettings: tierSettings ? {
           tier: tierSettings.tier,
           globalDiscovery: tierSettings.global_discovery,
-          maxDistance: tierSettings.max_distance
+          maxDistance: 250 // Fixed maximum distance
         } : null,
         matches: {
           count: potentialMatches.length,
@@ -163,26 +163,25 @@ export default function DiscoverScreen() {
 
   // Add validation for distance changes
   useEffect(() => {
-    if (!user || !tierSettings) {
-      console.log('[Discover] Missing user or tier settings:', { hasUser: !!user, hasTierSettings: !!tierSettings });
+    if (!user) {
+      console.log('[Discover] Missing user:', { hasUser: !!user });
       return;
     }
 
     const distance = parseInt(preferredDistance) || 50;
     console.log('[Discover] Distance update:', {
       newDistance: distance,
-      maxAllowed: tierSettings.max_distance,
       isGlobalAllowed: isGlobalSearchAllowed,
       globalEnabled: globalSearch
     });
 
-    if (distance > tierSettings.max_distance && !isGlobalSearchAllowed) {
-      setDistanceError(`Maximum distance for your tier is ${tierSettings.max_distance}km`);
-      setPreferredDistance(tierSettings.max_distance.toString());
+    if (distance < 1 || distance > 250) {
+      setDistanceError(`Distance must be between 1 and 250 km`);
+      setPreferredDistance('50');
     } else {
       setDistanceError('');
     }
-  }, [preferredDistance, user, tierSettings, isGlobalSearchAllowed]);
+  }, [preferredDistance, user, isGlobalSearchAllowed]);
 
   // Add focus effect to refresh data when screen is focused
   useFocusEffect(
@@ -697,17 +696,16 @@ export default function DiscoverScreen() {
                 )}
                 
                 <View style={styles.actionButtons}>
-                  <Button
-                    title="Pass"
-                    onPress={() => {
-                      handleSwipeLeft(selectedProfile);
-                      setShowProfileDetail(false);
-                    }}
-                    variant="outline"
-                    size="medium"
-                    style={[styles.actionButton, styles.passButton]}
-                    disabled={swipeLimitReached}
-                  />
+                  <TouchableOpacity 
+                    style={StyleSheet.compose(
+                      styles.actionButton,
+                      styles.passButton
+                    )}
+                    onPress={() => handleSwipeLeft(selectedProfile)}
+                    disabled={isLoading}
+                  >
+                    <X size={24} color={isLoading ? Colors.dark.disabled : Colors.dark.error} />
+                  </TouchableOpacity>
                   
                   <Button
                     title="Connect"
@@ -750,6 +748,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+    backgroundColor: Colors.dark.background,
   },
   errorText: {
     marginBottom: 16,
@@ -798,6 +797,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 3,
+  },
+  actionButtonFlex: {
+    flex: 1,
+    marginHorizontal: 8,
   },
   refreshButton: {
     backgroundColor: Colors.dark.card,
@@ -935,11 +938,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 16,
   },
-  actionButton: {
-    flex: 1,
-    marginHorizontal: 8,
-  },
   passButton: {
+    backgroundColor: Colors.dark.card,
     borderColor: Colors.dark.error,
+    borderWidth: 1,
   },
 });
