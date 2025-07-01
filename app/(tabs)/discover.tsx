@@ -1,44 +1,30 @@
 /**
  * FILE: app/(tabs)/discover.tsx
- * LAST UPDATED: 2024-12-20 11:45
+ * LAST UPDATED: 2025-07-01 14:30
  * 
  * CURRENT STATE:
- * Main discovery screen for the app. Displays potential matches in a swipeable card interface.
- * Handles user interactions (like/pass), match notifications, and profile viewing.
- * Uses matches-store with proper hydration handling to prevent undefined function errors.
- * Supports both local and global discovery based on user tier settings.
+ * Main discovery tab screen. Shows swipeable cards of potential matches.
  * 
  * RECENT CHANGES:
- * - Added proper distance handling for global vs local discovery
- * - Added debug logging for prefetch operations and distance settings
- * - Improved error handling for store function availability
- * - Added proper handling of tier-based global discovery settings
+ * - Fixed screen focus to only fetch matches when none available
  * 
  * FILE INTERACTIONS:
- * - Imports from: matches-store (potential matches, swipe actions)
- * - Imports from: auth-store (user authentication, tier settings)
- * - Imports from: usage-store (usage tracking and limits)
- * - Imports from: components (SwipeCards, Button, ProfileDetailCard)
- * - Imports from: utils (error handling, notifications)
- * - Exports to: Main tab navigation
- * - Dependencies: React Native, Expo Router, Haptics
- * - Data flow: Fetches matches from store, displays in swipe interface,
- *   handles user actions, shows modals for matches and limits
+ * - Uses matches-store for: potential matches, swipe actions, match state
+ * - Uses auth-store for: user data, tier settings
+ * - Uses SwipeCards component for: card display and gestures
+ * - Uses Button, ProfileDetailCard for: UI elements
  * 
- * KEY FUNCTIONS/COMPONENTS:
- * - Main discovery interface with swipeable cards
- * - Match notification modal handling
- * - Limit reached modal handling
- * - Profile detail viewing
- * - Global/local search toggle based on tier
- * - Distance filter application
- * - Debug information logging
+ * KEY FUNCTIONS:
+ * - Initial load: Fetches first batch of matches
+ * - Focus refresh: Only fetches if no matches available
+ * - Distance handling: Uses user preferences or tier limits
+ * - Swipe actions: Processes likes/passes through matches-store
+ * - Match handling: Shows modals for new matches
  * 
- * STORE INTERACTIONS:
- * - Uses matches-store for all match-related operations
- * - Handles store hydration gracefully
- * - Respects tier settings for global discovery
- * - Manages prefetching based on remaining matches
+ * STORE DEPENDENCIES:
+ * matches-store -> Handles all match data and swipe logic
+ * auth-store -> User authentication and tier settings
+ * usage-store -> Tracks swipe/match limits
  */
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
@@ -121,30 +107,106 @@ export default function DiscoverScreen() {
       addDebugInfo(`Initial load - user: ${user.id}, tier: ${user.membershipTier}`);
       addDebugInfo(`Tier settings available: ${!!tierSettings}`);
       addDebugInfo(`Global discovery allowed: ${isGlobalSearchAllowed}`);
-      console.log('[Discover] Initial load - fetching potential matches', { userId: user.id });
-      fetchPotentialMatches();
+      
+      // Add detailed debugging
+      console.log('[Discover] Debug State:', {
+        user: {
+          id: user.id,
+          tier: user.membershipTier,
+          distance: user.preferredDistance
+        },
+        tierSettings: tierSettings ? {
+          tier: tierSettings.tier,
+          globalDiscovery: tierSettings.global_discovery,
+          maxDistance: tierSettings.max_distance
+        } : null,
+        matches: {
+          count: potentialMatches.length,
+          isLoading,
+          isPrefetching,
+          error
+        },
+        ui: {
+          showMatchModal,
+          showLimitModal,
+          showFilterModal,
+          globalSearch,
+          preferredDistance
+        }
+      });
+
+      // Log first potential match if exists
+      if (potentialMatches.length > 0) {
+        console.log('[Discover] First potential match:', {
+          id: potentialMatches[0].id,
+          hasProfile: !!potentialMatches[0],
+          profileKeys: Object.keys(potentialMatches[0] || {})
+        });
+      } else {
+        console.log('[Discover] No potential matches available');
+      }
+
+      fetchPotentialMatches(user.preferredDistance || parseInt(preferredDistance) || 50)
+        .catch(error => {
+          console.error('[Discover] Error fetching matches:', error);
+          setDistanceError('Error loading matches');
+        });
+
       startBatchProcessing();
       setInitialLoad(false);
-      // Set user's preferred distance from profile
-      if (user.preferredDistance) {
-        setPreferredDistance(user.preferredDistance.toString());
-      }
     }
     
     return () => {
       stopBatchProcessing();
     };
   }, [isReady, user, fetchPotentialMatches]);
-  
+
+  // Add validation for distance changes
+  useEffect(() => {
+    if (!user || !tierSettings) {
+      console.log('[Discover] Missing user or tier settings:', { hasUser: !!user, hasTierSettings: !!tierSettings });
+      return;
+    }
+
+    const distance = parseInt(preferredDistance) || 50;
+    console.log('[Discover] Distance update:', {
+      newDistance: distance,
+      maxAllowed: tierSettings.max_distance,
+      isGlobalAllowed: isGlobalSearchAllowed,
+      globalEnabled: globalSearch
+    });
+
+    if (distance > tierSettings.max_distance && !isGlobalSearchAllowed) {
+      setDistanceError(`Maximum distance for your tier is ${tierSettings.max_distance}km`);
+      setPreferredDistance(tierSettings.max_distance.toString());
+    } else {
+      setDistanceError('');
+    }
+  }, [preferredDistance, user, tierSettings, isGlobalSearchAllowed]);
+
   // Add focus effect to refresh data when screen is focused
   useFocusEffect(
     React.useCallback(() => {
       if (isReady && user) {
         addDebugInfo(`Screen focused - refreshing matches, current count: ${potentialMatches.length}`);
-        console.log('[Discover] Screen focused - refreshing potential matches', { userId: user.id, matchesCount: potentialMatches.length });
-        fetchPotentialMatches();
+        console.log('[Discover] Screen focused - checking matches state', { 
+          userId: user.id, 
+          matchesCount: potentialMatches.length,
+          currentDistance: user.preferredDistance || parseInt(preferredDistance) || 50,
+          globalSearch: isGlobalSearchAllowed && globalSearch
+        });
+
+        // Only fetch if we have no matches or it's been a while since last fetch
+        if (potentialMatches.length === 0) {
+          const distance = isGlobalSearchAllowed && globalSearch 
+            ? undefined 
+            : (user.preferredDistance || parseInt(preferredDistance) || 50);
+            
+          console.log('[Discover] Fetching new matches on focus', { distance });
+          fetchPotentialMatches(distance);
+        }
       }
-    }, [isReady, user, fetchPotentialMatches])
+    }, [isReady, user, fetchPotentialMatches, potentialMatches.length, preferredDistance, isGlobalSearchAllowed, globalSearch])
   );
   
   useEffect(() => {
@@ -306,13 +368,22 @@ export default function DiscoverScreen() {
   };
   
   const handleToggleGlobalSearch = () => {
-    if (isGlobalSearchAllowed) {
-      setGlobalSearch(!globalSearch);
+    if (!isGlobalSearchAllowed) {
+      setDistanceError('Global search not available for your tier');
+      setGlobalSearch(false);
+      return;
+    }
+
+    setGlobalSearch(!globalSearch);
+    if (!globalSearch) {
+      // Switching to global search
+      setPreferredDistance('∞');
+      fetchPotentialMatches(undefined);
     } else {
-      Alert.alert('Premium Feature', 'Global search is available for premium members only.', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Upgrade Plan', onPress: () => router.push('/membership') }
-      ]);
+      // Switching back to local search
+      const distance = user?.preferredDistance || 50;
+      setPreferredDistance(distance.toString());
+      fetchPotentialMatches(distance);
     }
   };
   

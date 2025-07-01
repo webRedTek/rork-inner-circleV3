@@ -1,46 +1,29 @@
 /**
  * FILE: store/matches-store.ts
- * LAST UPDATED: 2024-12-20 11:45
+ * LAST UPDATED: 2025-07-01 14:30
  * 
  * CURRENT STATE:
- * Central matches management store using Zustand with proper persistence and hydration.
- * Handles fetching potential matches, user interactions (like/pass), batch processing,
- * caching, and prefetching. Added robust hydration handling with initial state fallback
- * to prevent undefined functions during store initialization.
+ * Central store for match functionality using Zustand.
  * 
  * RECENT CHANGES:
- * - Added initialState to provide default values during store creation and rehydration
- * - Improved hydration error handling with proper fallbacks
- * - Added state reset during rehydration to prevent stale states
- * - Maintained compatibility with existing usage tracking
+ * - Fixed profile validation in cache
  * 
  * FILE INTERACTIONS:
- * - Imports from: user types (UserProfile, MatchWithProfile, MembershipTier)
- * - Imports from: supabase lib (database operations, authentication)
- * - Imports from: auth-store (user data, tier settings access)
- * - Imports from: usage-store (usage tracking and limits)
- * - Imports from: error-utils, network-utils (error handling and network checks)
- * - Exports to: All discovery and matching screens
- * - Dependencies: AsyncStorage (persistence), Zustand (state management)
- * - Data flow: Receives user actions, fetches matches from database, manages
- *   swipe queues, coordinates with usage tracking, provides match data to UI
+ * - Uses supabase.ts for: database queries, match functions
+ * - Uses auth-store for: user data, tier info
+ * - Uses usage-store for: swipe/match limits
+ * - Used by: discover.tsx, profile screens, chat screens
  * 
- * KEY FUNCTIONS/COMPONENTS:
- * - Store Creation: Zustand store with persistence and hydration handling
- * - fetchPotentialMatches: Main function to load potential matches with debugging
- * - prefetchNextBatch: Load additional matches for caching with timeout protection
- * - likeUser/passUser: Handle user swipe actions
- * - queueSwipe: Queue swipe actions for batch processing
- * - processSwipeBatch: Process queued swipes in batches
- * - getMatches: Fetch user's actual matches
- * - refreshCandidates: Force refresh of potential matches
+ * KEY FUNCTIONS:
+ * - fetchPotentialMatches: Gets and caches match profiles
+ * - likeUser/passUser: Handles swipe actions
+ * - processSwipeBatch: Batches swipes for efficiency
+ * - ProfileCache: Manages cached user profiles
  * 
- * HYDRATION FLOW:
- * 1. Store created with initialState
- * 2. Attempt to load persisted state from AsyncStorage
- * 3. If error/no state, fall back to initialState
- * 4. Convert persisted data types (arrays to Sets)
- * 5. Reset loading states to prevent stale state
+ * STORE DEPENDENCIES:
+ * auth-store -> User data and authentication
+ * usage-store -> Action limits and tracking
+ * notification-store -> Match notifications
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -141,6 +124,12 @@ class ProfileCache {
   }
   
   set(id: string, profile: UserProfile): void {
+    // Validate profile before caching
+    if (!profile || Object.keys(profile).length === 0) {
+      console.warn('[ProfileCache] Attempted to cache invalid profile:', { id });
+      return;
+    }
+
     // Ensure cache doesn't exceed max size
     if (this.cache.size >= this.config.maxSize) {
       this.evictLeastUsed();
@@ -157,9 +146,12 @@ class ProfileCache {
   
   private isEntryValid(entry: CacheEntry<UserProfile>): boolean {
     const now = Date.now();
+    // Add additional validation to ensure profile data is not empty
     return (
       entry.version === this.config.version &&
-      now - entry.timestamp < this.config.maxAge
+      now - entry.timestamp < this.config.maxAge &&
+      entry.data &&
+      Object.keys(entry.data).length > 0
     );
   }
   
@@ -448,165 +440,119 @@ const matchesStoreCreator: StateCreator<
   pendingLikes: new Set(),
 
   fetchPotentialMatches: async (maxDistance = 50, forceRefresh = false) => {
-    return await withErrorHandling(async () => {
-      const { user, isReady } = useAuthStore.getState();
-      if (!isReady || !user) {
-        set({ isLoading: false });
-        throw {
-          category: ErrorCategory.AUTH,
-          code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-          message: 'User not ready or authenticated'
-        };
+    const { user } = useAuthStore.getState();
+    const { isDebugMode } = useDebugStore.getState();
+    
+    if (!user) {
+      console.error('[MatchesStore] Cannot fetch matches - no user');
+      set({ error: 'Please log in to see potential matches', isLoading: false });
+      return;
+    }
+
+    if (!user.latitude || !user.longitude) {
+      console.error('[MatchesStore] User location not set');
+      set({ error: 'Please set your location to see potential matches', isLoading: false });
+      return;
+    }
+
+    set({ isLoading: true, error: null });
+    
+    try {
+      if (isDebugMode) {
+        console.log('[MatchesStore] Fetching matches:', {
+          userId: user.id,
+          maxDistance,
+          forceRefresh,
+          currentMatchesCount: get().potentialMatches.length,
+          userLocation: {
+            lat: user.latitude,
+            lon: user.longitude
+          }
+        });
       }
 
-      set({ isLoading: true, error: null });
+      const result = await fetchPotentialMatchesFromSupabase(
+        user.id,
+        maxDistance,
+        false, // isGlobalDiscovery
+        25 // limit
+      );
 
-      try {
-        // If we have cached matches and don't need a refresh, use those
-        if (!forceRefresh && get().cachedMatches.length > 0) {
-          const matches = get().cachedMatches.slice(0, get().batchSize);
-          const remaining = get().cachedMatches.slice(get().batchSize);
-          
-          // Ensure all required fields are present
-          const validMatches = matches.filter(profile => 
-            profile && 
-            profile.id && 
-            profile.name && 
-            typeof profile.distance !== 'undefined'
-          );
+      if (!result || !result.matches) {
+        throw new Error('No matches data returned from Supabase');
+      }
 
-          set({
-            potentialMatches: validMatches,
-            cachedMatches: remaining,
-            isLoading: false,
-            error: null
-          });
-          
-          return validMatches;
-        }
-
-        // Use user's preferred distance if available
-        const userMaxDistance = user.preferredDistance || maxDistance;
-        if (get().isDebugMode) {
-          console.log('[MatchesStore] Using distance', { userMaxDistance, userPreferred: user.preferredDistance });
-        }
-
-        if (!isSupabaseConfigured() || !supabase) {
-          if (get().isDebugMode) {
-            console.log('[MatchesStore] Supabase not configured');
-          }
-          throw {
-            category: ErrorCategory.DATABASE,
-            code: ErrorCodes.DB_CONNECTION_ERROR,
-            message: 'Database connection not configured. Please check your Supabase setup.'
-          };
-        }
-
-        // Use cached tier settings for global discovery
-        const tierSettings = user.allTierSettings?.[user.membershipTier];
-        if (get().isDebugMode) {
-          console.log('[MatchesStore] Tier settings check', {
-            hasTierSettings: !!tierSettings,
-            globalDiscovery: tierSettings?.global_discovery
-          });
-        }
-
-        const isGlobalDiscovery = tierSettings?.global_discovery || false;
-        if (get().isDebugMode) {
-          console.log('[MatchesStore] Global discovery setting', { isGlobalDiscovery });
-        }
-
-        // Fetch potential matches using the Supabase function
-        if (get().isDebugMode) {
-          console.log('[MatchesStore] Calling fetchPotentialMatchesFromSupabase');
-        }
-        const result = await withRateLimitAndRetry(() => fetchPotentialMatchesFromSupabase(
-          user.id,
-          userMaxDistance,
-          isGlobalDiscovery,
-          get().batchSize * 2 // Fetch extra for caching
-        ));
-
-        if (get().isDebugMode) {
-          console.log('[MatchesStore] Supabase result', {
-            hasResult: !!result,
-            hasMatches: !!result?.matches,
-            matchCount: result?.matches?.length || 0
-          });
-        }
-
-        if (!result || !result.matches) {
-          if (get().isDebugMode) {
-            console.log('[MatchesStore] No result or matches from Supabase');
-          }
-          throw {
-            category: ErrorCategory.DATABASE,
-            code: ErrorCodes.DB_QUERY_ERROR,
-            message: 'Unable to fetch potential matches. Please check your network connection and try again.'
-          };
-        }
-
-        if (result.matches.length === 0) {
-          if (get().isDebugMode) {
-            console.log('[MatchesStore] No matches found');
-          }
-          set({
-            potentialMatches: [],
-            cachedMatches: [],
-            isLoading: false,
-            noMoreProfiles: true,
-            error: isGlobalDiscovery ?
-              'No potential matches found globally. Try again later.' :
-              'No potential matches found in your area. Try increasing your search distance or enabling global discovery.'
-          });
-          return;
-        }
-
-        // Convert matches to UserProfile objects
-        if (get().isDebugMode) {
-          console.log('[MatchesStore] Converting matches to UserProfile objects');
-        }
-        const userProfiles = result.matches.map(supabaseToUserProfile);
-        
-        // Split into current batch and cache
-        const batchToShow = userProfiles.slice(0, get().batchSize);
-        const remainingProfiles = userProfiles.slice(get().batchSize);
-
-        if (get().isDebugMode) {
-          console.log('[MatchesStore] Setting final state', {
-            batchToShow: batchToShow.length,
-            remainingProfiles: remainingProfiles.length
-          });
-        }
-
-        set({
-          potentialMatches: batchToShow,
-          cachedMatches: remainingProfiles,
-          isLoading: false,
-          noMoreProfiles: false
+      if (isDebugMode) {
+        console.log('[MatchesStore] Fetch result:', {
+          matchCount: result.matches.length,
+          hasValidData: result.matches.every(m => m && typeof m === 'object'),
+          firstMatch: result.matches[0] ? {
+            id: result.matches[0].id,
+            keys: Object.keys(result.matches[0])
+          } : null
         });
-      } catch (error) {
-        if (get().isDebugMode) {
-          console.error('[MatchesStore] Error in fetchPotentialMatches:', error);
-        }
-        const appError = handleError(error);
-        if (get().isDebugMode) {
-          console.error('[MatchesStore] Error fetching potential matches:', {
-            category: appError.category,
-            code: appError.code,
-            message: appError.message,
-            technical: appError.technical
+      }
+
+      // Validate each match profile
+      const validMatches = result.matches.filter(match => {
+        const isValid = match && 
+          typeof match === 'object' && 
+          match.id &&
+          match.name &&
+          typeof match.distance !== 'undefined';
+
+        if (!isValid && isDebugMode) {
+          console.warn('[MatchesStore] Invalid match data:', {
+            hasMatch: !!match,
+            type: typeof match,
+            keys: match ? Object.keys(match) : [],
+            id: match?.id,
+            name: match?.name,
+            distance: match?.distance
           });
         }
-        set({
-          error: appError.userMessage,
-          isLoading: false,
+        return isValid;
+      });
+
+      if (validMatches.length === 0) {
+        set({ 
           potentialMatches: [],
-          cachedMatches: []
+          isLoading: false,
+          error: 'No potential matches found in your area. Try increasing your search distance.',
+          noMoreProfiles: true
         });
-        throw appError;
+        return;
       }
-    });
+
+      // Cache valid profiles
+      validMatches.forEach(match => {
+        if (match && match.id) {
+          if (isDebugMode) {
+            console.log('[MatchesStore] Caching profile:', {
+              id: match.id,
+              hasData: !!match,
+              dataKeys: Object.keys(match)
+            });
+          }
+          profileCache.set(match.id, match);
+        }
+      });
+
+      set({ 
+        potentialMatches: validMatches,
+        isLoading: false,
+        error: null,
+        noMoreProfiles: validMatches.length === 0
+      });
+
+    } catch (error) {
+      console.error('[MatchesStore] Error fetching matches:', error);
+      set({ 
+        isLoading: false,
+        error: getReadableError(error),
+        potentialMatches: []
+      });
+    }
   },
 
   prefetchNextBatch: async (maxDistance?: number) => {

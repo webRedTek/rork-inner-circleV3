@@ -40,7 +40,8 @@ import {
   Text,
   TouchableOpacity,
   Alert,
-  ActivityIndicator
+  ActivityIndicator,
+  Image
 } from 'react-native';
 import { UserProfile } from '@/types/user';
 import { EntrepreneurCard } from './EntrepreneurCard';
@@ -124,14 +125,45 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   
   // Reset currentIndex when profiles change
   useEffect(() => {
-    if (profiles.length > 0 && currentIndex >= profiles.length) {
+    if (!profiles || profiles.length === 0) {
       if (isDebugMode) {
-        console.log('[SwipeCards] Resetting currentIndex due to profiles change', { oldIndex: currentIndex, profilesCount: profiles.length });
+        console.log('[SwipeCards] No profiles available');
+      }
+      return;
+    }
+
+    if (currentIndex >= profiles.length) {
+      if (isDebugMode) {
+        console.log('[SwipeCards] Resetting currentIndex due to profiles change', { 
+          oldIndex: currentIndex, 
+          profilesCount: profiles.length 
+        });
       }
       setCurrentIndex(0);
       setRenderedProfiles(new Set());
     }
-  }, [profiles.length, currentIndex, isDebugMode]);
+
+    // Validate current profile
+    const currentProfile = profiles[currentIndex];
+    if (!currentProfile || !currentProfile.id || !currentProfile.name) {
+      if (isDebugMode) {
+        console.error('[SwipeCards] Invalid profile data:', {
+          index: currentIndex,
+          hasProfile: !!currentProfile,
+          profileData: currentProfile ? {
+            id: currentProfile.id,
+            name: currentProfile.name,
+            keys: Object.keys(currentProfile)
+          } : null
+        });
+      }
+      setError('Invalid profile data');
+      return;
+    }
+
+    // Clear error if we have valid data
+    setError(null);
+  }, [profiles, currentIndex, isDebugMode]);
 
   // Prefetch effect
   useEffect(() => {
@@ -177,12 +209,21 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   const panResponderHandler = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gesture) => {
+        // Only handle horizontal movements greater than 10 units
+        return Math.abs(gesture.dx) > 10 && Math.abs(gesture.dy) < Math.abs(gesture.dx);
+      },
       onPanResponderMove: (_, gesture) => {
         // Only allow horizontal movement for swiping
         // This prevents diagonal swipes from triggering profile opens
         position.current.setValue({ x: gesture.dx, y: 0 });
       },
       onPanResponderRelease: (_, gesture) => {
+        if (error || !profiles[currentIndex]) {
+          resetPosition();
+          return;
+        }
+
         if (gesture.dx > SWIPE_THRESHOLD) {
           forceSwipe('right');
         } else if (gesture.dx < -SWIPE_THRESHOLD) {
