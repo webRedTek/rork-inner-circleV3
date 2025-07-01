@@ -1,3 +1,39 @@
+/**
+ * FILE: app/edit-profile.tsx
+ * LAST UPDATED: 2025-07-01 14:45
+ * 
+ * INITIALIZATION ORDER:
+ * 1. Initializes after auth-store is ready and user data is available
+ * 2. Requires auth-store, location services, and image picker to be initialized
+ * 3. Initializes user profile form and location services
+ * 4. Updates user profile in auth-store when saved
+ * 5. Race condition: Location services must be enabled before getting device location
+ * 
+ * CURRENT STATE:
+ * Profile editing screen with enhanced location functionality. Allows users to:
+ * - Set location via device GPS or ZIP code
+ * - Update profile information
+ * - Manage location privacy settings
+ * 
+ * RECENT CHANGES:
+ * - Added device location detection with permissions handling
+ * - Implemented ZIP code geocoding
+ * - Added location privacy controls
+ * - Fixed input validation and error handling
+ * 
+ * FILE INTERACTIONS:
+ * - Imports from: auth-store, components/, constants/colors, types/user
+ * - Exports to: Used by app router for profile editing
+ * - Dependencies: expo-location, expo-image-picker for core functionality
+ * - Data flow: Reads/writes user data through auth-store
+ * 
+ * KEY FUNCTIONS/COMPONENTS:
+ * - EditProfileScreen: Main component for profile editing
+ * - getDeviceLocation: Handles device GPS location detection
+ * - getCoordinatesFromZip: Converts ZIP codes to coordinates
+ * - handleUpdateProfile: Validates and saves profile changes
+ */
+
 import React, { useState, useEffect } from 'react';
 import { 
   View, 
@@ -7,7 +43,8 @@ import {
   Alert,
   TouchableOpacity,
   ActivityIndicator,
-  Platform
+  Platform,
+  Linking
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,9 +57,23 @@ import { SingleSelect } from '@/components/SingleSelect';
 import { BusinessField, EntrepreneurStatus, BusinessStage, LookingFor, Skill, AvailabilityLevel, LocationPrivacy } from '@/types/user';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'react-native';
-import { ArrowLeft, Camera } from 'lucide-react-native';
+import { ArrowLeft, Camera, MapPin } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import * as Location from 'expo-location';
 import { handleError, ErrorCategory, ErrorCodes } from '@/utils/error-utils';
+
+// Add maxLength to InputProps interface
+interface InputProps {
+  label: string;
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder?: string;
+  error?: string;
+  keyboardType?: 'default' | 'numeric' | 'email-address' | 'phone-pad';
+  maxLength?: number;
+  editable?: boolean;
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+}
 
 // Helper function to extract readable error message
 const getReadableError = (error: any): string => {
@@ -50,6 +101,32 @@ const getReadableError = (error: any): string => {
     return 'An error occurred';
   }
 };
+
+// Convert string arrays to Option arrays
+const businessFieldOptions = [
+  { label: 'Technology', value: 'Technology' },
+  { label: 'Finance', value: 'Finance' },
+  { label: 'Marketing', value: 'Marketing' },
+  { label: 'E-commerce', value: 'E-commerce' },
+  { label: 'Health', value: 'Health' },
+  { label: 'Education', value: 'Education' },
+  { label: 'Food & Beverage', value: 'Food & Beverage' },
+  { label: 'Real Estate', value: 'Real Estate' },
+  { label: 'Creative', value: 'Creative' },
+  { label: 'Consulting', value: 'Consulting' },
+  { label: 'Manufacturing', value: 'Manufacturing' },
+  { label: 'SaaS', value: 'SaaS' },
+  { label: 'FinTech', value: 'FinTech' },
+  { label: 'Other', value: 'Other' }
+];
+
+const businessStageOptions = [
+  { label: 'Idea Phase', value: 'Idea Phase' },
+  { label: 'Pre-Seed/Startup', value: 'Pre-Seed/Startup' },
+  { label: 'Growth Stage', value: 'Growth Stage' },
+  { label: 'Established/Scaling', value: 'Established/Scaling' },
+  { label: 'Exited', value: 'Exited' }
+];
 
 export default function EditProfileScreen() {
   const router = useRouter();
@@ -85,18 +162,9 @@ export default function EditProfileScreen() {
   const [distanceError, setDistanceError] = useState('');
   
   // Options for select fields
-  const businessFieldOptions: BusinessField[] = [
-    'Technology', 'Finance', 'Marketing', 'E-commerce', 'Health', 
-    'Education', 'Food & Beverage', 'Real Estate', 'Creative', 
-    'Consulting', 'Manufacturing', 'SaaS', 'FinTech', 'Other'
-  ];
   const lookingForOptions: LookingFor[] = [
     'Partners', 'Mentor', 'Bounce Ideas', 'Peers', 
     'Mentoring others', 'Meetups', 'Funding'
-  ];
-  const businessStageOptions: BusinessStage[] = [
-    'Idea Phase', 'Pre-Seed/Startup', 'Growth Stage', 
-    'Established/Scaling', 'Exited'
   ];
   const skillOptions: Skill[] = [
     'Marketing', 'Sales', 'Development', 'UI/UX', 'Fundraising', 
@@ -112,6 +180,8 @@ export default function EditProfileScreen() {
     { label: 'Matches Only', value: 'matches_only' },
     { label: 'Hidden', value: 'hidden' }
   ];
+  
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
   
   useEffect(() => {
     if (user) {
@@ -146,6 +216,101 @@ export default function EditProfileScreen() {
     }
   }, [error, clearError]);
   
+  // Function to get device location
+  const getDeviceLocation = async () => {
+    try {
+      setIsGettingLocation(true);
+      
+      // Check if location services are enabled
+      const enabled = await Location.hasServicesEnabledAsync();
+      if (!enabled) {
+        Alert.alert(
+          'Location Services Disabled',
+          'Please enable location services to use this feature.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+              text: 'Open Settings', 
+              onPress: () => Platform.OS === 'ios' 
+                ? Linking.openURL('app-settings:')
+                : Linking.sendIntent('android.settings.LOCATION_SOURCE_SETTINGS')
+            }
+          ]
+        );
+        return;
+      }
+      
+      // Request permission
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission Denied',
+          'Please grant location permission to use this feature.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+      
+      // Get current position
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced
+      });
+      
+      // Get address from coordinates
+      const [address] = await Location.reverseGeocodeAsync({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude
+      });
+      
+      if (address) {
+        setLocation(address.city || '');
+        setZipCode(address.postalCode || '');
+        // Update coordinates
+        await updateProfile({
+          ...user,
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+          location: address.city || '',
+          zipCode: address.postalCode || ''
+        });
+      }
+      
+    } catch (error) {
+      console.error('Error getting location:', error);
+      Alert.alert('Error', 'Failed to get your location. Please try again or enter it manually.');
+    } finally {
+      setIsGettingLocation(false);
+    }
+  };
+  
+  // Function to get coordinates from ZIP code
+  const getCoordinatesFromZip = async (zipCode: string) => {
+    try {
+      const results = await Location.geocodeAsync(zipCode);
+      if (results && results.length > 0) {
+        const { latitude, longitude } = results[0];
+        // Get address details
+        const [address] = await Location.reverseGeocodeAsync({ latitude, longitude });
+        if (address) {
+          setLocation(address.city || '');
+          // Update coordinates
+          await updateProfile({
+            ...user,
+            latitude,
+            longitude,
+            location: address.city || '',
+            zipCode
+          });
+        }
+      } else {
+        setZipCodeError('Could not find location for this ZIP code');
+      }
+    } catch (error) {
+      console.error('Error geocoding ZIP:', error);
+      setZipCodeError('Invalid ZIP code');
+    }
+  };
+  
   const validateForm = () => {
     let isValid = true;
     
@@ -165,12 +330,16 @@ export default function EditProfileScreen() {
       setBioError('');
     }
     
-    // Zip code validation
-    if (zipCode && !/^\d{5}(-\d{4})?$/.test(zipCode)) {
-      setZipCodeError('Please enter a valid ZIP code (e.g., 12345 or 12345-6789)');
-      isValid = false;
-    } else {
-      setZipCodeError('');
+    // Enhanced ZIP code validation
+    if (zipCode) {
+      if (!/^\d{5}(-\d{4})?$/.test(zipCode)) {
+        setZipCodeError('Please enter a valid ZIP code (e.g., 12345 or 12345-6789)');
+        isValid = false;
+      } else {
+        setZipCodeError('');
+        // Get coordinates when ZIP is valid
+        getCoordinatesFromZip(zipCode);
+      }
     }
     
     // Preferred distance validation
@@ -192,15 +361,6 @@ export default function EditProfileScreen() {
       }
       
       try {
-        // Mock conversion of zip code to lat/long (in real app, use geocoding API)
-        let latitude = 0;
-        let longitude = 0;
-        if (zipCode) {
-          // Placeholder: In a real app, convert zipCode to lat/long using an API
-          latitude = 40.7128; // Example: New York latitude
-          longitude = -74.0060; // Example: New York longitude
-        }
-        
         await updateProfile({
           name,
           businessField,
@@ -218,8 +378,6 @@ export default function EditProfileScreen() {
           zipCode,
           preferredDistance: parseInt(preferredDistance),
           locationPrivacy,
-          latitude,
-          longitude,
           timezone,
           successHighlight
         });
@@ -325,10 +483,9 @@ export default function EditProfileScreen() {
           
           <SingleSelect
             label="Business Field"
+            value={businessField}
+            onValueChange={(value: string) => setBusinessField(value as BusinessField)}
             options={businessFieldOptions}
-            selectedValue={businessField}
-            onSelectionChange={(value) => setBusinessField(value as BusinessField)}
-            placeholder="Select your business field"
           />
           
           <View style={styles.statusContainer}>
@@ -373,11 +530,10 @@ export default function EditProfileScreen() {
           />
           
           <SingleSelect
-            label="Stage of Business"
+            label="Business Stage"
+            value={businessStage}
+            onValueChange={(value: string) => setBusinessStage(value as BusinessStage)}
             options={businessStageOptions}
-            selectedValue={businessStage}
-            onSelectionChange={(value) => setBusinessStage(value as BusinessStage)}
-            placeholder="Select your business stage"
           />
           
           <MultiSelect
@@ -420,49 +576,49 @@ export default function EditProfileScreen() {
             placeholder="Select your availability"
           />
           
-          <Text style={styles.sectionTitle}>Location Settings</Text>
+          <Text style={styles.sectionTitle}>Location</Text>
           
-          <Input
-            label="Location"
-            value={location}
-            onChangeText={setLocation}
-            placeholder="City, Country"
-            autoCapitalize="words"
-          />
+          <TouchableOpacity 
+            style={styles.locationButton}
+            onPress={getDeviceLocation}
+            disabled={isGettingLocation}
+          >
+            <MapPin size={20} color={Colors.dark.accent} />
+            <Text style={styles.locationButtonText}>
+              {isGettingLocation ? 'Getting location...' : 'Use my current location'}
+            </Text>
+            {isGettingLocation && <ActivityIndicator size="small" color={Colors.dark.accent} />}
+          </TouchableOpacity>
+          
+          <Text style={styles.orText}>- OR -</Text>
           
           <Input
             label="ZIP Code"
             value={zipCode}
             onChangeText={setZipCode}
-            placeholder="e.g. 12345"
-            keyboardType="numeric"
+            placeholder="Enter your ZIP code"
             error={zipCodeError}
+            keyboardType="numeric"
+            maxLength={10}
+          />
+          
+          <Text style={styles.sectionTitle}>Location Privacy</Text>
+          
+          <SingleSelect
+            label="Location Privacy"
+            value={locationPrivacy}
+            onValueChange={(value) => setLocationPrivacy(value as LocationPrivacy)}
+            options={locationPrivacyOptions}
           />
           
           <Input
             label="Preferred Distance (km)"
             value={preferredDistance}
             onChangeText={setPreferredDistance}
-            placeholder="e.g. 50"
-            keyboardType="numeric"
+            placeholder="Maximum distance for matches"
             error={distanceError}
+            keyboardType="numeric"
           />
-          
-          <View style={styles.privacyContainer}>
-            <Text style={styles.privacyLabel}>Location Privacy</Text>
-            <View style={styles.privacyOptions}>
-              {locationPrivacyOptions.map(option => (
-                <Button
-                  key={option.value}
-                  title={option.label}
-                  onPress={() => setLocationPrivacy(option.value as LocationPrivacy)}
-                  variant={locationPrivacy === option.value ? 'primary' : 'outline'}
-                  size="small"
-                  style={styles.privacyButton}
-                />
-              ))}
-            </View>
-          </View>
           
           <Input
             label="Timezone"
@@ -576,21 +732,24 @@ const styles = StyleSheet.create({
   disabledInput: {
     opacity: 0.7,
   },
-  privacyContainer: {
-    marginBottom: 16,
-  },
-  privacyLabel: {
-    fontSize: 16,
-    marginBottom: 8,
-    color: Colors.dark.text,
-    fontWeight: '500',
-  },
-  privacyOptions: {
+  locationButton: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.dark.textDim,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12
   },
-  privacyButton: {
-    flex: 1,
+  locationButtonText: {
+    color: Colors.dark.text,
+    marginLeft: 8,
+    fontSize: 16
+  },
+  orText: {
+    textAlign: 'center',
+    color: Colors.dark.textDim,
+    marginVertical: 12
   },
   buttonContainer: {
     marginTop: 24,
