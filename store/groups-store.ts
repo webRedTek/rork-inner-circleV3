@@ -159,6 +159,7 @@ interface GroupsState {
   updateGroup: (groupData: Partial<Group>) => Promise<void>;
   clearError: () => void;
   resetGroupsCache: () => Promise<void>;
+  clearGroups: () => void;
 }
 
 export const useGroupsStore = create<GroupsState>((set, get) => ({
@@ -1234,6 +1235,27 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
       });
       set({ error: appError.userMessage });
       throw appError;
+    }
+  },
+
+  clearGroups: () => {
+    set({ groups: [], groupsLoading: false });
+  },
+
+  fetchGroups: async () => {
+    set({ groupsLoading: true });
+    try {
+      const { data, error } = await supabase
+        .from('groups')
+        .select('*')
+        .eq('user_id', useAuthStore.getState().user?.id);
+        
+      if (error) throw error;
+      
+      set({ groups: data || [], groupsLoading: false });
+    } catch (error) {
+      set({ groupsLoading: false });
+      handleError(error);
     }
   }
 }));

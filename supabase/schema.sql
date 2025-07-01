@@ -350,113 +350,22 @@ begin
   from public.users
   where id = p_user_id;
   
-  -- Return settings based on tier
-  case user_tier
-    when 'bronze' then
-      settings := jsonb_build_object(
-        'daily_swipe_limit', 10,
-        'daily_match_limit', 5,
-        'message_sending_limit', 20,
-        'can_see_who_liked_you', false,
-        'can_rewind_last_swipe', false,
-        'boost_duration', 0,
-        'boost_frequency', 0,
-        'profile_visibility_control', false,
-        'priority_listing', false,
-        'premium_filters_access', false,
-        'global_discovery', false,
-        'groups_limit', 0,
-        'groups_creation_limit', 0,
-        'featured_portfolio_limit', 0,
-        'events_per_month', 0,
-        'can_create_groups', false,
-        'has_business_verification', false,
-        'has_advanced_analytics', false,
-        'has_priority_inbox', false,
-        'can_send_direct_intro', false,
-        'has_virtual_meeting_room', false,
-        'has_custom_branding', false,
-        'has_dedicated_support', false
-      );
-    when 'silver' then
-      settings := jsonb_build_object(
-        'daily_swipe_limit', 30,
-        'daily_match_limit', 15,
-        'message_sending_limit', 50,
-        'can_see_who_liked_you', true,
-        'can_rewind_last_swipe', true,
-        'boost_duration', 30,
-        'boost_frequency', 1,
-        'profile_visibility_control', true,
-        'priority_listing', false,
-        'premium_filters_access', true,
-        'global_discovery', false,
-        'groups_limit', 3,
-        'groups_creation_limit', 1,
-        'featured_portfolio_limit', 3,
-        'events_per_month', 2,
-        'can_create_groups', true,
-        'has_business_verification', false,
-        'has_advanced_analytics', false,
-        'has_priority_inbox', false,
-        'can_send_direct_intro', false,
-        'has_virtual_meeting_room', false,
-        'has_custom_branding', false,
-        'has_dedicated_support', false
-      );
-    when 'gold' then
-      settings := jsonb_build_object(
-        'daily_swipe_limit', 100,
-        'daily_match_limit', 50,
-        'message_sending_limit', 200,
-        'can_see_who_liked_you', true,
-        'can_rewind_last_swipe', true,
-        'boost_duration', 60,
-        'boost_frequency', 3,
-        'profile_visibility_control', true,
-        'priority_listing', true,
-        'premium_filters_access', true,
-        'global_discovery', true,
-        'groups_limit', 10,
-        'groups_creation_limit', 5,
-        'featured_portfolio_limit', 10,
-        'events_per_month', 10,
-        'can_create_groups', true,
-        'has_business_verification', true,
-        'has_advanced_analytics', true,
-        'has_priority_inbox', true,
-        'can_send_direct_intro', true,
-        'has_virtual_meeting_room', true,
-        'has_custom_branding', true,
-        'has_dedicated_support', true
-      );
-    else
-      settings := jsonb_build_object(
-        'daily_swipe_limit', 10,
-        'daily_match_limit', 5,
-        'message_sending_limit', 20,
-        'can_see_who_liked_you', false,
-        'can_rewind_last_swipe', false,
-        'boost_duration', 0,
-        'boost_frequency', 0,
-        'profile_visibility_control', false,
-        'priority_listing', false,
-        'premium_filters_access', false,
-        'global_discovery', false,
-        'groups_limit', 0,
-        'groups_creation_limit', 0,
-        'featured_portfolio_limit', 0,
-        'events_per_month', 0,
-        'can_create_groups', false,
-        'has_business_verification', false,
-        'has_advanced_analytics', false,
-        'has_priority_inbox', false,
-        'can_send_direct_intro', false,
-        'has_virtual_meeting_room', false,
-        'has_custom_branding', false,
-        'has_dedicated_support', false
-      );
-  end case;
+  -- Get settings from app_settings table
+  select row_to_json(s)::jsonb into settings
+  from app_settings s
+  where s.tier = user_tier;
+  
+  -- If no settings found, use bronze tier settings as fallback
+  if settings is null then
+    select row_to_json(s)::jsonb into settings
+    from app_settings s
+    where s.tier = 'bronze';
+  end if;
+  
+  -- If still no settings found, raise an error
+  if settings is null then
+    raise exception 'No tier settings found in app_settings table';
+  end if;
   
   return settings;
 end;

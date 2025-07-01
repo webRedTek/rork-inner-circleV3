@@ -1,32 +1,47 @@
 /**
  * FILE: store/auth-store.ts
- * LAST UPDATED: 2024-12-19 16:15
+ * LAST UPDATED: 2024-12-20 17:30
+ * 
+ * INITIALIZATION ORDER:
+ * 1. Initializes early in app startup after AsyncStorage is ready
+ * 2. Requires AsyncStorage and Supabase config to be initialized
+ * 3. Initializes user authentication state and tier settings
+ * 4. All other stores depend on this being initialized
+ * 5. Race condition: Must wait for AsyncStorage hydration before accessing state
  * 
  * CURRENT STATE:
  * Central authentication and user management store using Zustand. Handles user login,
  * signup, profile management, tier settings, and session management. Provides
  * tier settings access that is used by matches-store and other stores for feature
- * permissions and limits.
+ * permissions and limits. Now includes cache validation to ensure data consistency
+ * across user sessions.
  * 
  * RECENT CHANGES:
- * - No changes needed - auth-store already properly provides getTierSettings()
- * - Function correctly returns tier settings for current user's membership tier
- * - Used by matches-store for global discovery and other tier-based features
- * - Maintains compatibility with prefetching fixes in matches-store
+ * - Added validateAndRefreshCache function to clear and refresh store data on user change
+ * - Modified login flow to validate and refresh caches when different user logs in
+ * - Preserved tier settings cache while refreshing other store data
+ * - Added proper cache clearing for matches, groups, messages, usage, and affiliate data
+ * - Improved error handling and loading state management during cache refresh
  * 
  * FILE INTERACTIONS:
  * - Imports from: user types (UserProfile, MembershipTier, TierSettings, UserRole)
  * - Imports from: supabase lib (authentication, database operations)
  * - Imports from: usage-store (usage tracking initialization and sync)
+ * - Imports from: matches-store (cache management)
+ * - Imports from: groups-store (cache management)
+ * - Imports from: messages-store (cache management)
+ * - Imports from: affiliate-store (cache management)
  * - Imports from: notification-store (success notifications)
  * - Imports from: error-utils, network-utils (error handling and network checks)
  * - Exports to: All stores and screens that need user data or tier settings
  * - Dependencies: AsyncStorage (persistence), Zustand (state management)
  * - Data flow: Manages user authentication state, provides tier settings to other
- *   stores, coordinates with usage tracking, handles profile updates
+ *   stores, coordinates with usage tracking, handles profile updates, manages
+ *   cache consistency across user sessions
  * 
  * KEY FUNCTIONS/COMPONENTS:
- * - login/signup: User authentication with profile creation
+ * - login/signup: User authentication with profile creation and cache validation
+ * - validateAndRefreshCache: Ensures data consistency when different user logs in
  * - getTierSettings: Returns tier settings for current user (used by matches-store)
  * - fetchAllTierSettings: Loads all tier settings from database
  * - updateProfile/updateMembership: Profile and membership management
@@ -46,6 +61,10 @@ import NetInfo from '@react-native-community/netinfo';
 import { useUsageStore, startUsageSync, stopUsageSync } from './usage-store';
 import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory, showError } from '@/utils/error-utils';
 import { checkNetworkStatus, withNetworkCheck } from '@/utils/network-utils';
+import { useMatchesStore } from './matches-store';
+import { useGroupsStore } from './groups-store';
+import { useMessagesStore } from './messages-store';
+import { useAffiliateStore } from './affiliate-store';
 
 interface AuthState {
   user: UserProfile | null;
@@ -69,6 +88,7 @@ interface AuthState {
   clearCache: () => Promise<void>;
   checkSession: () => Promise<void>;
   checkNetworkConnection: () => Promise<void>;
+  validateAndRefreshCache: (newUserId: string) => Promise<void>;
 }
 
 // Helper function to convert Supabase response to UserProfile type
@@ -165,6 +185,37 @@ export const useAuthStore = create<AuthState>()(
         );
       },
 
+      validateAndRefreshCache: async (newUserId: string) => {
+        const { user } = get();
+        
+        // If there's cached data and the user ID doesn't match
+        if (user && user.id !== newUserId) {
+          set({ isLoading: true });
+          
+          // Clear matches, groups, and messages data
+          useMatchesStore.getState().resetCacheAndState(); // This also clears the ProfileCache
+          useGroupsStore.getState().clearGroups();
+          useMessagesStore.getState().clearMessages();
+          
+          // Reset usage tracking data
+          useUsageStore.getState().resetUsage(); // Using resetUsage instead of resetUsageCache
+          
+          // Reset affiliate data
+          useAffiliateStore.getState().resetAffiliateCache();
+          
+          // Fetch fresh data
+          await Promise.all([
+            useMatchesStore.getState().fetchPotentialMatches(),
+            useGroupsStore.getState().fetchGroups(),
+            useMessagesStore.getState().fetchMessages(),
+            useUsageStore.getState().initializeUsage(newUserId),
+            useAffiliateStore.getState().fetchAffiliateData()
+          ]);
+          
+          set({ isLoading: false });
+        }
+      },
+
       login: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
         
@@ -253,9 +304,6 @@ export const useAuthStore = create<AuthState>()(
 
               // Initialize usage tracking
               await useUsageStore.getState().initializeUsage(data.user.id);
-              
-              // Only start usage sync after confirming profile creation
-              startUsageSync();
             } else if (profileError) {
               throw {
                 category: ErrorCategory.DATABASE,
@@ -264,6 +312,10 @@ export const useAuthStore = create<AuthState>()(
               };
             } else {
               const userProfile = supabaseToUserProfile(profileData || {});
+              
+              // Validate and refresh cache if needed
+              await get().validateAndRefreshCache(userProfile.id);
+              
               await useUsageStore.getState().initializeUsage(userProfile.id);
 
               set({
@@ -272,9 +324,6 @@ export const useAuthStore = create<AuthState>()(
                 isLoading: false,
                 error: null
               });
-
-              // Only start usage sync after confirming we have the profile
-              startUsageSync();
             }
           });
         } catch (error) {
@@ -664,13 +713,9 @@ export const useAuthStore = create<AuthState>()(
             // First load tier settings
             await get().fetchAllTierSettings();
             
-            // Initialize usage tracking
+            // Then initialize usage tracking
             await useUsageStore.getState().initializeUsage(userProfile.id);
-            
-            // Only start usage sync after we confirm we have a valid profile
-            if (profileData) {
-              startUsageSync();
-            }
+            startUsageSync();
 
             set({
               user: userProfile,
@@ -693,7 +738,7 @@ export const useAuthStore = create<AuthState>()(
             error: appError.userMessage,
           });
         }
-      }
+      },
     }),
     {
       name: 'auth-store',

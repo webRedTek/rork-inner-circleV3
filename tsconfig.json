@@ -6,7 +6,15 @@
       "@/*": [
         "./*"
       ]
-    }
+    },
+    "lib": ["ES2015", "DOM"],
+    "types": [
+      "node",
+      "@types/react-native",
+      "@react-native-async-storage/async-storage",
+      "@react-native-community/netinfo",
+      "zustand"
+    ]
   },
   "include": [
     "**/*.ts",

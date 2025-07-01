@@ -1135,6 +1135,27 @@ const matchesStoreCreator: StateCreator<
         set((state: MatchesState) => ({ passedUsers: updatedPasses }));
       }
     });
+  },
+
+  clearMatches: () => {
+    set({ matches: [], pendingMatches: [], matchesLoading: false });
+  },
+  
+  fetchMatches: async () => {
+    set({ matchesLoading: true });
+    try {
+      const { data, error } = await supabase
+        .from('matches')
+        .select('*')
+        .eq('user_id', useAuthStore.getState().user?.id);
+        
+      if (error) throw error;
+      
+      set({ matches: data || [], matchesLoading: false });
+    } catch (error) {
+      set({ matchesLoading: false });
+      handleError(error);
+    }
   }
 });
 

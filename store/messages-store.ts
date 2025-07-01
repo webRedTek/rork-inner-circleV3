@@ -54,6 +54,8 @@ interface MessagesState {
   markAsRead: (conversationId: string) => Promise<void>;
   clearError: (conversationId: string) => void;
   resetMessagesCache: () => Promise<void>;
+  clearMessages: () => void;
+  fetchMessages: () => Promise<void>;
 }
 
 type SetState = (fn: (state: MessagesState) => Partial<MessagesState>) => void;
@@ -461,6 +463,27 @@ export const useMessagesStore = create<MessagesState>()((set: SetState, get: Get
     } catch (error) {
       const appError = handleError(error);
       throw appError;
+    }
+  },
+
+  clearMessages: () => {
+    set({ messages: {}, isLoading: {} });
+  },
+  
+  fetchMessages: async () => {
+    set({ isLoading: { ...get().isLoading, '*': true } });
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('user_id', useAuthStore.getState().user?.id);
+        
+      if (error) throw error;
+      
+      set({ messages: data || {}, isLoading: { ...get().isLoading, '*': false } });
+    } catch (error) {
+      set({ isLoading: { ...get().isLoading, '*': false } });
+      handleError(error);
     }
   }
 }));
