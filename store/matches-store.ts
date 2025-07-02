@@ -510,12 +510,14 @@ const matchesStoreCreator: StateCreator<
           get().potentialMatches.length // offset
         );
 
-        if (!result || !result.matches) {
-          throw {
-            category: ErrorCategory.BUSINESS,
-            code: ErrorCodes.DB_NOT_FOUND,
-            message: 'No additional matches found in your area'
-          };
+        // Handle case where no matches are returned (this is normal, not an error)
+        if (!result || !result.matches || result.matches.length === 0) {
+          set({
+            isLoading: false,
+            error: 'No more profiles available in your area. Try expanding your search distance or enabling global search.',
+            noMoreProfiles: true
+          });
+          return; // Exit gracefully without throwing an error
         }
 
         // Filter and validate matches
