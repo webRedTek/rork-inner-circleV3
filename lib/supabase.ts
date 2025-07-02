@@ -864,8 +864,7 @@ export const fetchPotentialMatches = async (
   userId: string, 
   maxDistance: number = 50, 
   isGlobalDiscovery: boolean = false, 
-  limit: number = 25,
-  offset: number = 0
+  limit: number = 25
 ): Promise<PotentialMatchesResult | null> => {
   console.log('🚨 TEST: fetchPotentialMatches function called!');
   
@@ -878,8 +877,7 @@ export const fetchPotentialMatches = async (
     userId,
     maxDistance,
     isGlobalDiscovery,
-    limit,
-    offset
+    limit
   });
   
   return retryOperation(async () => {
@@ -889,8 +887,7 @@ export const fetchPotentialMatches = async (
       p_user_id: userId,
       p_max_distance: maxDistance,
       p_is_global_discovery: isGlobalDiscovery,
-      p_limit: limit,
-      p_offset: offset
+      p_limit: limit
     });
     
     console.log('[Supabase] RPC response:', {

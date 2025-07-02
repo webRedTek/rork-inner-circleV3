@@ -127,10 +127,10 @@ class ProfileCache {
   constructor() {
     this.cache = new Map();
     this.config = {
-      maxAge: 1000 * 60 * 30, // 30 minutes
-      maxSize: 100, // Maximum number of profiles to cache
-      version: 1
-    };
+    maxAge: 1000 * 60 * 30, // 30 minutes
+    maxSize: 100, // Maximum number of profiles to cache
+    version: 1
+  };
     // Start cache cleanup interval
     setInterval(() => this.cleanup(), 1000 * 60 * 5); // Every 5 minutes
   }
@@ -562,8 +562,7 @@ const matchesStoreCreator: StateCreator<
           user.id,
           maxDistance,
           undefined, // isGlobalDiscovery
-          batchSize, // limit
-          potentialMatches.length // offset
+          batchSize // limit
         );
 
         if (debugStore.isDebugMode) {
@@ -708,10 +707,10 @@ const matchesStoreCreator: StateCreator<
           console.error('Category:', appError.category);
           console.error('Code:', appError.code);
         }
-        
-        set({
+
+            set({
           error: appError.userMessage,
-          isLoading: false,
+              isLoading: false,
           noMoreProfiles: true
         });
         
@@ -930,7 +929,7 @@ const matchesStoreCreator: StateCreator<
 
       const currentBatch = get().swipeQueue.slice(0, get().batchSize);
       if (currentBatch.length === 0) return;
-
+      
       // Make a copy for rollback
       const batchCopy = [...currentBatch];
       
@@ -971,7 +970,7 @@ const matchesStoreCreator: StateCreator<
   getMatches: async () => {
     set({ matchesLoading: true });
     try {
-      if (!isSupabaseConfigured() || !supabase) {
+        if (!isSupabaseConfigured() || !supabase) {
         throw new Error('Supabase client not initialized');
       }
       
@@ -1155,13 +1154,13 @@ export const useMatchesStore = create<MatchesState>()(
           return;
         }
 
-        useMatchesStore.setState({
-          ...state,
-          pendingLikes: new Set(state.pendingLikes),
-          isLoading: false,
+          useMatchesStore.setState({
+            ...state,
+            pendingLikes: new Set(state.pendingLikes),
+            isLoading: false,
           isPrefetching: false,
           matchesLoading: false
-        });
+          });
       }
     } as unknown as PersistOptions<MatchesState, MatchesPersistedState>
   )
