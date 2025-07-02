@@ -48,10 +48,13 @@ interface MessagesState {
   isLoading: Record<string, boolean>; // Loading state per conversation
   error: Record<string, string | null>; // Error state per conversation
   pagination: Record<string, { page: number; hasMore: boolean; lastFetched: number }>; // Pagination info per conversation
+  subscriptions: Record<string, any>; // Real-time subscriptions per conversation
   sendMessage: (conversationId: string, content: string, receiverId: string) => Promise<void>;
   getMessages: (conversationId: string, pageSize?: number) => Promise<void>;
   loadMoreMessages: (conversationId: string, pageSize?: number) => Promise<void>;
   markAsRead: (conversationId: string) => Promise<void>;
+  subscribeToMessages: (conversationId: string) => void;
+  unsubscribeFromMessages: (conversationId: string) => void;
   clearError: (conversationId: string) => void;
   resetMessagesCache: () => Promise<void>;
   clearMessages: () => void;
@@ -66,6 +69,7 @@ export const useMessagesStore = create<MessagesState>()((set: SetState, get: Get
   isLoading: {},
   error: {},
   pagination: {},
+  subscriptions: {},
 
   sendMessage: async (conversationId: string, content: string, receiverId: string): Promise<void> => {
     set((state: MessagesState) => ({ 
@@ -449,6 +453,128 @@ export const useMessagesStore = create<MessagesState>()((set: SetState, get: Get
     }
   },
 
+  subscribeToMessages: (conversationId: string) => {
+    try {
+      // Check if already subscribed
+      const { subscriptions } = get();
+      if (subscriptions[conversationId]) {
+        console.log(`Already subscribed to messages for conversation: ${conversationId}`);
+        return;
+      }
+
+      if (!isSupabaseConfigured() || !supabase) {
+        console.warn('Supabase not configured, cannot subscribe to messages');
+        return;
+      }
+
+      console.log(`Subscribing to messages for conversation: ${conversationId}`);
+
+      // Create real-time subscription
+      const subscription = supabase
+        .channel(`messages:${conversationId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages',
+            filter: `conversation_id=eq.${conversationId}`
+          },
+          (payload) => {
+            console.log('New message received:', payload);
+            
+            if (payload.new) {
+              const newMessage = supabaseToMessage(payload.new);
+              
+              // Add new message to state
+              set((state: MessagesState) => {
+                const conversationMessages = state.messages[conversationId] || [];
+                const updatedMessages = [...conversationMessages, newMessage];
+                
+                return {
+                  messages: {
+                    ...state.messages,
+                    [conversationId]: updatedMessages
+                  }
+                };
+              });
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'messages',
+            filter: `conversation_id=eq.${conversationId}`
+          },
+          (payload) => {
+            console.log('Message updated:', payload);
+            
+            if (payload.new) {
+              const updatedMessage = supabaseToMessage(payload.new);
+              
+              // Update message in state
+              set((state: MessagesState) => {
+                const conversationMessages = state.messages[conversationId] || [];
+                const updatedMessages = conversationMessages.map((msg: Message) =>
+                  msg.id === updatedMessage.id ? updatedMessage : msg
+                );
+                
+                return {
+                  messages: {
+                    ...state.messages,
+                    [conversationId]: updatedMessages
+                  }
+                };
+              });
+            }
+          }
+        )
+        .subscribe((status) => {
+          console.log(`Subscription status for ${conversationId}:`, status);
+        });
+
+      // Store subscription
+      set((state: MessagesState) => ({
+        subscriptions: {
+          ...state.subscriptions,
+          [conversationId]: subscription
+        }
+      }));
+
+    } catch (error) {
+      console.error('Error subscribing to messages:', error);
+    }
+  },
+
+  unsubscribeFromMessages: (conversationId: string) => {
+    try {
+      const { subscriptions } = get();
+      const subscription = subscriptions[conversationId];
+      
+      if (subscription) {
+        console.log(`Unsubscribing from messages for conversation: ${conversationId}`);
+        
+        // Unsubscribe from real-time updates
+        supabase?.removeChannel(subscription);
+        
+        // Remove subscription from state
+        set((state: MessagesState) => {
+          const newSubscriptions = { ...state.subscriptions };
+          delete newSubscriptions[conversationId];
+          
+          return {
+            subscriptions: newSubscriptions
+          };
+        });
+      }
+    } catch (error) {
+      console.error('Error unsubscribing from messages:', error);
+    }
+  },
+
   clearError: (conversationId: string) => set((state: MessagesState) => ({ 
     error: { ...state.error, [conversationId]: null }
   })),
@@ -457,7 +583,20 @@ export const useMessagesStore = create<MessagesState>()((set: SetState, get: Get
     try {
       await withErrorHandling(async () => {
         console.log('[MessagesStore] Resetting messages cache');
-        const newState: Partial<MessagesState> = { messages: {}, isLoading: {}, error: {}, pagination: {} };
+        
+        // Unsubscribe from all active subscriptions
+        const { subscriptions } = get();
+        Object.keys(subscriptions).forEach((conversationId) => {
+          get().unsubscribeFromMessages(conversationId);
+        });
+        
+        const newState: Partial<MessagesState> = { 
+          messages: {}, 
+          isLoading: {}, 
+          error: {}, 
+          pagination: {},
+          subscriptions: {}
+        };
         set(() => newState);
       });
     } catch (error) {
@@ -467,7 +606,17 @@ export const useMessagesStore = create<MessagesState>()((set: SetState, get: Get
   },
 
   clearMessages: () => {
-    set({ messages: {}, isLoading: {} });
+    // Unsubscribe from all active subscriptions
+    const { subscriptions } = get();
+    Object.keys(subscriptions).forEach((conversationId) => {
+      get().unsubscribeFromMessages(conversationId);
+    });
+    
+    set({ 
+      messages: {}, 
+      isLoading: {},
+      subscriptions: {}
+    });
   },
   
   fetchMessages: async () => {
