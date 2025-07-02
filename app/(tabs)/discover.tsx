@@ -292,7 +292,13 @@ export default function DiscoverScreen() {
           return;
         }
         setDistanceError('');
-        fetchPotentialMatches(distanceNum, true);
+        
+        // Handle global search vs local search
+        const distance = isGlobalSearchAllowed && globalSearch 
+          ? undefined 
+          : distanceNum;
+        
+        fetchPotentialMatches(distance, true);
         setShowFilterModal(false);
         break;
       case 'cancel':
@@ -314,10 +320,11 @@ export default function DiscoverScreen() {
     
     try {
       // Always use fetchPotentialMatches for consistency
-      await fetchPotentialMatches(
-        parseInt(preferredDistance),
-        true // Force refresh
-      );
+      const distance = isGlobalSearchAllowed && globalSearch 
+        ? undefined 
+        : parseInt(preferredDistance);
+      
+      await fetchPotentialMatches(distance, true); // Force refresh
     } catch (error) {
       console.error('[Discover] Error refreshing matches:', error);
     } finally {

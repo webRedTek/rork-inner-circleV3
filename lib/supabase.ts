@@ -867,6 +867,8 @@ export const fetchPotentialMatches = async (
   limit: number = 25,
   offset: number = 0
 ): Promise<PotentialMatchesResult | null> => {
+  console.log('🚨 TEST: fetchPotentialMatches function called!');
+  
   if (!supabase) {
     throw new Error('Supabase client not initialized');
   }
