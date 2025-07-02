@@ -576,7 +576,7 @@ export default function DiscoverScreen() {
             >
               <MapPin 
                 size={24} 
-                color={refreshing || isLoading ? Colors.dark.disabled : Colors.dark.accent} 
+                color={refreshing || isLoading ? Colors.dark.disabled : Colors.dark.text} 
               />
               <Text style={[
                 styles.filterButtonText,
@@ -804,20 +804,17 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  actionButtonFlex: {
-    flex: 1,
-    marginHorizontal: 8,
-  },
   refreshButton: {
     backgroundColor: Colors.dark.card,
   },
   filterButton: {
-    backgroundColor: Colors.dark.card,
+    width: 'auto',
     paddingHorizontal: 16,
     gap: 8,
+    backgroundColor: Colors.dark.card,
   },
   filterButtonText: {
-    color: Colors.dark.accent,
+    color: Colors.dark.text,
     fontSize: 14,
     fontWeight: '600',
   },
