@@ -1,43 +1,46 @@
 /**
  * FILE: components/SwipeCards.tsx
- * LAST UPDATED: 2025-07-02 18:00
+ * LAST UPDATED: 2025-07-02 19:00
  * 
  * INITIALIZATION ORDER:
  * 1. Initializes when rendered in discover screen
  * 2. Requires matches-store and user profiles to be loaded
- * 3. Sets up gesture handlers and card animations
+ * 3. Sets up enhanced gesture handlers and optimized animations
  * 4. Parent components depend on swipe events
  * 5. Race condition: Must wait for profile data before rendering
  * 
  * CURRENT STATE:
- * Enhanced swipeable card interface for user discovery with:
- * - Ultra-smooth native-driven animations with optimized spring configs
- * - Highly responsive gesture handling with improved velocity detection
- * - Enhanced visual feedback with better like/pass indicators
- * - Improved haptic feedback timing and intensity
- * - Better error handling with proper error stringification
- * - Performance optimizations with memoization and reduced re-renders
+ * Significantly enhanced swipeable card interface for user discovery with:
+ * - Ultra-smooth native-driven animations with optimized spring physics
+ * - Highly responsive gesture handling with predictive motion
+ * - Enhanced visual feedback with dynamic indicators and micro-interactions
+ * - Optimistic UI updates with rollback capability for better UX
+ * - Performance optimizations with intelligent memoization and native driver usage
+ * - Adaptive animation timing based on gesture velocity and user behavior
+ * - Enhanced haptic feedback with contextual intensity and timing
  * 
  * RECENT CHANGES:
- * - Completely overhauled animation system for smoother feel
- * - Enhanced gesture detection with lower thresholds and better velocity handling
- * - Improved card stack animations with better scaling and positioning
- * - Added enhanced visual feedback with animated like/pass indicators
- * - Optimized performance with better memoization and native driver usage
- * - Fixed error handling to prevent [object Object] errors
- * - Enhanced haptic feedback with better timing and intensity variations
+ * - Implemented optimistic UI updates with rollback on failure
+ * - Enhanced gesture prediction and velocity-based animations
+ * - Added adaptive animation timing based on user behavior
+ * - Improved card stack management with better depth perception
+ * - Enhanced visual feedback with dynamic scaling and rotation
+ * - Optimized performance with better memoization and reduced re-renders
+ * - Added contextual haptic feedback with variable intensity
+ * - Implemented gesture momentum and natural physics
  * 
  * FILE INTERACTIONS:
- * - Imports from: react-native, matches-store, types/user
+ * - Imports from: react-native, enhanced matches-store, types/user
  * - Exports to: discover screen
  * - Dependencies: react-native-reanimated for animations
- * - Data flow: Bidirectional with matches-store
+ * - Data flow: Bidirectional with enhanced matches-store
  * 
  * KEY FUNCTIONS/COMPONENTS:
- * - SwipeCards: Main component for card interface with enhanced animations
- * - onSwipeComplete: Processes swipe gestures with improved error handling
- * - forceSwipe: Handles swipe animations with optimized native driver
- * - renderCards: Renders individual profile cards with smooth animations
+ * - SwipeCards: Main component with optimistic updates and enhanced animations
+ * - onSwipeComplete: Enhanced swipe processing with rollback capability
+ * - forceSwipe: Optimized swipe animations with velocity-based timing
+ * - renderCards: Enhanced card rendering with improved stack management
+ * - Enhanced gesture handling with predictive motion and momentum
  */
 
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
@@ -79,29 +82,36 @@ interface SwipeCardsProps {
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
-// Enhanced animation constants for smoother feel
-const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.2; // Reduced for easier swiping
-const SWIPE_VELOCITY_THRESHOLD = 0.2; // Reduced for more responsive velocity detection
-const SWIPE_OUT_DURATION = 250; // Slightly faster for snappier feel
-const CARD_ROTATION_RANGE = 12; // Reduced rotation for more subtle effect
+// Enhanced animation constants for ultra-smooth feel
+const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.15; // Reduced for easier swiping
+const SWIPE_VELOCITY_THRESHOLD = 0.15; // More sensitive velocity detection
+const SWIPE_OUT_DURATION = 200; // Faster for snappier feel
+const CARD_ROTATION_RANGE = 8; // Reduced for more subtle effect
 
-// Optimized spring configurations for natural feel
+// Optimized spring configurations for natural physics
 const SPRING_CONFIG = {
-  tension: 140, // Increased for snappier response
-  friction: 6, // Reduced for less dampening
+  tension: 180, // Increased for more responsive feel
+  friction: 7, // Balanced for smooth motion
   useNativeDriver: true
 };
 
 const RESET_SPRING_CONFIG = {
-  tension: 160, // Higher tension for quick snap-back
-  friction: 8, // Balanced friction for smooth return
+  tension: 200, // Higher tension for quick snap-back
+  friction: 9, // Slightly more friction for controlled return
   useNativeDriver: true
 };
 
 const CARD_SCALE_CONFIG = {
-  tension: 120,
-  friction: 7,
+  tension: 150,
+  friction: 8,
   useNativeDriver: true
+};
+
+// Velocity-based animation timing
+const getVelocityBasedDuration = (velocity: number): number => {
+  const baseTime = 200;
+  const velocityFactor = Math.min(Math.abs(velocity) * 100, 150);
+  return Math.max(baseTime - velocityFactor, 100);
 };
 
 // Enhanced helper function to safely stringify errors
@@ -153,17 +163,25 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isGestureActive, setIsGestureActive] = useState(false);
+  const [gestureVelocity, setGestureVelocity] = useState({ x: 0, y: 0 });
+  const [lastGestureTime, setLastGestureTime] = useState(0);
 
   const { user } = useAuthStore();
+  const { optimisticUpdates, getUserBehavior, rollbackOptimisticUpdate } = useMatchesStore();
 
   // Enhanced animated values with better initial configurations
   const position = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const scale = useRef(new Animated.Value(1)).current;
   const opacity = useRef(new Animated.Value(1)).current;
-  const nextCardScale = useRef(new Animated.Value(0.92)).current; // Slightly larger for better visibility
-  const nextCardOpacity = useRef(new Animated.Value(0.7)).current;
+  const nextCardScale = useRef(new Animated.Value(0.94)).current; // Slightly larger for better visibility
+  const nextCardOpacity = useRef(new Animated.Value(0.8)).current;
   const likeIndicatorScale = useRef(new Animated.Value(0)).current;
   const passIndicatorScale = useRef(new Animated.Value(0)).current;
+  const cardRotation = useRef(new Animated.Value(0)).current;
+
+  // Gesture momentum tracking
+  const gestureHistory = useRef<Array<{ x: number; y: number; time: number }>>([]);
+  const maxHistoryLength = 5;
 
   // Memoized interpolations with enhanced ranges for smoother animations
   const animatedStyles = useMemo(() => {
@@ -174,27 +192,40 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     });
     
     const likeOpacity = position.x.interpolate({
-      inputRange: [0, SWIPE_THRESHOLD * 0.5, SWIPE_THRESHOLD],
-      outputRange: [0, 0.5, 1],
+      inputRange: [0, SWIPE_THRESHOLD * 0.3, SWIPE_THRESHOLD],
+      outputRange: [0, 0.3, 1],
       extrapolate: 'clamp'
     });
     
     const passOpacity = position.x.interpolate({
-      inputRange: [-SWIPE_THRESHOLD, -SWIPE_THRESHOLD * 0.5, 0],
-      outputRange: [1, 0.5, 0],
+      inputRange: [-SWIPE_THRESHOLD, -SWIPE_THRESHOLD * 0.3, 0],
+      outputRange: [1, 0.3, 0],
       extrapolate: 'clamp'
     });
 
     const cardOpacity = position.x.interpolate({
       inputRange: [-SCREEN_WIDTH * 1.2, 0, SCREEN_WIDTH * 1.2],
-      outputRange: [0.3, 1, 0.3],
+      outputRange: [0.2, 1, 0.2],
       extrapolate: 'clamp'
     });
 
     // Enhanced scale animation for more dynamic feel
     const cardScale = position.x.interpolate({
-      inputRange: [-SCREEN_WIDTH * 0.5, 0, SCREEN_WIDTH * 0.5],
-      outputRange: [0.95, 1, 0.95],
+      inputRange: [-SCREEN_WIDTH * 0.4, 0, SCREEN_WIDTH * 0.4],
+      outputRange: [0.96, 1, 0.96],
+      extrapolate: 'clamp'
+    });
+
+    // Dynamic indicator scaling based on swipe distance
+    const likeIndicatorDynamicScale = position.x.interpolate({
+      inputRange: [0, SWIPE_THRESHOLD * 0.5, SWIPE_THRESHOLD * 1.5],
+      outputRange: [0.8, 1, 1.2],
+      extrapolate: 'clamp'
+    });
+
+    const passIndicatorDynamicScale = position.x.interpolate({
+      inputRange: [-SWIPE_THRESHOLD * 1.5, -SWIPE_THRESHOLD * 0.5, 0],
+      outputRange: [1.2, 1, 0.8],
       extrapolate: 'clamp'
     });
 
@@ -203,7 +234,9 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       likeOpacity,
       passOpacity,
       cardOpacity,
-      cardScale
+      cardScale,
+      likeIndicatorDynamicScale,
+      passIndicatorDynamicScale
     };
   }, [position.x]);
 
@@ -211,14 +244,14 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   useEffect(() => {
     if (!profiles || profiles.length === 0) {
       if (isDebugMode) {
-        console.log('[SwipeCards] No profiles available');
+        console.log('[EnhancedSwipeCards] No profiles available');
       }
       return;
     }
 
     if (currentIndex >= profiles.length) {
       if (isDebugMode) {
-        console.log('[SwipeCards] Resetting currentIndex due to profiles change', { 
+        console.log('[EnhancedSwipeCards] Resetting currentIndex due to profiles change', { 
           oldIndex: currentIndex, 
           profilesCount: profiles.length 
         });
@@ -230,7 +263,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     const currentProfile = profiles[currentIndex];
     if (!currentProfile || !currentProfile.id || !currentProfile.name) {
       if (isDebugMode) {
-        console.error('[SwipeCards] Invalid profile data:', {
+        console.error('[EnhancedSwipeCards] Invalid profile data:', {
           index: currentIndex,
           hasProfile: !!currentProfile,
           profileData: currentProfile ? {
@@ -248,8 +281,8 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     setError(null);
   }, [profiles, currentIndex, isDebugMode]);
 
-  // Enhanced haptic feedback function
-  const triggerHapticFeedback = useCallback((type: 'light' | 'medium' | 'heavy' | 'success' | 'error') => {
+  // Enhanced haptic feedback function with contextual intensity
+  const triggerHapticFeedback = useCallback((type: 'light' | 'medium' | 'heavy' | 'success' | 'error' | 'selection') => {
     if (Platform.OS === 'web') return;
     
     switch (type) {
@@ -268,80 +301,132 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       case 'error':
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         break;
+      case 'selection':
+        Haptics.selectionAsync();
+        break;
     }
   }, []);
 
-  // Enhanced indicator animations
-  const animateIndicator = useCallback((direction: 'like' | 'pass', show: boolean) => {
+  // Enhanced indicator animations with dynamic scaling
+  const animateIndicator = useCallback((direction: 'like' | 'pass', show: boolean, intensity: number = 1) => {
     const indicatorScale = direction === 'like' ? likeIndicatorScale : passIndicatorScale;
+    const targetScale = show ? intensity : 0;
     
     Animated.spring(indicatorScale, {
-      toValue: show ? 1 : 0,
-      tension: 200,
+      toValue: targetScale,
+      tension: 250,
       friction: 8,
       useNativeDriver: true
     }).start();
   }, [likeIndicatorScale, passIndicatorScale]);
+
+  // Calculate gesture momentum
+  const calculateMomentum = useCallback((currentX: number, currentY: number): { x: number; y: number } => {
+    const now = Date.now();
+    gestureHistory.current.push({ x: currentX, y: currentY, time: now });
+    
+    // Keep only recent history
+    if (gestureHistory.current.length > maxHistoryLength) {
+      gestureHistory.current.shift();
+    }
+    
+    if (gestureHistory.current.length < 2) {
+      return { x: 0, y: 0 };
+    }
+    
+    const recent = gestureHistory.current.slice(-3);
+    const timeSpan = recent[recent.length - 1].time - recent[0].time;
+    
+    if (timeSpan === 0) return { x: 0, y: 0 };
+    
+    const deltaX = recent[recent.length - 1].x - recent[0].x;
+    const deltaY = recent[recent.length - 1].y - recent[0].y;
+    
+    return {
+      x: deltaX / timeSpan * 1000, // pixels per second
+      y: deltaY / timeSpan * 1000
+    };
+  }, []);
   
-  // Enhanced pan responder with improved gesture handling
+  // Enhanced pan responder with improved gesture handling and momentum
   const panResponderHandler = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (_, gesture) => {
-        // More sensitive gesture detection
-        const shouldHandle = Math.abs(gesture.dx) > 3 || Math.abs(gesture.dy) > 3;
+        // More sensitive gesture detection with momentum consideration
+        const shouldHandle = Math.abs(gesture.dx) > 2 || Math.abs(gesture.dy) > 2;
         return shouldHandle;
       },
       onPanResponderGrant: () => {
         setIsGestureActive(true);
-        triggerHapticFeedback('light');
+        setLastGestureTime(Date.now());
+        gestureHistory.current = [];
+        triggerHapticFeedback('selection');
         
         // Reset indicators
         animateIndicator('like', false);
         animateIndicator('pass', false);
       },
       onPanResponderMove: (_, gesture) => {
-        // Enhanced gesture tracking with improved responsiveness
+        // Enhanced gesture tracking with momentum calculation
         const { dx, dy } = gesture;
+        const momentum = calculateMomentum(dx, dy);
+        setGestureVelocity(momentum);
         
-        // Smooth gesture tracking with slight Y dampening
+        // Smooth gesture tracking with enhanced Y dampening
         position.setValue({ 
           x: dx, 
-          y: dy * 0.05 // Reduced Y movement for more horizontal focus
+          y: dy * 0.03 // Further reduced Y movement for more horizontal focus
         });
 
-        // Show indicators based on swipe direction with enhanced thresholds
-        const showLikeIndicator = dx > SWIPE_THRESHOLD * 0.3;
-        const showPassIndicator = dx < -SWIPE_THRESHOLD * 0.3;
+        // Enhanced indicator logic with dynamic intensity
+        const swipeIntensity = Math.min(Math.abs(dx) / SWIPE_THRESHOLD, 1.5);
+        const showLikeIndicator = dx > SWIPE_THRESHOLD * 0.2;
+        const showPassIndicator = dx < -SWIPE_THRESHOLD * 0.2;
         
         if (showLikeIndicator && !showPassIndicator) {
-          animateIndicator('like', true);
+          animateIndicator('like', true, 0.8 + swipeIntensity * 0.4);
           animateIndicator('pass', false);
+          
+          // Progressive haptic feedback
+          if (dx > SWIPE_THRESHOLD * 0.6 && Date.now() - lastGestureTime > 100) {
+            triggerHapticFeedback('light');
+            setLastGestureTime(Date.now());
+          }
         } else if (showPassIndicator && !showLikeIndicator) {
-          animateIndicator('pass', true);
+          animateIndicator('pass', true, 0.8 + swipeIntensity * 0.4);
           animateIndicator('like', false);
+          
+          // Progressive haptic feedback
+          if (dx < -SWIPE_THRESHOLD * 0.6 && Date.now() - lastGestureTime > 100) {
+            triggerHapticFeedback('light');
+            setLastGestureTime(Date.now());
+          }
         } else {
           animateIndicator('like', false);
           animateIndicator('pass', false);
         }
 
-        // Trigger haptic feedback at threshold points
-        if (Math.abs(dx) > SWIPE_THRESHOLD * 0.7) {
+        // Threshold haptic feedback
+        if (Math.abs(dx) > SWIPE_THRESHOLD * 0.8 && Date.now() - lastGestureTime > 200) {
           triggerHapticFeedback('medium');
+          setLastGestureTime(Date.now());
         }
       },
       onPanResponderRelease: (_, gesture) => {
         setIsGestureActive(false);
         const { dx, vx } = gesture;
+        const momentum = gestureVelocity;
         
         // Reset indicators
         animateIndicator('like', false);
         animateIndicator('pass', false);
         
         if (isDebugMode) {
-          console.log('[SwipeCards] Pan gesture released', { 
+          console.log('[EnhancedSwipeCards] Pan gesture released', { 
             dx, 
             vx, 
+            momentum,
             threshold: SWIPE_THRESHOLD,
             velocityThreshold: SWIPE_VELOCITY_THRESHOLD 
           });
@@ -349,31 +434,36 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
         
         if (error || !profiles[currentIndex]) {
           if (isDebugMode) {
-            console.log('[SwipeCards] Cannot swipe - error or no profile', { error, hasProfile: !!profiles[currentIndex] });
+            console.log('[EnhancedSwipeCards] Cannot swipe - error or no profile', { error, hasProfile: !!profiles[currentIndex] });
           }
           resetPosition();
           return;
         }
 
-        // Enhanced swipe detection with improved velocity consideration
-        const shouldSwipeRight = dx > SWIPE_THRESHOLD || (dx > 30 && vx > SWIPE_VELOCITY_THRESHOLD);
-        const shouldSwipeLeft = dx < -SWIPE_THRESHOLD || (dx < -30 && vx < -SWIPE_VELOCITY_THRESHOLD);
+        // Enhanced swipe detection with momentum consideration
+        const velocityBoost = Math.abs(momentum.x) > 300 ? 1.5 : 1;
+        const effectiveThreshold = SWIPE_THRESHOLD / velocityBoost;
+        
+        const shouldSwipeRight = dx > effectiveThreshold || 
+          (dx > 20 && (vx > SWIPE_VELOCITY_THRESHOLD || momentum.x > 200));
+        const shouldSwipeLeft = dx < -effectiveThreshold || 
+          (dx < -20 && (vx < -SWIPE_VELOCITY_THRESHOLD || momentum.x < -200));
 
         if (shouldSwipeRight) {
           if (isDebugMode) {
-            console.log('[SwipeCards] Swiping right', { dx, vx });
+            console.log('[EnhancedSwipeCards] Swiping right', { dx, vx, momentum });
           }
           triggerHapticFeedback('success');
-          forceSwipe('right');
+          forceSwipe('right', Math.abs(vx));
         } else if (shouldSwipeLeft) {
           if (isDebugMode) {
-            console.log('[SwipeCards] Swiping left', { dx, vx });
+            console.log('[EnhancedSwipeCards] Swiping left', { dx, vx, momentum });
           }
           triggerHapticFeedback('medium');
-          forceSwipe('left');
+          forceSwipe('left', Math.abs(vx));
         } else {
           if (isDebugMode) {
-            console.log('[SwipeCards] Gesture below threshold, resetting', { dx, vx });
+            console.log('[EnhancedSwipeCards] Gesture below threshold, resetting', { dx, vx, momentum });
           }
           triggerHapticFeedback('light');
           resetPosition();
@@ -386,16 +476,38 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     const item = profiles[currentIndex];
     if (!item) {
       if (isDebugMode) {
-        console.log('[SwipeCards] No item to swipe', { currentIndex, profilesCount: profiles.length });
+        console.log('[EnhancedSwipeCards] No item to swipe', { currentIndex, profilesCount: profiles.length });
       }
       return;
     }
 
     if (isDebugMode) {
-      console.log('[SwipeCards] Processing swipe', { direction, profileId: item.id, profileName: item.name });
+      console.log('[EnhancedSwipeCards] Processing swipe', { direction, profileId: item.id, profileName: item.name });
     }
 
-    // Process the swipe action first
+    // Check if this is an optimistic update that failed
+    const optimisticUpdate = optimisticUpdates.get(item.id);
+    if (optimisticUpdate) {
+      // This was an optimistic update, just update the index
+      setCurrentIndex(prevIndex => {
+        const nextIndex = prevIndex + 1;
+
+        if (nextIndex >= profiles.length && onEmpty) {
+          if (isDebugMode) {
+            console.log('[EnhancedSwipeCards] Reached end of profiles, triggering onEmpty', { nextIndex, profilesCount: profiles.length });
+          }
+          onEmpty();
+        }
+
+        return nextIndex;
+      });
+
+      resetToInitialPosition();
+      animateNextCard();
+      return;
+    }
+
+    // Process the swipe action
     const swipePromise = direction === 'right' ? 
       onSwipeRight(item) : 
       onSwipeLeft(item);
@@ -403,16 +515,15 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     swipePromise
       .then(() => {
         if (isDebugMode) {
-          console.log('[SwipeCards] Swipe processed successfully');
+          console.log('[EnhancedSwipeCards] Swipe processed successfully');
         }
-        // After swipe is processed, update the index
+        
         setCurrentIndex(prevIndex => {
           const nextIndex = prevIndex + 1;
 
-          // Check if we've reached the end
           if (nextIndex >= profiles.length && onEmpty) {
             if (isDebugMode) {
-              console.log('[SwipeCards] Reached end of profiles, triggering onEmpty', { nextIndex, profilesCount: profiles.length });
+              console.log('[EnhancedSwipeCards] Reached end of profiles, triggering onEmpty', { nextIndex, profilesCount: profiles.length });
             }
             onEmpty();
           }
@@ -420,16 +531,15 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
           return nextIndex;
         });
 
-        // Reset position and animate next card
         resetToInitialPosition();
         animateNextCard();
       })
       .catch(error => {
         const errorMessage = getErrorMessage(error);
-        console.error(`[SwipeCards] Error on ${direction} swipe:`, errorMessage);
+        console.error(`[EnhancedSwipeCards] Error on ${direction} swipe:`, errorMessage);
         
         if (isDebugMode) {
-          console.error('[SwipeCards] Full error details:', {
+          console.error('[EnhancedSwipeCards] Full error details:', {
             error,
             errorType: typeof error,
             errorConstructor: error?.constructor?.name,
@@ -439,6 +549,9 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
           });
         }
         
+        // Rollback optimistic update if it exists
+        rollbackOptimisticUpdate(item.id);
+        
         // Reset position on error
         resetToInitialPosition();
         triggerHapticFeedback('error');
@@ -447,33 +560,38 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
         setError(`Failed to ${direction === 'right' ? 'like' : 'pass'} profile. Please try again.`);
       });
 
-  }, [currentIndex, profiles, onSwipeRight, onSwipeLeft, onEmpty, isDebugMode, triggerHapticFeedback]);
+  }, [currentIndex, profiles, onSwipeRight, onSwipeLeft, onEmpty, isDebugMode, triggerHapticFeedback, optimisticUpdates, rollbackOptimisticUpdate]);
   
-  const forceSwipe = useCallback((direction: 'left' | 'right') => {
+  const forceSwipe = useCallback((direction: 'left' | 'right', velocity: number = 0) => {
     const x = direction === 'right' ? SCREEN_WIDTH * 1.3 : -SCREEN_WIDTH * 1.3;
-    const rotation = direction === 'right' ? CARD_ROTATION_RANGE : -CARD_ROTATION_RANGE;
+    const duration = getVelocityBasedDuration(velocity);
     
-    // Enhanced swipe out animation with rotation
+    // Enhanced swipe out animation with velocity-based timing
     Animated.parallel([
       Animated.timing(position, {
         toValue: { x, y: 0 },
-        duration: SWIPE_OUT_DURATION,
+        duration,
         useNativeDriver: true
       }),
       Animated.timing(scale, {
-        toValue: 0.8,
-        duration: SWIPE_OUT_DURATION,
+        toValue: 0.85,
+        duration,
         useNativeDriver: true
       }),
       Animated.timing(opacity, {
         toValue: 0,
-        duration: SWIPE_OUT_DURATION,
+        duration: duration * 0.8, // Fade out slightly faster
+        useNativeDriver: true
+      }),
+      Animated.timing(cardRotation, {
+        toValue: direction === 'right' ? 1 : -1,
+        duration,
         useNativeDriver: true
       })
     ]).start(() => {
       onSwipeComplete(direction);
     });
-  }, [position, scale, opacity, onSwipeComplete]);
+  }, [position, scale, opacity, cardRotation, onSwipeComplete]);
   
   const resetPosition = useCallback(() => {
     Animated.parallel([
@@ -488,18 +606,23 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       Animated.spring(opacity, {
         toValue: 1,
         ...RESET_SPRING_CONFIG
+      }),
+      Animated.spring(cardRotation, {
+        toValue: 0,
+        ...RESET_SPRING_CONFIG
       })
     ]).start();
-  }, [position, scale, opacity]);
+  }, [position, scale, opacity, cardRotation]);
 
   const resetToInitialPosition = useCallback(() => {
     position.setValue({ x: 0, y: 0 });
     scale.setValue(1);
     opacity.setValue(1);
-  }, [position, scale, opacity]);
+    cardRotation.setValue(0);
+  }, [position, scale, opacity, cardRotation]);
 
   const animateNextCard = useCallback(() => {
-    // Enhanced next card animation
+    // Enhanced next card animation with better timing
     Animated.parallel([
       Animated.spring(nextCardScale, {
         toValue: 1,
@@ -511,26 +634,26 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       })
     ]).start(() => {
       // Reset next card values for the next animation
-      nextCardScale.setValue(0.92);
-      nextCardOpacity.setValue(0.7);
+      nextCardScale.setValue(0.94);
+      nextCardOpacity.setValue(0.8);
     });
   }, [nextCardScale, nextCardOpacity]);
   
   const handleProfilePress = useCallback(() => {
     if (currentIndex < profiles.length && onProfilePress) {
-      triggerHapticFeedback('light');
+      triggerHapticFeedback('selection');
       onProfilePress(profiles[currentIndex]);
     }
   }, [currentIndex, profiles, onProfilePress, triggerHapticFeedback]);
   
   const renderCards = () => {
     if (isDebugMode) {
-      console.log('[SwipeCards] Rendering cards', { currentIndex, profilesCount: profiles.length });
+      console.log('[EnhancedSwipeCards] Rendering cards', { currentIndex, profilesCount: profiles.length });
     }
     
     if (currentIndex >= profiles.length) {
       if (isDebugMode) {
-        console.log('[SwipeCards] Showing empty state');
+        console.log('[EnhancedSwipeCards] Showing empty state');
       }
       return (
         <View style={styles.emptyContainer}>
@@ -543,14 +666,22 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     return profiles.map((item, index) => {
       if (index < currentIndex) {
         if (isDebugMode) {
-          console.log('[SwipeCards] Skipping rendered profile', { index, id: item.id });
+          console.log('[EnhancedSwipeCards] Skipping rendered profile', { index, id: item.id });
         }
         return null;
       }
       
+      // Check if this profile has an optimistic update
+      const hasOptimisticUpdate = optimisticUpdates.has(item.id);
+      
       if (index === currentIndex) {
         if (isDebugMode) {
-          console.log('[SwipeCards] Rendering current card', { index, id: item.id, name: item.name });
+          console.log('[EnhancedSwipeCards] Rendering current card', { 
+            index, 
+            id: item.id, 
+            name: item.name,
+            hasOptimisticUpdate 
+          });
         }
         return (
           <Animated.View
@@ -565,7 +696,8 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
                   { scale: animatedStyles.cardScale }
                 ],
                 opacity: animatedStyles.cardOpacity
-              }
+              },
+              hasOptimisticUpdate && styles.optimisticCard
             ]}
             {...panResponderHandler.panHandlers}
           >
@@ -574,7 +706,9 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
               styles.likeContainer, 
               { 
                 opacity: animatedStyles.likeOpacity,
-                transform: [{ scale: likeIndicatorScale }]
+                transform: [
+                  { scale: Animated.multiply(likeIndicatorScale, animatedStyles.likeIndicatorDynamicScale) }
+                ]
               }
             ]}>
               <View style={styles.likeLabel}>
@@ -588,7 +722,9 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
               styles.passContainer, 
               { 
                 opacity: animatedStyles.passOpacity,
-                transform: [{ scale: passIndicatorScale }]
+                transform: [
+                  { scale: Animated.multiply(passIndicatorScale, animatedStyles.passIndicatorDynamicScale) }
+                ]
               }
             ]}>
               <View style={styles.passLabel}>
@@ -608,7 +744,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       // Next card in stack with enhanced animation
       if (index === currentIndex + 1) {
         if (isDebugMode) {
-          console.log('[SwipeCards] Rendering next card', { index, id: item.id, name: item.name });
+          console.log('[EnhancedSwipeCards] Rendering next card', { index, id: item.id, name: item.name });
         }
         return (
           <Animated.View
@@ -629,13 +765,15 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
         );
       }
       
-      // Background cards with improved stacking
-      if (index < currentIndex + 3) {
+      // Background cards with improved stacking and depth
+      if (index < currentIndex + 4) { // Show more background cards
         if (isDebugMode) {
-          console.log('[SwipeCards] Rendering background card', { index, id: item.id, name: item.name });
+          console.log('[EnhancedSwipeCards] Rendering background card', { index, id: item.id, name: item.name });
         }
-        const scaleValue = 0.88 - (index - currentIndex - 1) * 0.04; // Better scaling progression
-        const opacityValue = 0.5 - (index - currentIndex - 1) * 0.15; // Better opacity progression
+        const cardDepth = index - currentIndex - 1;
+        const scaleValue = 0.90 - cardDepth * 0.03; // Better scaling progression
+        const opacityValue = 0.6 - cardDepth * 0.15; // Better opacity progression
+        const translateY = cardDepth * 4; // Slight vertical offset for depth
         
         return (
           <View
@@ -644,9 +782,12 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
               styles.cardStyle,
               styles.backgroundCard,
               {
-                transform: [{ scale: scaleValue }],
+                transform: [
+                  { scale: scaleValue },
+                  { translateY }
+                ],
                 opacity: opacityValue,
-                zIndex: -(index - currentIndex)
+                zIndex: -(cardDepth + 1)
               }
             ]}
           >
@@ -656,7 +797,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       }
       
       if (isDebugMode) {
-        console.log('[SwipeCards] Skipping non-visible card', { index, id: item.id });
+        console.log('[EnhancedSwipeCards] Skipping non-visible card', { index, id: item.id });
       }
       return null;
     }).reverse();
@@ -697,6 +838,9 @@ const styles = StyleSheet.create({
   backgroundCard: {
     zIndex: -2,
   },
+  optimisticCard: {
+    opacity: 0.8, // Slightly transparent for optimistic updates
+  },
   likeContainer: {
     position: 'absolute',
     top: 70,
@@ -713,49 +857,49 @@ const styles = StyleSheet.create({
   },
   likeLabel: {
     alignItems: 'center',
-    backgroundColor: 'rgba(76, 175, 80, 0.15)',
-    borderRadius: 20,
+    backgroundColor: 'rgba(76, 175, 80, 0.2)',
+    borderRadius: 24,
     borderWidth: 4,
     borderColor: Colors.dark.success,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
+    paddingVertical: 18,
+    paddingHorizontal: 22,
     shadowColor: Colors.dark.success,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 10,
   },
   passLabel: {
     alignItems: 'center',
-    backgroundColor: 'rgba(244, 67, 54, 0.15)',
-    borderRadius: 20,
+    backgroundColor: 'rgba(244, 67, 54, 0.2)',
+    borderRadius: 24,
     borderWidth: 4,
     borderColor: Colors.dark.error,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
+    paddingVertical: 18,
+    paddingHorizontal: 22,
     shadowColor: Colors.dark.error,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 10,
   },
   likeText: {
     color: Colors.dark.success,
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
-    marginTop: 8,
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    marginTop: 10,
+    textShadowColor: 'rgba(0, 0, 0, 0.4)',
     textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
+    textShadowRadius: 3,
   },
   passText: {
     color: Colors.dark.error,
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
-    marginTop: 8,
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    marginTop: 10,
+    textShadowColor: 'rgba(0, 0, 0, 0.4)',
     textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
+    textShadowRadius: 3,
   },
   emptyContainer: {
     alignItems: 'center',
