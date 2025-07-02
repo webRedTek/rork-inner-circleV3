@@ -303,6 +303,7 @@ export const useAuthStore = create<AuthState>()(
               });
 
               // Initialize usage tracking
+              useUsageStore.getState().resetUsage(); // Clear any previous user's usage data
               await useUsageStore.getState().initializeUsage(data.user.id);
             } else if (profileError) {
               throw {
