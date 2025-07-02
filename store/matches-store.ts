@@ -545,7 +545,20 @@ const matchesStoreCreator: StateCreator<
         return isValid;
       });
 
-      if (validMatches.length === 0) {
+      // Deduplicate matches by ID
+      const uniqueMatches = validMatches.reduce((acc, match) => {
+        if (!acc.some(m => m.id === match.id)) {
+          acc.push(match);
+        } else if (isDebugMode) {
+          console.warn('[MatchesStore] Duplicate match found and removed:', {
+            id: match.id,
+            name: match.name
+          });
+        }
+        return acc;
+      }, [] as UserProfile[]);
+
+      if (uniqueMatches.length === 0) {
         set({ 
           potentialMatches: [],
           isLoading: false,
@@ -556,7 +569,7 @@ const matchesStoreCreator: StateCreator<
       }
 
       // Cache valid profiles
-      validMatches.forEach(match => {
+      uniqueMatches.forEach(match => {
         if (match && match.id) {
           if (isDebugMode) {
             console.log('[MatchesStore] Caching profile:', {
@@ -570,10 +583,10 @@ const matchesStoreCreator: StateCreator<
       });
 
       set({ 
-        potentialMatches: validMatches,
+        potentialMatches: uniqueMatches,
         isLoading: false,
         error: null,
-        noMoreProfiles: validMatches.length === 0
+        noMoreProfiles: uniqueMatches.length === 0
       });
 
     } catch (error) {

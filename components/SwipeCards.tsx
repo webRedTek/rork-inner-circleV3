@@ -1,6 +1,6 @@
 /**
  * FILE: components/SwipeCards.tsx
- * LAST UPDATED: 2025-07-01 15:00
+ * LAST UPDATED: 2025-07-01 20:30
  * 
  * INITIALIZATION ORDER:
  * 1. Initializes when rendered in discover screen
@@ -14,13 +14,13 @@
  * - Smooth gesture animations
  * - Loading and error states
  * - Profile preview and interaction
- * - Prefetching for continuous experience
+ * - Stack view with current and next cards
  * 
  * RECENT CHANGES:
- * - Added isLoading and isPrefetching props
- * - Added error handling and retry functionality
- * - Updated prop types for better type safety
- * - Fixed animation timing issues
+ * - Removed automatic prefetching on low profile count
+ * - Simplified card stack management to prevent duplicates
+ * - Now relies on parent component for profile fetching
+ * - Fixed key duplication issues in card rendering
  * 
  * FILE INTERACTIONS:
  * - Imports from: react-native, matches-store, types/user
@@ -175,22 +175,6 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     // Clear error if we have valid data
     setError(null);
   }, [profiles, currentIndex, isDebugMode]);
-
-  // Prefetch effect
-  useEffect(() => {
-    const remainingProfiles = profiles.length - currentIndex;
-    
-    if (remainingProfiles <= prefetchThreshold && !isPrefetching && !noMoreProfiles) {
-      if (isDebugMode) {
-        console.log('[SwipeCards] Triggering prefetch due to low profiles', { currentIndex, profilesCount: profiles.length, threshold: prefetchThreshold });
-      }
-      
-      prefetchNextBatch()
-        .catch(error => {
-          console.error('[SwipeCards] Error prefetching:', error);
-        });
-    }
-  }, [currentIndex, profiles.length, isPrefetching, noMoreProfiles, prefetchNextBatch, isDebugMode]);
 
   // Debug effect
   useEffect(() => {

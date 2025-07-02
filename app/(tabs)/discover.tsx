@@ -1,31 +1,41 @@
 /**
  * FILE: app/(tabs)/discover.tsx
- * LAST UPDATED: 2025-07-01 14:30
+ * LAST UPDATED: 2025-07-01 20:30
+ * 
+ * INITIALIZATION ORDER:
+ * 1. Initializes after auth-store confirms user session
+ * 2. Requires matches-store to be initialized for profile fetching
+ * 3. Requires notification-store for match alerts
+ * 4. Requires usage-store for swipe/match limits
+ * 5. Race condition: Must wait for user location before fetching matches
  * 
  * CURRENT STATE:
- * Main discovery tab screen. Shows swipeable cards of potential matches.
- * Handles user distance preferences and global search options based on
- * membership tier. Distance is now handled in miles with a max of 250 miles.
+ * Main discover screen for entrepreneur matching. Handles:
+ * - Profile card swiping interface
+ * - Distance filtering and global search
+ * - Match notifications and modals
+ * - Usage limit enforcement
  * 
  * RECENT CHANGES:
- * - Updated distance handling to use miles instead of kilometers
- * - Removed tier-based distance limits in favor of user preferences
- * - Fixed screen focus to only fetch matches when none available
- * - Improved error handling for distance validation
+ * - Removed focus-based match refreshing to prevent duplicate profiles
+ * - Removed automatic prefetching on low profile count
+ * - Now only fetches new matches when:
+ *   1. User manually refreshes
+ *   2. User runs out of profiles completely
+ *   3. User changes distance settings
+ *   4. User toggles global search
  * 
  * FILE INTERACTIONS:
- * - Uses matches-store for: potential matches, swipe actions, match state
- * - Uses auth-store for: user data, tier settings
- * - Uses usage-store for: swipe/match limits
- * - Uses SwipeCards component for: card display and gestures
- * - Uses Button, ProfileDetailCard for: UI elements
+ * - Imports from: matches-store, auth-store, notification-store, usage-store
+ * - Components: SwipeCards, EntrepreneurCard, Button, Input
+ * - Dependencies: expo-router for navigation, react-native for UI
+ * - Data flow: Bidirectional with matches-store
  * 
- * KEY FUNCTIONS:
- * - Initial load: Fetches first batch of matches
- * - Focus refresh: Only fetches if no matches available
- * - Distance handling: Uses user preferences (1-250 miles)
- * - Swipe actions: Processes likes/passes through matches-store
- * - Match handling: Shows modals for new matches
+ * KEY FUNCTIONS/COMPONENTS:
+ * - handleSwipeRight/Left: Process swipe actions
+ * - handleManualRefresh: Fetch new matches on demand
+ * - handleToggleGlobalSearch: Toggle global search mode
+ * - handleModalAction: Handle match/limit modal actions
  * 
  * STORE DEPENDENCIES:
  * matches-store -> Handles all match data and swipe logic
@@ -189,30 +199,8 @@ export default function DiscoverScreen() {
     }
   }, [preferredDistance, user, isGlobalSearchAllowed]);
 
-  // Add focus effect to refresh data when screen is focused
-  useFocusEffect(
-    React.useCallback(() => {
-      if (isReady && user) {
-        addDebugInfo(`Screen focused - refreshing matches, current count: ${potentialMatches.length}`);
-        console.log('[Discover] Screen focused - checking matches state', { 
-          userId: user.id, 
-          matchesCount: potentialMatches.length,
-          currentDistance: user.preferredDistance || parseInt(preferredDistance) || 50,
-          globalSearch: isGlobalSearchAllowed && globalSearch
-        });
-
-        // Only fetch if we have no matches or it's been a while since last fetch
-        if (potentialMatches.length === 0) {
-          const distance = isGlobalSearchAllowed && globalSearch 
-            ? undefined 
-            : (user.preferredDistance || parseInt(preferredDistance) || 50);
-            
-          console.log('[Discover] Fetching new matches on focus', { distance });
-          fetchPotentialMatches(distance);
-        }
-      }
-    }, [isReady, user, fetchPotentialMatches, potentialMatches.length, preferredDistance, isGlobalSearchAllowed, globalSearch])
-  );
+  // Remove focus-based refresh as requested
+  // Only refresh when manually triggered or when running out of matches
   
   useEffect(() => {
     // Prefetch more profiles if we're running low
