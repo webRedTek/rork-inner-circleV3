@@ -9,6 +9,8 @@ import { Button } from '@/components/Button';
 import { supabase } from '@/lib/supabase';
 import { Shield } from 'lucide-react-native';
 import { MembershipTier } from '@/types/user';
+import { handleError } from '@/utils/error-utils';
+import { useNotificationStore } from '@/store/notification-store';
 
 /**
  * Admin Settings Screen
@@ -19,6 +21,7 @@ export default function AdminSettingsScreen() {
   const router = useRouter();
   const { user, invalidateTierSettingsCache } = useAuthStore();
   const { isDebugMode, setDebugMode } = useDebugStore();
+  const { addNotification } = useNotificationStore();
   const [settingsByTier, setSettingsByTier] = useState<Record<MembershipTier, Record<string, any>>>({
     bronze: {},
     silver: {},
@@ -48,7 +51,8 @@ export default function AdminSettingsScreen() {
         .select('*');
 
       if (settingsError) {
-        throw new Error(`Failed to fetch settings: ${settingsError.message}`);
+        const appError = handleError(settingsError);
+        throw new Error(`Failed to fetch settings: ${appError.userMessage}`);
       }
 
       if (data && data.length > 0) {
@@ -67,7 +71,14 @@ export default function AdminSettingsScreen() {
         setError('No settings found.');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load settings. Please try again.');
+      const appError = handleError(err);
+      setError(appError.userMessage);
+      addNotification({
+        type: 'error',
+        message: `Failed to load settings: ${appError.userMessage}`,
+        displayStyle: 'toast',
+        duration: 5000
+      });
     } finally {
       setLoading(false);
     }
@@ -160,7 +171,8 @@ export default function AdminSettingsScreen() {
               .eq('id', settings.id);
 
             if (updateError) {
-              throw updateError;
+              const appError = handleError(updateError);
+              throw new Error(`Failed to update settings for ${tier}: ${appError.userMessage}`);
             }
           } else {
             console.log(`Inserting new settings for tier ${tier}`);
@@ -172,26 +184,40 @@ export default function AdminSettingsScreen() {
               });
 
             if (insertError) {
-              throw insertError;
+              const appError = handleError(insertError);
+              throw new Error(`Failed to insert settings for ${tier}: ${appError.userMessage}`);
             }
           }
         } catch (dbError: any) {
           console.error(`Database error for tier ${tier}:`, dbError);
-          throw new Error(`Failed to save settings for ${tier}: ${dbError.message || 'Database error'}`);
+          const appError = handleError(dbError);
+          throw new Error(`Failed to save settings for ${tier}: ${appError.userMessage}`);
         }
       }
 
       // Invalidate tier settings cache after successful save
       await invalidateTierSettingsCache();
 
-      Alert.alert('Success', 'Settings updated successfully.', [{ text: 'OK' }]);
+      addNotification({
+        type: 'success',
+        message: 'Settings updated successfully',
+        displayStyle: 'toast',
+        duration: 3000
+      });
+
       console.log('Settings saved successfully, refreshing data...');
       await fetchSettings(); // Refresh settings after save
     } catch (err) {
       console.error('Error saving settings:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to save settings. Please try again.';
-      setError(errorMessage);
-      Alert.alert('Error', errorMessage, [{ text: 'OK' }]);
+      const appError = handleError(err);
+      setError(appError.userMessage);
+      
+      addNotification({
+        type: 'error',
+        message: `Failed to save settings: ${appError.userMessage}`,
+        displayStyle: 'toast',
+        duration: 8000
+      });
     } finally {
       setSaving(false);
     }
@@ -523,20 +549,6 @@ export default function AdminSettingsScreen() {
                   onChangeText={text => handleSettingChange(tier as MembershipTier, 'trial_duration', parseInt(text) || 14)}
                   keyboardType="numeric"
                   placeholder="Enter number"
-                />
-              </View>
-            </View>
-
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Group Permissions</Text>
-              
-              <View style={styles.settingItem}>
-                <Text style={styles.settingLabel}>Can Create Groups</Text>
-                <Switch
-                  value={settingsByTier[tier as MembershipTier]?.can_create_groups || false}
-                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'can_create_groups', value)}
-                  trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
-                  thumbColor={Colors.dark.background}
                 />
               </View>
             </View>

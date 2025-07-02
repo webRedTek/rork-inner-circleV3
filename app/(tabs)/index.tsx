@@ -12,7 +12,7 @@ import { useMatchesStore } from '@/store/matches-store';
 export default function HomeScreen() {
   const router = useRouter();
   const { user, isReady } = useAuthStore();
-  const { matches, getMatches } = useMatchesStore();
+  const { matches, fetchMatches } = useMatchesStore();
   const [recentMatches, setRecentMatches] = useState<MatchWithProfile[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
@@ -29,7 +29,7 @@ export default function HomeScreen() {
     
     try {
       setRefreshing(true);
-      await getMatches();
+      await fetchMatches(); // Use fetchMatches instead of getMatches
       setRecentMatches(matches.slice(0, 5)); // Limit to 5 recent matches
     } catch (error) {
       console.error('Failed to fetch recent matches', error);
@@ -38,6 +38,13 @@ export default function HomeScreen() {
       setRefreshing(false);
     }
   };
+  
+  // Update recent matches when matches state changes
+  useEffect(() => {
+    if (matches && matches.length > 0) {
+      setRecentMatches(matches.slice(0, 5));
+    }
+  }, [matches]);
   
   const onRefresh = () => {
     if (user) {
@@ -90,19 +97,19 @@ export default function HomeScreen() {
           <Text style={styles.sectionTitle}>Your Profile</Text>
           <ProfileHeader 
             profile={user} 
-            onPress={() => router.push('/profile')}
+            onPress={() => router.push('/edit-profile')}
           />
           
           <View style={styles.membershipCard}>
             <View>
               <Text style={styles.membershipTitle}>
-                {user.membershipTier === 'basic' ? 'Basic Membership' : 
+                {user.membershipTier === 'bronze' ? 'Bronze Membership' : 
                  user.membershipTier === 'silver' ? 'Silver Membership' : 
                  'Gold Membership'}
               </Text>
               <Text style={styles.membershipDescription}>
-                {user.membershipTier === 'basic' ? 'Upgrade to unlock more features' : 
-                 user.membershipTier === 'silver' ? 'Join 1 group and create a basic portfolio' : 
+                {user.membershipTier === 'bronze' ? 'Upgrade to unlock more features' : 
+                 user.membershipTier === 'silver' ? 'Join groups and create portfolios' : 
                  'Full access to all Inner Circle features'}
               </Text>
             </View>
@@ -123,11 +130,13 @@ export default function HomeScreen() {
           
           {recentMatches.length > 0 ? (
             recentMatches.map(match => (
-              <ProfileHeader 
-                key={match.match_id}
-                profile={match.matched_user_profile}
-                onPress={() => router.push(`/profile/${match.matched_user_id}`)}
-              />
+              match.matched_user_profile ? (
+                <ProfileHeader 
+                  key={match.match_id}
+                  profile={match.matched_user_profile}
+                  onPress={() => router.push(`/profile/${match.matched_user_id}`)}
+                />
+              ) : null
             ))
           ) : (
             <View style={styles.emptyState}>
@@ -136,7 +145,7 @@ export default function HomeScreen() {
               </Text>
               <Button
                 title="Discover Now"
-                onPress={() => router.push('/discover')}
+                onPress={() => router.push('/(tabs)/discover')}
                 variant="primary"
                 size="medium"
                 style={styles.discoverButton}
@@ -151,7 +160,7 @@ export default function HomeScreen() {
           <View style={styles.actionButtons}>
             <Button
               title="Discover"
-              onPress={() => router.push('/discover')}
+              onPress={() => router.push('/(tabs)/discover')}
               variant="primary"
               size="medium"
               style={styles.actionButton}
@@ -159,7 +168,7 @@ export default function HomeScreen() {
             
             <Button
               title="Messages"
-              onPress={() => router.push('/messages')}
+              onPress={() => router.push('/(tabs)/messages')}
               variant="secondary"
               size="medium"
               style={styles.actionButton}

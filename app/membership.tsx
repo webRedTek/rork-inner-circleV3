@@ -175,7 +175,7 @@ export default function MembershipScreen() {
           >
             <View style={styles.planHeader}>
               <Text style={styles.planName}>Silver</Text>
-              <Text style={styles.planPrice}>$9.99/mo</Text>
+              <Text style={styles.planPrice}>$14.99/mo</Text>
             </View>
             
             <View style={styles.planFeatures}>
@@ -206,7 +206,7 @@ export default function MembershipScreen() {
           >
             <View style={styles.planHeader}>
               <Text style={styles.planName}>Gold</Text>
-              <Text style={styles.planPrice}>$19.99/mo</Text>
+              <Text style={styles.planPrice}>$29.99/mo</Text>
             </View>
             
             <View style={styles.planFeatures}>

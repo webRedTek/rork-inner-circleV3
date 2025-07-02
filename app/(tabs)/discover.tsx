@@ -18,11 +18,10 @@
  * - Improved animation performance and responsiveness
  * 
  * RECENT CHANGES:
- * - Optimized SwipeCards props to reduce unnecessary re-renders
- * - Improved error handling and loading states
- * - Enhanced performance by memoizing callback functions
- * - Reduced state updates that could cause animation jank
- * - Added better haptic feedback timing
+ * - Fixed distance validation to skip when global search is enabled
+ * - Updated pricing display to match new subscription rates
+ * - Improved global search logic to not require distance input
+ * - Enhanced error handling for distance filters
  * 
  * FILE INTERACTIONS:
  * - Imports from: matches-store, auth-store, notification-store, usage-store
@@ -143,10 +142,16 @@ export default function DiscoverScreen() {
     };
   }, [isReady, user, fetchPotentialMatches, isGlobalSearchAllowed, globalSearch, preferredDistance]);
 
-  // Add validation for distance changes
+  // Add validation for distance changes - skip validation when global search is enabled
   useEffect(() => {
     if (!user) {
       console.log('[Discover] Missing user:', { hasUser: !!user });
+      return;
+    }
+
+    // Skip distance validation if global search is enabled
+    if (globalSearch && isGlobalSearchAllowed) {
+      setDistanceError('');
       return;
     }
 
@@ -157,13 +162,13 @@ export default function DiscoverScreen() {
       globalEnabled: globalSearch
     });
 
-    if (distance < 1 || distance > 250) {
-      setDistanceError(`Distance must be between 1 and 250 miles`);
+    if (distance < 1 || distance > 500) {
+      setDistanceError(`Distance must be between 1 and 500 miles`);
       setPreferredDistance('50');
     } else {
       setDistanceError('');
     }
-  }, [preferredDistance, user, isGlobalSearchAllowed]);
+  }, [preferredDistance, user, isGlobalSearchAllowed, globalSearch]);
   
   useEffect(() => {
     // Check for new matches and display modal
@@ -257,17 +262,20 @@ export default function DiscoverScreen() {
         setShowLimitModal(false);
         break;
       case 'applyFilters':
-        const distanceNum = parseInt(preferredDistance);
-        if (isNaN(distanceNum) || distanceNum < 1 || distanceNum > 500) {
-          setDistanceError('Distance must be between 1 and 500 miles');
-          return;
+        // Skip distance validation if global search is enabled
+        if (!globalSearch || !isGlobalSearchAllowed) {
+          const distanceNum = parseInt(preferredDistance);
+          if (isNaN(distanceNum) || distanceNum < 1 || distanceNum > 500) {
+            setDistanceError('Distance must be between 1 and 500 miles');
+            return;
+          }
         }
         setDistanceError('');
         
         // Handle global search vs local search
         const distance = isGlobalSearchAllowed && globalSearch 
           ? undefined 
-          : distanceNum;
+          : parseInt(preferredDistance);
         
         fetchPotentialMatches(distance, true);
         setShowFilterModal(false);
@@ -313,7 +321,8 @@ export default function DiscoverScreen() {
 
     setGlobalSearch(!globalSearch);
     if (!globalSearch) {
-      // Switching to global search
+      // Switching to global search - clear distance error and set to infinity symbol
+      setDistanceError('');
       setPreferredDistance('∞');
       fetchPotentialMatches(undefined);
     } else {
@@ -450,16 +459,6 @@ export default function DiscoverScreen() {
           <View style={styles.matchModal}>
             <Text style={styles.matchTitle}>Distance Filters</Text>
             
-            <Input
-              label="Max Distance (miles)"
-              value={preferredDistance}
-              onChangeText={setPreferredDistance}
-              placeholder="Enter max distance"
-              keyboardType="numeric"
-              error={distanceError}
-              style={styles.distanceInput}
-            />
-            
             {isGlobalSearchAllowed && (
               <View style={styles.globalSearchContainer}>
                 <Text style={styles.globalSearchLabel}>Global Search</Text>
@@ -470,6 +469,25 @@ export default function DiscoverScreen() {
                   thumbColor={globalSearch ? Colors.dark.primary : Colors.dark.textSecondary}
                 />
               </View>
+            )}
+            
+            {/* Only show distance input if global search is disabled */}
+            {(!globalSearch || !isGlobalSearchAllowed) && (
+              <Input
+                label="Max Distance (miles)"
+                value={preferredDistance}
+                onChangeText={setPreferredDistance}
+                placeholder="Enter max distance"
+                keyboardType="numeric"
+                error={distanceError}
+                style={styles.distanceInput}
+              />
+            )}
+            
+            {globalSearch && isGlobalSearchAllowed && (
+              <Text style={styles.globalSearchNote}>
+                Global search enabled - distance filter disabled
+              </Text>
             )}
             
             {!isGlobalSearchAllowed && (
@@ -540,7 +558,7 @@ export default function DiscoverScreen() {
                 styles.filterButtonText,
                 (refreshing || isLoading) && styles.textDisabled
               ]}>
-                {preferredDistance} miles
+                {globalSearch && isGlobalSearchAllowed ? 'Global' : `${preferredDistance} miles`}
               </Text>
             </TouchableOpacity>
           </View>
