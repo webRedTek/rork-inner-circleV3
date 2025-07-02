@@ -580,8 +580,6 @@ const matchesStoreCreator: StateCreator<
 
         // Handle case where no matches are returned (this is normal, not an error)
         if (!result || !result.matches || result.matches.length === 0) {
-          const noMatchesMessage = 'No more profiles available in your area. Try expanding your search distance or enabling global search.';
-          
           if (debugStore.isDebugMode) {
             console.log(`🔍 [MATCHES-STORE][${callId}] No matches found - setting noMoreProfiles`, {
               hasResult: !!result,
@@ -592,7 +590,7 @@ const matchesStoreCreator: StateCreator<
           
           set({
             isLoading: false,
-            error: noMatchesMessage,
+            error: null, // Don't set an error for no matches
             noMoreProfiles: true
           });
           return; // Exit gracefully without throwing an error

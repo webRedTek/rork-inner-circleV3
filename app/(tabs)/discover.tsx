@@ -348,7 +348,7 @@ export default function DiscoverScreen() {
     );
   }
   
-  if (error) {
+  if (error && !noMoreProfiles) {
     return (
       <SafeAreaView style={styles.errorContainer} edges={['bottom']}>
         <Text style={styles.errorText}>{error}</Text>
@@ -361,6 +361,29 @@ export default function DiscoverScreen() {
         {isDebugMode && (
           <Text style={styles.debugText}>Error: {error}</Text>
         )}
+      </SafeAreaView>
+    );
+  }
+  
+  if (noMoreProfiles && potentialMatches.length === 0) {
+    return (
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyTitle}>No More Profiles</Text>
+          <Text style={styles.emptySubtitle}>
+            We've shown you all available entrepreneurs in your area.
+          </Text>
+          <Text style={styles.emptySubtitle}>
+            Try expanding your search distance or enabling global search.
+          </Text>
+          <Button 
+            title="Refresh" 
+            onPress={handleManualRefresh}
+            loading={refreshing}
+            variant="primary"
+            style={styles.refreshButton}
+          />
+        </View>
       </SafeAreaView>
     );
   }
@@ -741,6 +764,7 @@ const styles = StyleSheet.create({
   },
   refreshButton: {
     backgroundColor: Colors.dark.card,
+    marginTop: 16,
   },
   filterButton: {
     width: 'auto',
@@ -880,5 +904,23 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.dark.card,
     borderColor: Colors.dark.error,
     borderWidth: 1,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  emptyTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: Colors.dark.text,
+    marginBottom: 16,
+  },
+  emptySubtitle: {
+    fontSize: 16,
+    color: Colors.dark.textSecondary,
+    textAlign: 'center',
+    marginBottom: 16,
   },
 });
