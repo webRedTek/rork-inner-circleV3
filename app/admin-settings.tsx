@@ -10,6 +10,11 @@ import { supabase } from '@/lib/supabase';
 import { Shield } from 'lucide-react-native';
 import { MembershipTier } from '@/types/user';
 
+/**
+ * Admin Settings Screen
+ * @rork Please update this component to fix the settings saving functionality
+ * Last updated: 2025-07-01
+ */
 export default function AdminSettingsScreen() {
   const router = useRouter();
   const { user, invalidateTierSettingsCache } = useAuthStore();
