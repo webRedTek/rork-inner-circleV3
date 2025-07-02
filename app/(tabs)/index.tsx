@@ -12,44 +12,31 @@ import { useMatchesStore } from '@/store/matches-store';
 export default function HomeScreen() {
   const router = useRouter();
   const { user, isReady } = useAuthStore();
-  const { matches, fetchMatches } = useMatchesStore();
+  const { matches } = useMatchesStore(); // Only get matches from state, don't fetch
   const [recentMatches, setRecentMatches] = useState<MatchWithProfile[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
   
-  useEffect(() => {
-    if (isReady && user) {
-      fetchRecentMatches();
-      setInitialLoad(false);
-    }
-  }, [isReady, user]);
-  
-  const fetchRecentMatches = async () => {
-    if (!user) return; // Silent fail if no user
-    
-    try {
-      setRefreshing(true);
-      await fetchMatches(); // Use fetchMatches instead of getMatches
-      setRecentMatches(matches.slice(0, 5)); // Limit to 5 recent matches
-    } catch (error) {
-      console.error('Failed to fetch recent matches', error);
-      setRecentMatches([]);
-    } finally {
-      setRefreshing(false);
-    }
-  };
-  
-  // Update recent matches when matches state changes
+  // Only update recent matches when matches state changes - NO FETCHING
   useEffect(() => {
     if (matches && matches.length > 0) {
       setRecentMatches(matches.slice(0, 5));
+    } else {
+      setRecentMatches([]);
     }
+    setInitialLoad(false);
   }, [matches]);
   
+  // REMOVED: fetchRecentMatches function that was calling fetchMatches()
+  // The home screen should NOT trigger any match fetching
+  
   const onRefresh = () => {
-    if (user) {
-      fetchRecentMatches();
+    // Simple refresh that just updates the display from existing state
+    setRefreshing(true);
+    if (matches && matches.length > 0) {
+      setRecentMatches(matches.slice(0, 5));
     }
+    setTimeout(() => setRefreshing(false), 500); // Quick refresh animation
   };
   
   if (!isReady || initialLoad) {

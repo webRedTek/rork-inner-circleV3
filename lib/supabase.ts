@@ -950,13 +950,13 @@ export const processSwipeBatch = async (swipeActions: SwipeAction[]): Promise<Sw
 };
 
 /**
- * Enhanced potential matches fetching
+ * Enhanced potential matches fetching with better debugging
  */
 export const fetchPotentialMatches = async (
   userId: string, 
   maxDistance: number = 50, 
   isGlobalDiscovery: boolean = false, 
-  limit: number = 25
+  limit: number = 10 // Changed default to 10
 ): Promise<PotentialMatchesResult | null> => {
   console.log('🚨 [Enhanced Supabase] fetchPotentialMatches function called!');
   
@@ -987,6 +987,7 @@ export const fetchPotentialMatches = async (
       hasData: !!data,
       dataType: typeof data,
       dataKeys: data ? Object.keys(data) : [],
+      matchesCount: data?.matches?.length || 0,
       hasError: !!error,
       connectionState
     });
@@ -998,6 +999,19 @@ export const fetchPotentialMatches = async (
         consecutiveFailures: connectionState.consecutiveFailures
       });
       throw error;
+    }
+    
+    // Enhanced debugging for the matches
+    if (data?.matches) {
+      console.log('[Enhanced Supabase] Matches details:', {
+        totalMatches: data.matches.length,
+        firstMatch: data.matches[0] ? {
+          id: data.matches[0].id,
+          name: data.matches[0].name,
+          hasRequiredFields: !!(data.matches[0].id && data.matches[0].name)
+        } : null,
+        allMatchesValid: data.matches.every((match: any) => match && match.id && match.name)
+      });
     }
     
     console.log('[Enhanced Supabase] RPC successful, returning data');

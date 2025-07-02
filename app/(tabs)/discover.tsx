@@ -27,6 +27,7 @@
  * - Better haptic feedback integration throughout the interface
  * - Enhanced loading states and error handling
  * - Improved global search logic with better validation
+ * - Added better debugging to track multiple calls issue
  * 
  * FILE INTERACTIONS:
  * - Imports from: matches-store, auth-store, notification-store, usage-store
@@ -106,6 +107,7 @@ export default function DiscoverScreen() {
   const [globalSearch, setGlobalSearch] = useState(false);
   const [distanceError, setDistanceError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [hasInitialized, setHasInitialized] = useState(false);
   
   // Simplified global search - allow for all users (can be restricted later if needed)
   const isGlobalSearchAllowed = true;
@@ -137,28 +139,42 @@ export default function DiscoverScreen() {
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
   const addDebugInfo = useCallback((info: string) => {
     if (isDebugMode) {
-      console.log(`[DEBUG] ${info}`);
+      console.log(`[DISCOVER-DEBUG] ${info}`);
     }
     setDebugInfo(prev => [...prev.slice(-4), `${new Date().toLocaleTimeString()}: ${info}`]);
   }, [isDebugMode]);
 
-  // Initial fetch effect - ONLY on first load
+  // SINGLE INITIALIZATION EFFECT - Only runs once when component mounts and user is ready
   useEffect(() => {
-    if (isReady && user && initialLoad) {
-      console.log('[Discover] Initial fetch triggered:', {
-        userId: user.id,
-        distance: user.preferredDistance || parseInt(preferredDistance) || 50,
-        globalSearch: isGlobalSearchAllowed && globalSearch
-      });
+    let isMounted = true;
+    
+    const initializeDiscoverScreen = async () => {
+      if (!isReady || !user || hasInitialized) {
+        addDebugInfo(`Skipping init - ready: ${isReady}, user: ${!!user}, initialized: ${hasInitialized}`);
+        return;
+      }
 
-      // Initial fetch with proper distance
-      const distance = isGlobalSearchAllowed && globalSearch 
-        ? undefined 
-        : (user.preferredDistance || parseInt(preferredDistance) || 50);
+      addDebugInfo(`Starting initialization for user: ${user.id}`);
+      setHasInitialized(true);
 
-      fetchPotentialMatches(distance)
-        .catch(error => {
-          console.error('[Discover] Error fetching matches:', error);
+      try {
+        // Initial fetch with proper distance
+        const distance = isGlobalSearchAllowed && globalSearch 
+          ? undefined 
+          : (user.preferredDistance || parseInt(preferredDistance) || 50);
+
+        addDebugInfo(`Fetching initial matches - distance: ${distance}, global: ${globalSearch}`);
+        
+        if (isMounted) {
+          await fetchPotentialMatches(distance);
+          startBatchProcessing();
+          setInitialLoad(false);
+          addDebugInfo('Initial fetch completed successfully');
+        }
+      } catch (error) {
+        if (isMounted) {
+          console.error('[Discover] Error during initialization:', error);
+          addDebugInfo(`Initialization error: ${error}`);
           setDistanceError('Error loading matches');
           addNotification({
             type: 'error',
@@ -166,21 +182,22 @@ export default function DiscoverScreen() {
             displayStyle: 'toast',
             duration: 5000
           });
-        });
+        }
+      }
+    };
 
-      startBatchProcessing();
-      setInitialLoad(false); // Prevent automatic refetching
-    }
+    initializeDiscoverScreen();
     
     return () => {
+      isMounted = false;
       stopBatchProcessing();
     };
-  }, [isReady, user, initialLoad, fetchPotentialMatches, isGlobalSearchAllowed, globalSearch, preferredDistance, addNotification]);
+  }, [isReady, user]); // Only depend on isReady and user, not other state
 
   // Add validation for distance changes - skip validation when global search is enabled
   useEffect(() => {
     if (!user) {
-      console.log('[Discover] Missing user:', { hasUser: !!user });
+      addDebugInfo('Missing user for distance validation');
       return;
     }
 
@@ -191,11 +208,7 @@ export default function DiscoverScreen() {
     }
 
     const distance = parseInt(preferredDistance) || 50;
-    console.log('[Discover] Distance update:', {
-      newDistance: distance,
-      isGlobalAllowed: isGlobalSearchAllowed,
-      globalEnabled: globalSearch
-    });
+    addDebugInfo(`Distance validation - distance: ${distance}, global: ${globalSearch}`);
 
     if (distance < 1 || distance > 500) {
       setDistanceError(`Distance must be between 1 and 500 miles`);
@@ -248,8 +261,7 @@ export default function DiscoverScreen() {
   }, [swipeLimitReached, matchLimitReached, triggerHapticFeedback, addNotification]);
   
   useEffect(() => {
-    console.log('[Discover] Potential matches updated', { count: potentialMatches.length, isLoading, error: error || 'none' });
-    addDebugInfo(`Matches updated - count: ${potentialMatches.length}, loading: ${isLoading}, error: ${error || 'none'}`);
+    addDebugInfo(`Matches state updated - count: ${potentialMatches.length}, loading: ${isLoading}, error: ${error || 'none'}`);
   }, [potentialMatches, isLoading, error, addDebugInfo]);
   
   // DEBUG: Add timeout to detect if loading takes too long
@@ -271,6 +283,7 @@ export default function DiscoverScreen() {
     }
     
     try {
+      addDebugInfo(`Swiping right on profile: ${profile.id}`);
       const match = await likeUser(profile.id);
       
       if (match) {
@@ -298,6 +311,7 @@ export default function DiscoverScreen() {
       }
     } catch (error) {
       console.error('[Discover] Error liking user:', error);
+      addDebugInfo(`Error liking user: ${error}`);
       triggerHapticFeedback('error');
       
       addNotification({
@@ -307,7 +321,7 @@ export default function DiscoverScreen() {
         duration: 4000
       });
     }
-  }, [likeUser, swipeLimitReached, triggerHapticFeedback, addNotification]);
+  }, [likeUser, swipeLimitReached, triggerHapticFeedback, addNotification, addDebugInfo]);
   
   const handleSwipeLeft = useCallback(async (profile: UserProfile) => {
     if (swipeLimitReached) {
@@ -317,6 +331,7 @@ export default function DiscoverScreen() {
     }
     
     try {
+      addDebugInfo(`Swiping left on profile: ${profile.id}`);
       await passUser(profile.id);
       triggerHapticFeedback('light');
       
@@ -330,6 +345,7 @@ export default function DiscoverScreen() {
       }
     } catch (error) {
       console.error('[Discover] Error passing user:', error);
+      addDebugInfo(`Error passing user: ${error}`);
       triggerHapticFeedback('error');
       
       addNotification({
@@ -339,7 +355,7 @@ export default function DiscoverScreen() {
         duration: 4000
       });
     }
-  }, [passUser, swipeLimitReached, triggerHapticFeedback, addNotification, isDebugMode]);
+  }, [passUser, swipeLimitReached, triggerHapticFeedback, addNotification, isDebugMode, addDebugInfo]);
   
   const handleModalAction = useCallback((action: 'message' | 'close' | 'upgrade' | 'applyFilters' | 'cancel') => {
     triggerHapticFeedback('light');
@@ -392,6 +408,7 @@ export default function DiscoverScreen() {
           ? undefined 
           : parseInt(preferredDistance);
         
+        addDebugInfo(`Applying filters - distance: ${distance}, global: ${globalSearch}`);
         fetchPotentialMatches(distance, true);
         setShowFilterModal(false);
         
@@ -406,7 +423,7 @@ export default function DiscoverScreen() {
         setShowFilterModal(false);
         break;
     }
-  }, [matchedUser, router, preferredDistance, isGlobalSearchAllowed, globalSearch, fetchPotentialMatches, triggerHapticFeedback, addNotification]);
+  }, [matchedUser, router, preferredDistance, isGlobalSearchAllowed, globalSearch, fetchPotentialMatches, triggerHapticFeedback, addNotification, addDebugInfo]);
   
   const handleProfilePress = useCallback((profile: UserProfile) => {
     triggerHapticFeedback('selection');
@@ -428,6 +445,7 @@ export default function DiscoverScreen() {
         ? undefined 
         : parseInt(preferredDistance);
       
+      addDebugInfo(`Manual refresh - distance: ${distance}, global: ${globalSearch}`);
       await fetchPotentialMatches(distance, true); // Force refresh
       
       addNotification({
@@ -506,7 +524,7 @@ export default function DiscoverScreen() {
     onRetry: handleManualRefresh
   }), [potentialMatches, handleSwipeLeft, handleSwipeRight, handleProfilePress, isLoading, error, handleManualRefresh]);
   
-  if (isLoading && potentialMatches.length === 0) {
+  if (isLoading && potentialMatches.length === 0 && initialLoad) {
     return (
       <SafeAreaView style={styles.loadingContainer} edges={['bottom']}>
         <ActivityIndicator size="large" color={Colors.dark.accent} />
@@ -730,6 +748,7 @@ export default function DiscoverScreen() {
           <Text style={styles.debugText}>No More: {noMoreProfiles ? 'true' : 'false'}</Text>
           <Text style={styles.debugText}>Error: {error || 'none'}</Text>
           <Text style={styles.debugText}>Ready: {isReady ? 'true' : 'false'}</Text>
+          <Text style={styles.debugText}>Initialized: {hasInitialized ? 'true' : 'false'}</Text>
           <Text style={styles.debugTitle}>RECENT ACTIONS:</Text>
           {debugInfo.slice(-5).map((info, index) => (
             <Text key={index} style={styles.debugText}>{info}</Text>
