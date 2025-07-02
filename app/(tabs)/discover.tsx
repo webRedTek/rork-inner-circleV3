@@ -88,7 +88,7 @@ export default function DiscoverScreen() {
     noMoreProfiles
   } = useMatchesStore();
   
-  const { user, isReady, allTierSettings } = useAuthStore();
+  const { user, isReady } = useAuthStore();
   const { isDebugMode } = useDebugStore();
   
   const [showMatchModal, setShowMatchModal] = useState(false);
@@ -103,9 +103,8 @@ export default function DiscoverScreen() {
   const [distanceError, setDistanceError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   
-  // Get the current user's tier settings from allTierSettings
-  const tierSettings = user && allTierSettings ? allTierSettings[user.membershipTier] : null;
-  const isGlobalSearchAllowed = tierSettings?.global_discovery || false;
+  // Simplified global search - allow for all users (can be restricted later if needed)
+  const isGlobalSearchAllowed = true;
 
   // DEBUG: Add temporary debugging state
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
@@ -295,7 +294,7 @@ export default function DiscoverScreen() {
   };
   
   const handleManualRefresh = async () => {
-    if (isLoading || isPrefetching) return;
+    if (isLoading || isPrefetching || refreshing) return;
     
     addDebugInfo('Manual refresh triggered');
     setRefreshing(true);
@@ -309,6 +308,7 @@ export default function DiscoverScreen() {
       await fetchPotentialMatches(distance, true); // Force refresh
     } catch (error) {
       console.error('[Discover] Error refreshing matches:', error);
+      addDebugInfo(`Refresh error: ${error}`);
     } finally {
       setRefreshing(false);
     }
@@ -537,7 +537,7 @@ export default function DiscoverScreen() {
           <Text style={styles.debugTitle}>DEBUG INFO:</Text>
           <Text style={styles.debugText}>User: {user?.id || 'none'}</Text>
           <Text style={styles.debugText}>Tier: {user?.membershipTier || 'none'}</Text>
-          <Text style={styles.debugText}>Tier Settings: {tierSettings ? 'loaded' : 'missing'}</Text>
+                      <Text style={styles.debugText}>Global Search: {isGlobalSearchAllowed ? 'enabled' : 'disabled'}</Text>
           <Text style={styles.debugText}>Matches: {potentialMatches.length}</Text>
           <Text style={styles.debugText}>Loading: {isLoading ? 'true' : 'false'}</Text>
           <Text style={styles.debugText}>Prefetching: {isPrefetching ? 'true' : 'false'}</Text>

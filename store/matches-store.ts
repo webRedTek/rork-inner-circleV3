@@ -990,7 +990,7 @@ const matchesStoreCreator: StateCreator<
 
   refreshCandidates: async () => {
     return await withErrorHandling(async () => {
-      const { user, allTierSettings } = useAuthStore.getState();
+      const { user } = useAuthStore.getState();
       if (!user) {
         throw {
           category: ErrorCategory.AUTH,
@@ -1004,9 +1004,8 @@ const matchesStoreCreator: StateCreator<
         // Get user's preferred distance if available
         const userMaxDistance = user.preferredDistance || 50;
         
-        // Use cached tier settings for global discovery
-        const tierSettings = allTierSettings?.[user.membershipTier];
-        const isGlobalDiscovery = tierSettings?.global_discovery || false;
+        // Simplified - no tier settings dependency
+        const isGlobalDiscovery = false;
 
         if (!isSupabaseConfigured() || !supabase) {
           throw {
