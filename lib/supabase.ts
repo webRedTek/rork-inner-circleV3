@@ -306,6 +306,12 @@ const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // 1 second
 const RETRY_BACKOFF_FACTOR = 1.5;
 
+interface RetryOptions {
+  maxRetries?: number;
+  delay?: number;
+  shouldRetry?: (error: any) => boolean;
+}
+
 /**
  * Checks if Supabase is configured in the environment
  */
@@ -669,45 +675,50 @@ export const getReadableError = (error: any): string => {
 };
 
 /**
- * Generic retry function for Supabase operations
+ * Retry operation with exponential backoff
  */
 export const retryOperation = async <T>(
-  operation: () => Promise<T>, 
-  maxRetries: number = MAX_RETRIES,
-  initialDelay: number = RETRY_DELAY,
-  backoffFactor: number = RETRY_BACKOFF_FACTOR
+  operation: () => Promise<T>,
+  options: RetryOptions = {}
 ): Promise<T> => {
-  let lastError: any = null;
-  
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
+  const { maxRetries = 3, delay = 1000, shouldRetry = () => true } = options;
+  let lastError: any;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // Check network connectivity before operation
-      const networkStatus = await checkNetworkStatus();
-      if (networkStatus.isConnected === false) {
-        console.warn(`Network appears to be offline on attempt ${attempt + 1}. Operation may fail.`);
-      }
-      
       return await operation();
     } catch (error) {
       lastError = error;
       
-      const isNetworkError = error instanceof Error && 
-        (error.message.includes('Network') || 
-         error.message.includes('Failed to fetch') ||
-         error.message.includes('offline') ||
-         error.message.includes('AuthRetryableFetchError'));
-      
-      console.warn(`Operation attempt ${attempt + 1} failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      
-      if (attempt < maxRetries - 1) {
-        const delay = initialDelay * Math.pow(backoffFactor, attempt);
-        console.log(`Retrying in ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
+      // Log detailed error information
+      console.log(`[Supabase] Retry attempt ${attempt}/${maxRetries} failed:`, {
+        error,
+        type: typeof error,
+        message: error?.message || 'No message',
+        details: error?.details || 'No details',
+        hint: error?.hint || 'No hint',
+        code: error?.code || 'No code',
+        status: error?.status || 'No status',
+        statusText: error?.statusText || 'No status text'
+      });
+
+      if (attempt === maxRetries || !shouldRetry(error)) {
+        console.error('All operation attempts failed:', {
+          error: lastError,
+          message: lastError?.message || 'No message',
+          details: lastError?.details || 'No details',
+          hint: lastError?.hint || 'No hint',
+          code: lastError?.code || 'No code'
+        });
+        throw lastError;
       }
+
+      const waitTime = delay * Math.pow(2, attempt - 1);
+      console.log(`[Supabase] Waiting ${waitTime}ms before retry ${attempt + 1}`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
     }
   }
-  
-  console.error('All operation attempts failed:', lastError);
+
   throw lastError;
 };
 

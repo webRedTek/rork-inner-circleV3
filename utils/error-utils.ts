@@ -215,6 +215,18 @@ function mapErrorCode(error: any, category: ErrorCategory): string {
  * @returns A standardized AppError object.
  */
 export function handleError(error: any): AppError {
+  // Log the raw error for debugging
+  console.log('[ErrorUtils] Raw error received:', {
+    error,
+    type: typeof error,
+    isError: error instanceof Error,
+    message: error?.message,
+    stack: error?.stack,
+    details: error?.details,
+    code: error?.code,
+    hint: error?.hint
+  });
+
   const category = categorizeError(error);
   const code = mapErrorCode(error, category);
   const message = error instanceof Error ? error.message : String(error);
@@ -232,6 +244,15 @@ export function handleError(error: any): AppError {
   };
 
   console.error(`[Error][${category}][${code}] ${message}`, technical || '');
+  console.log('[ErrorUtils] Processed error:', {
+    category,
+    code,
+    message,
+    userMessage,
+    retry: appError.retry,
+    recoverable: appError.recoverable
+  });
+  
   return appError;
 }
 
