@@ -167,25 +167,7 @@ export default function DiscoverScreen() {
     }
   }, [preferredDistance, user, isGlobalSearchAllowed]);
 
-  // Remove focus-based refresh as requested
-  // Only refresh when manually triggered or when running out of matches
-  
-  useEffect(() => {
-    // Prefetch more profiles if we're running low
-    if (potentialMatches.length <= 3 && !isPrefetching && !isLoading && user && !noMoreProfiles) {
-      addDebugInfo(`Low on matches, fetching more - matches: ${potentialMatches.length}, prefetching: ${isPrefetching}, loading: ${isLoading}, noMore: ${noMoreProfiles}`);
-      console.log('[Discover] Running low on matches, fetching more', { currentMatches: potentialMatches.length });
-      
-      // If global search is enabled for the tier, pass undefined for maxDistance
-      // Otherwise use the user's preferred distance
-      const distance = isGlobalSearchAllowed && globalSearch 
-        ? undefined 
-        : (user.preferredDistance || parseInt(preferredDistance) || 50);
-      
-      addDebugInfo(`Fetching with distance: ${distance === undefined ? 'global' : distance}mi`);
-      fetchPotentialMatches(distance);
-    }
-  }, [potentialMatches.length, isPrefetching, isLoading, user, noMoreProfiles, preferredDistance, isGlobalSearchAllowed, globalSearch]);
+  // REMOVED: Automatic prefetching - only fetch on initial load and manual refresh
   
   useEffect(() => {
     // Check for new matches and display modal
