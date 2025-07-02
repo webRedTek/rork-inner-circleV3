@@ -148,14 +148,23 @@ export const useUsageStore = create<UsageStore>()(
           console.log('Initializing usage data for user:', userId);
           const now = Date.now();
           
+          // Check if user is authenticated
+          const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+          if (authError || !authUser || authUser.id !== userId) {
+            console.log('User not authenticated, skipping usage initialization');
+            throw new Error('User not authenticated for usage initialization');
+          }
+          
           // First try to find any existing record for this user
           const { data: existingData, error: findError } = await supabase
             .from('user_daily_usage')
             .select('*')
             .eq('user_id', userId)
+            .eq('date', new Date().toISOString().split('T')[0]) // Add date filter
             .maybeSingle();
 
           if (findError) {
+            console.error('Error finding existing usage record:', findError);
             throw new Error(`Failed to check for existing usage record: ${handleError(findError).userMessage}`);
           }
 
@@ -405,6 +414,39 @@ export const useUsageStore = create<UsageStore>()(
           remaining: Math.max(0, limit - currentCount),
           timestamp: now,
         };
+      },
+
+      trackUsage: async (options: UsageTrackingOptions): Promise<UsageResult> => {
+        const { user } = useAuthStore.getState();
+        if (!user) {
+          throw {
+            category: 'AUTH',
+            code: 'AUTH_NOT_AUTHENTICATED',
+            message: 'User not authenticated for usage tracking'
+          };
+        }
+
+        // Map action types to the correct action string
+        let action: string;
+        switch (options.actionType) {
+          case 'message':
+            action = 'message';
+            break;
+          case 'join_group':
+          case 'leave_group':
+          case 'create_group':
+          case 'send_group_message':
+          case 'event_create':
+          case 'update_group_event':
+          case 'rsvp_event':
+          case 'update_group':
+            action = 'message'; // Group actions count as messages
+            break;
+          default:
+            action = options.actionType;
+        }
+
+        return await get().updateUsage(user.id, action);
       },
 
       queueBatchUpdate: (actionType: string, countChange: number) => {

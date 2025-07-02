@@ -409,7 +409,6 @@ export interface UsageStore {
   initializeUsage: (userId: string) => Promise<void>;
   fetchDatabaseTotals: (userId: string) => Promise<DatabaseTotals | undefined>;
   syncUsageData: (force?: boolean) => Promise<void>;
-  trackUsage: (options: UsageTrackingOptions) => Promise<UsageResult>;
   getUsageStats: () => UsageStats | null;
   queueBatchUpdate: (actionType: string, count: number) => void;
   resetUsage: (actionType?: string) => void;

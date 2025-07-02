@@ -86,7 +86,7 @@ export const useMessagesStore = create<MessagesState>()((set: SetState, get: Get
 
         await withNetworkCheck(async () => {
           // Check message sending limit based on tier settings
-          const result = await useUsageStore.getState().trackUsage({ actionType: 'message', batchProcess: true });
+          const result = await useUsageStore.getState().updateUsage(user.id, 'message');
           if (!result.isAllowed) {
             throw {
               category: ErrorCategory.RATE_LIMIT,

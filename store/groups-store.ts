@@ -376,7 +376,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           }
           
           // Log the action using usage store
-          await useUsageStore.getState().trackUsage({ actionType: 'join_group', batchProcess: true });
+          await useUsageStore.getState().updateUsage(user.id, 'join_group');
           
           // Update auth store
           const authStorage = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}');
@@ -505,7 +505,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           }
           
           // Log the action using usage store
-          await useUsageStore.getState().trackUsage({ actionType: 'leave_group', batchProcess: true });
+          await useUsageStore.getState().updateUsage(user.id, 'leave_group');
           
           // Update auth store
           const authStorage = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}');
@@ -636,7 +636,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           }
           
           // Log the action using usage store
-          await useUsageStore.getState().trackUsage({ actionType: 'create_group', batchProcess: true });
+          await useUsageStore.getState().updateUsage(user.id, 'create_group');
           
           // Update auth store
           const authStorage = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}');
@@ -751,7 +751,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         if (insertError) throw insertError;
         
         // Log the action using usage store
-        useUsageStore.getState().trackUsage({ actionType: 'send_group_message', batchProcess: true });
+        useUsageStore.getState().updateUsage(user.id, 'send_group_message');
         
         // Refresh messages
         await get().fetchGroupMessages(groupId);
@@ -842,7 +842,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         if (insertError) throw insertError;
         
         // Log the action using usage store
-        useUsageStore.getState().trackUsage({ actionType: 'event_create', batchProcess: true });
+        useUsageStore.getState().updateUsage(user.id, 'event_create');
         
         // Refresh events
         if (eventData.groupId) {
@@ -920,7 +920,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           }
           
           // Log the action using usage store
-          await useUsageStore.getState().trackUsage({ actionType: 'update_group_event', batchProcess: true });
+          await useUsageStore.getState().updateUsage(user.id, 'update_group_event');
           
           // Refresh events
           if (eventData.groupId) {
@@ -1096,7 +1096,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           }
           
           // Log the action using usage store
-          await useUsageStore.getState().trackUsage({ actionType: 'rsvp_event', batchProcess: true });
+          await useUsageStore.getState().updateUsage(user.id, 'rsvp_event');
           
           // Refresh RSVPs
           const groupId = get().groupEvents.find(event => event.id === eventId)?.groupId;
@@ -1170,7 +1170,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           }
           
           // Log the action using usage store
-          await useUsageStore.getState().trackUsage({ actionType: 'update_group', batchProcess: true });
+          await useUsageStore.getState().updateUsage(user.id, 'update_group');
           
           // Refresh group details
           if (groupData.id) {
