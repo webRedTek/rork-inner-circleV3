@@ -20,16 +20,18 @@
  * - Improved error handling with standard error codes
  * - Fixed filtering to properly handle seen profiles
  * - Optimized batch processing for better performance
+ * - Added proper fetchMatches function for messages screen
  * 
  * FILE INTERACTIONS:
  * - Uses supabase.ts for: database queries, match functions, batch processing
  * - Uses auth-store for: user data, authentication state
  * - Uses usage-store for: swipe/match limits, usage tracking
  * - Uses notification-store for: match notifications, error alerts
- * - Used by: discover screen, profile screens, chat screens
+ * - Used by: discover screen, profile screens, chat screens, messages screen
  * 
  * KEY FUNCTIONS:
  * - fetchPotentialMatches: Single source of truth for getting match profiles
+ * - fetchMatches: Fetch user's matches with full profile data for messages screen
  * - likeUser/passUser: Handles swipe actions with proper error handling
  * - processSwipeBatch: Batches swipes for network efficiency
  * - ProfileCache: Manages cached user profiles with validation
@@ -347,6 +349,7 @@ interface MatchesStateData {
 
 interface MatchesStateMethods {
   fetchPotentialMatches: (maxDistance?: number, forceRefresh?: boolean) => Promise<void>;
+  fetchMatches: () => Promise<void>;
   likeUser: (userId: string) => Promise<MatchWithProfile | null>;
   passUser: (userId: string) => Promise<void>;
   queueSwipe: (userId: string, direction: 'left' | 'right') => Promise<void>;
@@ -706,12 +709,103 @@ const matchesStoreCreator: StateCreator<
           console.error('Code:', appError.code);
         }
 
-            set({
+        set({
           error: appError.userMessage,
-              isLoading: false,
+          isLoading: false,
           noMoreProfiles: true
         });
         
+        throw appError;
+      }
+    });
+  },
+
+  fetchMatches: async () => {
+    return await withErrorHandling(async () => {
+      const { user, isReady } = useAuthStore.getState();
+      if (!isReady || !user) {
+        throw {
+          category: ErrorCategory.AUTH,
+          code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
+          message: 'User not ready or authenticated for fetching matches'
+        };
+      }
+      
+      set({ matchesLoading: true, error: null });
+      
+      try {
+        await withNetworkCheck(async () => {
+          if (!isSupabaseConfigured() || !supabase) {
+            throw {
+              category: ErrorCategory.DATABASE,
+              code: ErrorCodes.DB_CONNECTION_ERROR,
+              message: 'Database is not configured'
+            };
+          }
+          
+          // Fetch matches with user profile data
+          const { data: matchesData, error: matchesError } = await withRetry(
+            async () => {
+              if (!supabase) throw new Error('Supabase client is not initialized');
+              return await supabase
+                .from('matches')
+                .select(`
+                  *,
+                  matched_user:users!matches_matched_user_id_fkey(*)
+                `)
+                .or(`user_id.eq.${user.id},matched_user_id.eq.${user.id}`)
+                .order('created_at', { ascending: false });
+            },
+            {
+              maxRetries: 3,
+              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
+            }
+          );
+          
+          if (matchesError) {
+            throw {
+              category: ErrorCategory.DATABASE,
+              code: ErrorCodes.DB_QUERY_ERROR,
+              message: matchesError.message
+            };
+          }
+          
+          // Convert to MatchWithProfile format
+          const typedMatches: MatchWithProfile[] = (matchesData || []).map((match: any) => {
+            // Determine which user is the matched user (not the current user)
+            const isCurrentUserFirst = match.user_id === user.id;
+            const matchedUserId = isCurrentUserFirst ? match.matched_user_id : match.user_id;
+            
+            // Get the matched user profile
+            const matchedUserProfile = match.matched_user ? supabaseToUserProfile(match.matched_user) : null;
+            
+            return {
+              match_id: String(match.id || ''),
+              user_id: String(match.user_id || ''),
+              matched_user_id: String(match.matched_user_id || ''),
+              matched_user_profile: matchedUserProfile,
+              created_at: Number(match.created_at || Date.now()),
+              last_message_at: match.last_message_at ? Number(match.last_message_at) : undefined,
+              is_active: Boolean(match.is_active !== false)
+            } as MatchWithProfile;
+          }).filter((match: MatchWithProfile) => {
+            // Filter out matches without valid user profiles
+            return match.matched_user_profile && 
+                   match.matched_user_profile.id && 
+                   match.matched_user_profile.name;
+          });
+          
+          set({ 
+            matches: typedMatches, 
+            matchesLoading: false 
+          });
+        });
+      } catch (error) {
+        const appError = handleError(error);
+        set({
+          error: appError.userMessage,
+          matchesLoading: false
+        });
         throw appError;
       }
     });
@@ -965,88 +1059,6 @@ const matchesStoreCreator: StateCreator<
     });
   },
 
-  getMatches: async () => {
-    set({ matchesLoading: true });
-    try {
-        if (!isSupabaseConfigured() || !supabase) {
-        throw new Error('Supabase client not initialized');
-      }
-      
-      const { data, error } = await supabase
-        .from('matches')
-        .select('*')
-        .eq('user_id', useAuthStore.getState().user?.id);
-        
-      if (error) throw error;
-      
-      set({ matches: data || [], matchesLoading: false });
-    } catch (error) {
-      set({ matchesLoading: false });
-      handleError(error);
-    }
-  },
-
-  refreshCandidates: async () => {
-    return await withErrorHandling(async () => {
-      const { user } = useAuthStore.getState();
-      if (!user) {
-        throw {
-          category: ErrorCategory.AUTH,
-          code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-          message: 'User not ready or authenticated for refreshing candidates'
-        };
-      }
-
-      set({ isLoading: true, error: null });
-      await withNetworkCheck(async () => {
-        // Get user's preferred distance if available
-        const userMaxDistance = user.preferredDistance || 50;
-        
-        // Simplified - no tier settings dependency
-        const isGlobalDiscovery = false;
-
-        if (!isSupabaseConfigured() || !supabase) {
-          throw {
-            category: ErrorCategory.DATABASE,
-            code: ErrorCodes.DB_CONNECTION_ERROR,
-            message: 'Database is not configured'
-          };
-        }
-
-        const result = await withRateLimitAndRetry(
-          () => fetchPotentialMatchesFromSupabase(
-            user.id,
-            userMaxDistance,
-            isGlobalDiscovery,
-            get().batchSize * 2
-          )
-        );
-
-        if (!result || !result.matches) {
-          throw {
-            category: ErrorCategory.DATABASE,
-            code: ErrorCodes.DB_QUERY_ERROR,
-            message: 'Failed to fetch potential matches'
-          };
-        }
-
-        // Convert matches to UserProfile objects
-        const userProfiles = result.matches.map(supabaseToUserProfile);
-        
-        // Split into current batch and cache
-        const batchToShow = userProfiles.slice(0, get().batchSize);
-        const remainingProfiles = userProfiles.slice(get().batchSize);
-
-        set({
-          potentialMatches: batchToShow,
-          cachedMatches: remainingProfiles,
-          isLoading: false,
-          noMoreProfiles: result.matches.length === 0
-        });
-      });
-    });
-  },
-
   clearError: () => set({ error: null }),
   
   clearNewMatch: () => set({ newMatch: null }),
@@ -1085,31 +1097,6 @@ const matchesStoreCreator: StateCreator<
         set((state: MatchesState) => ({ passedUsers: updatedPasses }));
       }
     });
-  },
-
-  clearMatches: () => {
-    set({ matches: [], pendingMatches: [], matchesLoading: false });
-  },
-  
-  fetchMatches: async () => {
-    set({ matchesLoading: true });
-    try {
-      if (!isSupabaseConfigured() || !supabase) {
-        throw new Error('Supabase client not initialized');
-      }
-      
-      const { data, error } = await supabase
-        .from('matches')
-        .select('*')
-        .eq('user_id', useAuthStore.getState().user?.id);
-        
-      if (error) throw error;
-      
-      set({ matches: data || [], matchesLoading: false });
-    } catch (error) {
-      set({ matchesLoading: false });
-      handleError(error);
-    }
   }
 });
 
@@ -1151,13 +1138,13 @@ export const useMatchesStore = create<MatchesState>()(
           return;
         }
 
-          useMatchesStore.setState({
-            ...state,
-            pendingLikes: new Set(state.pendingLikes),
-            isLoading: false,
+        useMatchesStore.setState({
+          ...state,
+          pendingLikes: new Set(state.pendingLikes),
+          isLoading: false,
           isPrefetching: false,
           matchesLoading: false
-          });
+        });
       }
     } as unknown as PersistOptions<MatchesState, MatchesPersistedState>
   )

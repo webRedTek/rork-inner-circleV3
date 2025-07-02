@@ -22,6 +22,7 @@ import { withNetworkCheck } from '@/utils/network-utils';
  * - Removed unnecessary tier settings validation that was causing errors
  * - Improved error handling for missing tier settings
  * - Maintains compatibility with existing group functionality
+ * - Fixed groups loading issues and improved error handling
  * 
  * FILE INTERACTIONS:
  * - Imports from: user types (UserProfile, Group, MembershipTier)
@@ -208,7 +209,8 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
               if (!supabase) throw new Error('Supabase client is not initialized');
               return await supabase
                 .from('groups')
-                .select('*');
+                .select('*')
+                .order('created_at', { ascending: false });
             },
             {
               maxRetries: 3,
@@ -251,7 +253,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         error: appError.userMessage, 
         isLoading: false 
       });
-      throw appError;
+      console.error('Error fetching groups:', appError);
     }
   },
 
@@ -1239,23 +1241,6 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
   },
 
   clearGroups: () => {
-    set({ groups: [], groupsLoading: false });
-  },
-
-  fetchGroups: async () => {
-    set({ groupsLoading: true });
-    try {
-      const { data, error } = await supabase
-        .from('groups')
-        .select('*')
-        .eq('user_id', useAuthStore.getState().user?.id);
-        
-      if (error) throw error;
-      
-      set({ groups: data || [], groupsLoading: false });
-    } catch (error) {
-      set({ groupsLoading: false });
-      handleError(error);
-    }
+    set({ groups: [], userGroups: [], availableGroups: [], isLoading: false });
   }
 }));
