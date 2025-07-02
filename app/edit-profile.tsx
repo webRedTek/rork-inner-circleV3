@@ -16,10 +16,12 @@
  * - Manage location privacy settings
  * 
  * RECENT CHANGES:
+ * - Removed all calls to non-existent getMatches() function
  * - Added device location detection with permissions handling
  * - Implemented ZIP code geocoding
  * - Added location privacy controls
  * - Fixed input validation and error handling
+ * - Profile saving now uses existing state instead of calling getMatches()
  * 
  * FILE INTERACTIONS:
  * - Imports from: auth-store, components/, constants/colors, types/user

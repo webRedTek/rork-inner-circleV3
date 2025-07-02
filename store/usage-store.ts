@@ -19,8 +19,9 @@ import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory } 
  * batching and caching strategies for usage data.
  * 
  * RECENT CHANGES:
- * - Fixed error handling to properly display readable error messages
- * - Improved error stringification to avoid [object Object] errors
+ * - Fixed fetchDatabaseTotals to use .maybeSingle() instead of .single()
+ * - Added date filtering to get today's usage record
+ * - Improved error handling to properly display readable error messages
  * - Enhanced notification system integration for better error visibility
  * - Added proper error logging and user-friendly error messages
  * 
@@ -140,11 +141,15 @@ export const useUsageStore = create<UsageStore>()(
         }
 
         try {
+          // Get today's date in YYYY-MM-DD format
+          const today = new Date().toISOString().split('T')[0];
+          
           const { data, error } = await supabase
             .from('user_daily_usage')
             .select('swipe_count, match_count, message_count, like_count, daily_reset_at')
             .eq('user_id', userId)
-            .single();
+            .eq('date', today)
+            .maybeSingle();
 
           if (error) {
             const errorMessage = safeStringifyError(error);
@@ -156,6 +161,19 @@ export const useUsageStore = create<UsageStore>()(
               duration: 5000
             });
             throw new Error(`Failed to fetch database totals: ${errorMessage}`);
+          }
+
+          // If no record exists for today, return default values
+          if (!data) {
+            const defaultTotals: DatabaseTotals = {
+              swipe_count: 0,
+              match_count: 0,
+              message_count: 0,
+              like_count: 0,
+              daily_reset_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+            };
+            set({ databaseTotals: defaultTotals });
+            return defaultTotals;
           }
 
           set({ databaseTotals: data });
@@ -204,12 +222,15 @@ export const useUsageStore = create<UsageStore>()(
             throw new Error(errorMessage);
           }
           
-          // First try to find any existing record for this user
+          // Get today's date in YYYY-MM-DD format
+          const today = new Date().toISOString().split('T')[0];
+          
+          // First try to find any existing record for this user for today
           const { data: existingData, error: findError } = await supabase
             .from('user_daily_usage')
             .select('*')
             .eq('user_id', userId)
-            .eq('date', new Date().toISOString().split('T')[0]) // Add date filter
+            .eq('date', today)
             .maybeSingle();
 
           if (findError) {
@@ -302,6 +323,7 @@ export const useUsageStore = create<UsageStore>()(
             .from('user_daily_usage')
             .insert({
               user_id: userId,
+              date: today,
               swipe_count: 0,
               match_count: 0,
               message_count: 0,
@@ -649,11 +671,15 @@ export const useUsageStore = create<UsageStore>()(
         try {
           // Only process batch updates if any exist
           if (batchUpdates.length > 0) {
-            // First check if user has a usage record
+            // Get today's date in YYYY-MM-DD format
+            const today = new Date().toISOString().split('T')[0];
+            
+            // First check if user has a usage record for today
             const { data: existingRecord, error: fetchError } = await supabase
               .from('user_daily_usage')
               .select('id')
               .eq('user_id', user.id)
+              .eq('date', today)
               .maybeSingle();
 
             if (fetchError) {
@@ -707,6 +733,7 @@ export const useUsageStore = create<UsageStore>()(
               .from('user_daily_usage')
               .upsert({
                 user_id: user.id,
+                date: today,
                 swipe_count: counts.swipe_count,
                 match_count: counts.match_count,
                 message_count: counts.message_count,

@@ -5,7 +5,8 @@ import {
   StyleSheet, 
   ScrollView, 
   TouchableOpacity,
-  Alert
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,30 +18,66 @@ import { MembershipTier, TierSettings } from '@/types/user';
 
 export default function MembershipScreen() {
   const router = useRouter();
-  const { user, updateMembership, isLoading } = useAuthStore();
+  const { user, updateMembership, isLoading, allTierSettings, fetchAllTierSettings } = useAuthStore();
   const [selectedTier, setSelectedTier] = useState<MembershipTier | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [tierSettings, setTierSettings] = useState<Record<MembershipTier, TierSettings> | null>(null);
+  const [tierSettingsLoading, setTierSettingsLoading] = useState(false);
 
   useEffect(() => {
-    // Load tier settings
-    try {
-      const settings = useAuthStore.getState().allTierSettings;
-      if (settings) {
-        setTierSettings(settings);
+    // Load tier settings if not already loaded
+    const loadTierSettings = async () => {
+      if (!allTierSettings) {
+        setTierSettingsLoading(true);
+        try {
+          await fetchAllTierSettings();
+        } catch (err) {
+          setError('Failed to load tier settings');
+          console.error('Error loading tier settings:', err);
+        } finally {
+          setTierSettingsLoading(false);
+        }
       }
-    } catch (err) {
-      setError('Failed to load tier settings');
-    }
-  }, []);
+    };
+
+    loadTierSettings();
+  }, [allTierSettings, fetchAllTierSettings]);
   
-  if (!tierSettings) {
+  if (tierSettingsLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <Stack.Screen options={{ title: 'Membership Plans' }} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.dark.accent} />
+          <Text style={styles.loadingText}>Loading membership plans...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!allTierSettings) {
     return (
       <SafeAreaView style={styles.container}>
         <Stack.Screen options={{ title: 'Membership Plans' }} />
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>Error: Membership settings are not available. Please try again later.</Text>
+          <Button
+            title="Retry"
+            onPress={async () => {
+              setTierSettingsLoading(true);
+              try {
+                await fetchAllTierSettings();
+                setError(null);
+              } catch (err) {
+                setError('Failed to load tier settings');
+              } finally {
+                setTierSettingsLoading(false);
+              }
+            }}
+            variant="primary"
+            size="large"
+            style={styles.retryButton}
+          />
           <Button
             title="Back"
             onPress={() => router.back()}
@@ -97,31 +134,31 @@ export default function MembershipScreen() {
         )}
         
         <View style={styles.plansContainer}>
-          {/* Basic Plan */}
+          {/* Bronze Plan */}
           <TouchableOpacity
             style={[
               styles.planCard,
-              selectedTier === 'basic' && styles.selectedPlan
+              selectedTier === 'bronze' && styles.selectedPlan
             ]}
-            onPress={() => setSelectedTier('basic')}
+            onPress={() => setSelectedTier('bronze')}
           >
             <View style={styles.planHeader}>
-              <Text style={styles.planName}>Basic</Text>
+              <Text style={styles.planName}>Bronze</Text>
               <Text style={styles.planPrice}>Free</Text>
             </View>
             
             <View style={styles.planFeatures}>
               {renderFeature('Create a basic profile', true)}
               {renderFeature('Discover entrepreneurs', true)}
-              {renderFeature(`Limited swipes per day (${tierSettings?.basic.daily_swipe_limit})`, true)}
+              {renderFeature(`Limited swipes per day (${allTierSettings.bronze?.daily_swipe_limit || 'N/A'})`, true)}
               {renderFeature('Message your matches', true)}
-              {renderFeature('Join groups', tierSettings?.basic.groups_limit > 0)}
-              {renderFeature('Create a portfolio', tierSettings?.basic.featured_portfolio_limit > 0)}
-              {renderFeature('Advanced matching algorithm', tierSettings?.basic.premium_filters_access)}
-              {renderFeature('Priority in discovery queue', tierSettings?.basic.priority_listing)}
+              {renderFeature('Join groups', (allTierSettings.bronze?.groups_limit || 0) > 0)}
+              {renderFeature('Create a portfolio', (allTierSettings.bronze?.featured_portfolio_limit || 0) > 0)}
+              {renderFeature('Advanced matching algorithm', allTierSettings.bronze?.premium_filters_access || false)}
+              {renderFeature('Priority in discovery queue', allTierSettings.bronze?.priority_listing || false)}
             </View>
             
-            {user?.membershipTier === 'basic' && (
+            {user?.membershipTier === 'bronze' && (
               <View style={styles.currentPlanBadge}>
                 <Text style={styles.currentPlanText}>Current Plan</Text>
               </View>
@@ -142,14 +179,14 @@ export default function MembershipScreen() {
             </View>
             
             <View style={styles.planFeatures}>
-              {renderFeature('All Basic features', true)}
-              {renderFeature(`Increased swipes per day`, tierSettings?.silver.daily_swipe_limit > 10)}
-              {renderFeature('Join groups', tierSettings?.silver.groups_limit > 0)}
-              {renderFeature('Create a basic portfolio', tierSettings?.silver.featured_portfolio_limit > 0)}
-              {renderFeature('See who liked you', tierSettings?.silver.can_see_who_liked_you)}
-              {renderFeature('Advanced matching algorithm', tierSettings?.silver.premium_filters_access)}
-              {renderFeature('Priority in discovery queue', tierSettings?.silver.priority_listing)}
-              {renderFeature('Business verification badge', tierSettings?.silver.has_business_verification)}
+              {renderFeature('All Bronze features', true)}
+              {renderFeature(`Increased swipes per day (${allTierSettings.silver?.daily_swipe_limit || 'N/A'})`, (allTierSettings.silver?.daily_swipe_limit || 0) > (allTierSettings.bronze?.daily_swipe_limit || 0))}
+              {renderFeature('Join groups', (allTierSettings.silver?.groups_limit || 0) > 0)}
+              {renderFeature('Create a basic portfolio', (allTierSettings.silver?.featured_portfolio_limit || 0) > 0)}
+              {renderFeature('See who liked you', allTierSettings.silver?.can_see_who_liked_you || false)}
+              {renderFeature('Advanced matching algorithm', allTierSettings.silver?.premium_filters_access || false)}
+              {renderFeature('Priority in discovery queue', allTierSettings.silver?.priority_listing || false)}
+              {renderFeature('Business verification badge', allTierSettings.silver?.has_business_verification || false)}
             </View>
             
             {user?.membershipTier === 'silver' && (
@@ -174,13 +211,13 @@ export default function MembershipScreen() {
             
             <View style={styles.planFeatures}>
               {renderFeature('All Silver features', true)}
-              {renderFeature('Unlimited swipes', tierSettings?.gold.daily_swipe_limit === 0 || tierSettings?.gold.daily_swipe_limit > 50)}
-              {renderFeature('Join multiple groups', tierSettings?.gold.groups_limit > 1)}
-              {renderFeature('Create an advanced portfolio', tierSettings?.gold.featured_portfolio_limit > 1)}
-              {renderFeature('See who liked you', tierSettings?.gold.can_see_who_liked_you)}
-              {renderFeature('Advanced matching algorithm', tierSettings?.gold.premium_filters_access)}
-              {renderFeature('Priority in discovery queue', tierSettings?.gold.priority_listing)}
-              {renderFeature('Business verification badge', tierSettings?.gold.has_business_verification)}
+              {renderFeature('Unlimited swipes', (allTierSettings.gold?.daily_swipe_limit || 0) === 0 || (allTierSettings.gold?.daily_swipe_limit || 0) > 50)}
+              {renderFeature('Join multiple groups', (allTierSettings.gold?.groups_limit || 0) > 1)}
+              {renderFeature('Create an advanced portfolio', (allTierSettings.gold?.featured_portfolio_limit || 0) > 1)}
+              {renderFeature('See who liked you', allTierSettings.gold?.can_see_who_liked_you || false)}
+              {renderFeature('Advanced matching algorithm', allTierSettings.gold?.premium_filters_access || false)}
+              {renderFeature('Priority in discovery queue', allTierSettings.gold?.priority_listing || false)}
+              {renderFeature('Business verification badge', allTierSettings.gold?.has_business_verification || false)}
             </View>
             
             {user?.membershipTier === 'gold' && (
@@ -215,6 +252,17 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    color: Colors.dark.text,
+    fontSize: 16,
+    marginTop: 16,
   },
   header: {
     padding: 16,
@@ -302,6 +350,9 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   upgradeButton: {
+    marginBottom: 16,
+  },
+  retryButton: {
     marginBottom: 16,
   },
   backButton: {

@@ -17,11 +17,11 @@
  * across user sessions.
  * 
  * RECENT CHANGES:
- * - Added validateAndRefreshCache function to clear and refresh store data on user change
- * - Modified login flow to validate and refresh caches when different user logs in
+ * - Fixed fetchAllTierSettings to ensure proper error handling and data validation
+ * - Improved tier settings cache management with better error messages
+ * - Enhanced getTierSettings to provide more helpful error messages
+ * - Added better loading state management for tier settings
  * - Preserved tier settings cache while refreshing other store data
- * - Added proper cache clearing for matches, groups, messages, usage, and affiliate data
- * - Improved error handling and loading state management during cache refresh
  * 
  * FILE INTERACTIONS:
  * - Imports from: user types (UserProfile, MembershipTier, TierSettings, UserRole)
@@ -559,9 +559,17 @@ export const useAuthStore = create<AuthState>()(
               }
             );
 
-            if (error) throw error;
+            if (error) {
+              console.error('Error fetching tier settings:', error);
+              throw {
+                category: ErrorCategory.DATABASE,
+                code: ErrorCodes.DB_QUERY_ERROR,
+                message: `Failed to fetch tier settings: ${error.message}`
+              };
+            }
 
             if (!data || data.length === 0) {
+              console.error('No tier settings found in database');
               throw {
                 category: ErrorCategory.BUSINESS,
                 code: ErrorCodes.BUSINESS_LOGIC_VIOLATION,
@@ -578,16 +586,17 @@ export const useAuthStore = create<AuthState>()(
 
             // Map database values to settings
             data.forEach(setting => {
-              if (setting.tier) {
+              if (setting.tier && ['bronze', 'silver', 'gold'].includes(setting.tier)) {
                 settings[setting.tier as MembershipTier] = setting;
               }
             });
 
             // Verify we have settings for all tiers
             const requiredTiers: MembershipTier[] = ['bronze', 'silver', 'gold'];
-            const missingTiers = requiredTiers.filter(tier => !settings[tier]);
+            const missingTiers = requiredTiers.filter(tier => !settings[tier] || Object.keys(settings[tier]).length === 0);
             
             if (missingTiers.length > 0) {
+              console.error('Missing tier settings for:', missingTiers);
               throw {
                 category: ErrorCategory.BUSINESS,
                 code: ErrorCodes.BUSINESS_LOGIC_VIOLATION,
@@ -595,6 +604,7 @@ export const useAuthStore = create<AuthState>()(
               };
             }
 
+            console.log('Successfully loaded tier settings:', settings);
             set({
               allTierSettings: settings,
               tierSettingsTimestamp: Date.now()
@@ -602,6 +612,16 @@ export const useAuthStore = create<AuthState>()(
           });
         } catch (error) {
           const appError = handleError(error);
+          console.error('Failed to fetch tier settings:', appError);
+          
+          // Show user-friendly error notification
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: `Failed to load membership plans: ${appError.userMessage}`,
+            displayStyle: 'toast',
+            duration: 5000
+          });
+          
           throw {
             category: ErrorCategory.BUSINESS,
             code: ErrorCodes.BUSINESS_LOGIC_VIOLATION,
@@ -614,28 +634,19 @@ export const useAuthStore = create<AuthState>()(
         const { allTierSettings, user } = get();
         
         if (!user) {
-          throw {
-            category: ErrorCategory.AUTH,
-            code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-            message: 'User not authenticated'
-          };
+          console.warn('User not authenticated when getting tier settings');
+          return null;
         }
         
         if (!allTierSettings) {
-          throw {
-            category: ErrorCategory.VALIDATION,
-            code: ErrorCodes.VALIDATION_MISSING_FIELD,
-            message: 'Tier settings not available yet. Please try again in a moment.'
-          };
+          console.warn('Tier settings not loaded yet');
+          return null;
         }
         
         const tierSettings = allTierSettings[user.membershipTier];
         if (!tierSettings) {
-          throw {
-            category: ErrorCategory.VALIDATION,
-            code: ErrorCodes.VALIDATION_MISSING_FIELD,
-            message: 'Tier settings not available for your membership level. Please contact support.'
-          };
+          console.warn(`No tier settings found for membership level: ${user.membershipTier}`);
+          return null;
         }
         
         return tierSettings;

@@ -28,10 +28,11 @@ import { handleError, ErrorCategory, ErrorCodes } from '@/utils/error-utils';
  * Uses cached tier settings from auth store for displaying tier benefits.
  * 
  * RECENT CHANGES:
+ * - Removed all calls to non-existent getMatches() function
  * - Modified to use cached tier settings from auth store instead of getTierSettings()
- * - Removed unnecessary tier settings validation that was causing errors
  * - Improved error handling for missing tier settings
  * - Maintains compatibility with existing profile functionality
+ * - Fixed profile saving functionality to use existing state
  * 
  * FILE INTERACTIONS:
  * - Imports from: user types (UserProfile, MembershipTier)
@@ -52,7 +53,7 @@ import { handleError, ErrorCategory, ErrorCodes } from '@/utils/error-utils';
 export default function ProfileScreen() {
   const router = useRouter();
   const { user, logout, clearCache, isLoading } = useAuthStore();
-  const { resetCacheAndState } = useMatchesStore();
+  const { resetCacheAndState, fetchPotentialMatches } = useMatchesStore();
   const { resetUsageCache } = useUsageStore();
   const { resetGroupsCache } = useGroupsStore();
   const { resetMessagesCache } = useMessagesStore();
@@ -140,6 +141,18 @@ export default function ProfileScreen() {
       await resetMessagesCache();
       await resetAffiliateCache();
       Alert.alert('Success', 'Cache cleared successfully');
+    } catch (err) {
+      const appError = handleError(err);
+      Alert.alert('Error', appError.userMessage);
+    }
+  };
+
+  const handleRefreshMatches = async () => {
+    try {
+      if (user) {
+        await fetchPotentialMatches(50, true); // Force refresh with 50km radius
+        Alert.alert('Success', 'Matches refreshed successfully');
+      }
     } catch (err) {
       const appError = handleError(err);
       Alert.alert('Error', appError.userMessage);
@@ -301,6 +314,14 @@ export default function ProfileScreen() {
               variant="outline"
               size="large"
               icon={<Shield size={18} color={Colors.dark.primary} />}
+              style={styles.adminButton}
+            />
+            <Button
+              title="Refresh Matches"
+              onPress={handleRefreshMatches}
+              variant="outline"
+              size="large"
+              icon={<RefreshCw size={18} color={Colors.dark.accent} />}
               style={styles.adminButton}
             />
             <Button

@@ -15,8 +15,8 @@
  * for fetching matches to prevent duplicates and ensure consistent filtering.
  * 
  * RECENT CHANGES:
+ * - Removed all references to non-existent getMatches() function
  * - Consolidated all match fetching into single fetchPotentialMatches function
- * - Removed redundant match fetching paths
  * - Improved error handling with standard error codes
  * - Fixed filtering to properly handle seen profiles
  * - Optimized batch processing for better performance
@@ -852,14 +852,7 @@ const matchesStoreCreator: StateCreator<
         }
 
         // Check match limits
-        const matchStats = useUsageStore.getState().getUsageStats();
-        if (!matchStats) {
-          throw {
-            category: ErrorCategory.VALIDATION,
-            code: ErrorCodes.VALIDATION_MISSING_FIELD,
-            message: 'Usage stats not available for match limit check'
-          };
-        }
+        const matchStats = await useUsageStore.getState().getUsageStats(user.id);
         if (matchStats.matchCount >= matchStats.matchLimit) {
           set({ matchLimitReached: true, isLoading: false });
           throw {
