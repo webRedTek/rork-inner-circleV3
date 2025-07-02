@@ -97,10 +97,10 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   const { user } = useAuthStore();
   const { getUsageStats, trackUsage } = useUsageStore();
 
-  const position = new Animated.ValueXY();
-  const scale = useRef(new Animated.Value(1));
-  const opacity = useRef(new Animated.Value(1));
-  const rotation = useRef(new Animated.Value(0));
+  const position = useRef(new Animated.ValueXY()).current;
+  const scale = useRef(new Animated.Value(1)).current;
+  const opacity = useRef(new Animated.Value(1)).current;
+  const rotation = useRef(new Animated.Value(0)).current;
 
   const prefetchThreshold = 3; // Start prefetching when 3 or fewer profiles remain
 
@@ -224,31 +224,37 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     const item = profiles[currentIndex];
     if (!item) return;
 
-    position.setValue({ x: 0, y: 0 });
-    setCurrentIndex(prevIndex => {
-      const nextIndex = prevIndex + 1;
-      
-      // Process the swipe action
-      if (direction === 'right') {
-        onSwipeRight(item).catch(error => {
-          console.error('[SwipeCards] Error on right swipe:', error);
-        });
-      } else {
-        onSwipeLeft(item).catch(error => {
-          console.error('[SwipeCards] Error on left swipe:', error);
-        });
-      }
+    // Process the swipe action first
+    const swipePromise = direction === 'right' ? 
+      onSwipeRight(item) : 
+      onSwipeLeft(item);
 
-      // Check if we've reached the end
-      if (nextIndex >= profiles.length && onEmpty) {
-        if (isDebugMode) {
-          console.log('[SwipeCards] Reached end of profiles, triggering onEmpty', { nextIndex, profilesCount: profiles.length });
-        }
-        onEmpty();
-      }
+    swipePromise
+      .then(() => {
+        // After swipe is processed, update the index
+        setCurrentIndex(prevIndex => {
+          const nextIndex = prevIndex + 1;
 
-      return nextIndex;
-    });
+          // Check if we've reached the end
+          if (nextIndex >= profiles.length && onEmpty) {
+            if (isDebugMode) {
+              console.log('[SwipeCards] Reached end of profiles, triggering onEmpty', { nextIndex, profilesCount: profiles.length });
+            }
+            onEmpty();
+          }
+
+          return nextIndex;
+        });
+
+        // Finally reset the position
+        position.setValue({ x: 0, y: 0 });
+      })
+      .catch(error => {
+        console.error(`[SwipeCards] Error on ${direction} swipe:`, error);
+        // Reset position on error
+        position.setValue({ x: 0, y: 0 });
+      });
+
   }, [currentIndex, profiles, onSwipeRight, onSwipeLeft, onEmpty, isDebugMode]);
   
   const resetPosition = () => {
