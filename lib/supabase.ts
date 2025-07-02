@@ -848,9 +848,16 @@ export const processSwipeBatch = async (swipeActions: SwipeAction[]): Promise<Sw
  * @param maxDistance - Maximum distance for local discovery
  * @param isGlobalDiscovery - Whether to use global discovery
  * @param limit - Maximum number of matches to return
+ * @param offset - Number of profiles to skip (for pagination)
  * @returns Promise with potential matches or error
  */
-export const fetchPotentialMatches = async (userId: string, maxDistance: number = 50, isGlobalDiscovery: boolean = false, limit: number = 25): Promise<PotentialMatchesResult | null> => {
+export const fetchPotentialMatches = async (
+  userId: string, 
+  maxDistance: number = 50, 
+  isGlobalDiscovery: boolean = false, 
+  limit: number = 25,
+  offset: number = 0
+): Promise<PotentialMatchesResult | null> => {
   if (!supabase) {
     throw new Error('Supabase client not initialized');
   }
@@ -862,6 +869,7 @@ export const fetchPotentialMatches = async (userId: string, maxDistance: number 
       p_max_distance: maxDistance,
       p_is_global_discovery: isGlobalDiscovery,
       p_limit: limit,
+      p_offset: offset
     });
     
     if (error) {

@@ -17,13 +17,13 @@
  * - Usage limit enforcement
  * 
  * RECENT CHANGES:
- * - Removed focus-based match refreshing to prevent duplicate profiles
- * - Removed automatic prefetching on low profile count
+ * - Consolidated all match fetching to use single fetchPotentialMatches function
+ * - Removed redundant match fetching paths
+ * - Simplified match fetching logic
  * - Now only fetches new matches when:
  *   1. User manually refreshes
  *   2. User runs out of profiles completely
  *   3. User changes distance settings
- *   4. User toggles global search
  * 
  * FILE INTERACTIONS:
  * - Imports from: matches-store, auth-store, notification-store, usage-store
@@ -31,7 +31,7 @@
  * - Dependencies: expo-router for navigation, react-native for UI
  * - Data flow: Bidirectional with matches-store
  * 
- * KEY FUNCTIONS/COMPONENTS:
+ * KEY FUNCTIONS:
  * - handleSwipeRight/Left: Process swipe actions
  * - handleManualRefresh: Fetch new matches on demand
  * - handleToggleGlobalSearch: Toggle global search mode
@@ -76,10 +76,8 @@ export default function DiscoverScreen() {
   const { 
     potentialMatches, 
     fetchPotentialMatches, 
-    prefetchNextBatch,
     likeUser, 
     passUser,
-    refreshCandidates,
     isLoading,
     isPrefetching,
     error,
@@ -175,8 +173,8 @@ export default function DiscoverScreen() {
   useEffect(() => {
     // Prefetch more profiles if we're running low
     if (potentialMatches.length <= 3 && !isPrefetching && !isLoading && user && !noMoreProfiles) {
-      addDebugInfo(`Prefetching triggered - matches: ${potentialMatches.length}, prefetching: ${isPrefetching}, loading: ${isLoading}, noMore: ${noMoreProfiles}`);
-      console.log('[Discover] Running low on matches, prefetching more', { currentMatches: potentialMatches.length });
+      addDebugInfo(`Low on matches, fetching more - matches: ${potentialMatches.length}, prefetching: ${isPrefetching}, loading: ${isLoading}, noMore: ${noMoreProfiles}`);
+      console.log('[Discover] Running low on matches, fetching more', { currentMatches: potentialMatches.length });
       
       // If global search is enabled for the tier, pass undefined for maxDistance
       // Otherwise use the user's preferred distance
@@ -184,8 +182,8 @@ export default function DiscoverScreen() {
         ? undefined 
         : (user.preferredDistance || parseInt(preferredDistance) || 50);
       
-      addDebugInfo(`Prefetching with distance: ${distance === undefined ? 'global' : distance}mi`);
-      prefetchNextBatch(distance);
+      addDebugInfo(`Fetching with distance: ${distance === undefined ? 'global' : distance}mi`);
+      fetchPotentialMatches(distance);
     }
   }, [potentialMatches.length, isPrefetching, isLoading, user, noMoreProfiles, preferredDistance, isGlobalSearchAllowed, globalSearch]);
   
@@ -309,22 +307,19 @@ export default function DiscoverScreen() {
   };
   
   const handleManualRefresh = async () => {
-    if (isDebugMode) {
-      console.log('[Discover] Manual refresh triggered');
-    }
-    addDebugInfo('Manual refresh triggered');
+    if (isLoading || isPrefetching) return;
     
+    addDebugInfo('Manual refresh triggered');
     setRefreshing(true);
+    
     try {
+      // Always use fetchPotentialMatches for consistency
       await fetchPotentialMatches(
-        isGlobalSearchAllowed && globalSearch 
-          ? undefined 
-          : (user?.preferredDistance || parseInt(preferredDistance) || 50),
-        true
+        parseInt(preferredDistance),
+        true // Force refresh
       );
     } catch (error) {
-      addDebugInfo(`Refresh error: ${error}`);
-      console.error('[Discover] Refresh error:', error);
+      console.error('[Discover] Error refreshing matches:', error);
     } finally {
       setRefreshing(false);
     }

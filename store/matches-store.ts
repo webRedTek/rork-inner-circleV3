@@ -1,28 +1,35 @@
 /**
  * FILE: store/matches-store.ts
- * LAST UPDATED: 2025-07-01 14:30
+ * LAST UPDATED: 2025-07-01 20:30
+ * 
+ * INITIALIZATION ORDER:
+ * 1. Requires auth-store to be initialized first (for user session)
+ * 2. Initializes after auth-store confirms user session
+ * 3. Sets up batch processing and cache management
+ * 4. Starts profile prefetching if needed
+ * 5. Race condition: Must wait for user location before fetching matches
  * 
  * CURRENT STATE:
  * Central store for match functionality using Zustand. Handles all matching logic,
- * profile caching, swipe actions, and batch processing. Uses optimized caching
- * strategies to minimize database queries and improve performance.
+ * profile caching, swipe actions, and batch processing. Uses single source of truth
+ * for fetching matches to prevent duplicates and ensure consistent filtering.
  * 
  * RECENT CHANGES:
- * - Removed tier-based distance limits in favor of user preferences (up to 250 miles)
- * - Improved profile validation in cache to prevent invalid data
+ * - Consolidated all match fetching into single fetchPotentialMatches function
+ * - Removed redundant match fetching paths
+ * - Improved error handling with standard error codes
+ * - Fixed filtering to properly handle seen profiles
  * - Optimized batch processing for better performance
- * - Added proper error handling for async operations
- * - Enhanced cache validation for profile data consistency
  * 
  * FILE INTERACTIONS:
  * - Uses supabase.ts for: database queries, match functions, batch processing
  * - Uses auth-store for: user data, authentication state
  * - Uses usage-store for: swipe/match limits, usage tracking
  * - Uses notification-store for: match notifications, error alerts
- * - Used by: discover.tsx, profile screens, chat screens
+ * - Used by: discover screen, profile screens, chat screens
  * 
  * KEY FUNCTIONS:
- * - fetchPotentialMatches: Gets and caches match profiles with distance filtering
+ * - fetchPotentialMatches: Single source of truth for getting match profiles
  * - likeUser/passUser: Handles swipe actions with proper error handling
  * - processSwipeBatch: Batches swipes for network efficiency
  * - ProfileCache: Manages cached user profiles with validation
@@ -340,13 +347,10 @@ interface MatchesStateData {
 
 interface MatchesStateMethods {
   fetchPotentialMatches: (maxDistance?: number, forceRefresh?: boolean) => Promise<void>;
-  prefetchNextBatch: (maxDistance?: number) => Promise<void>;
   likeUser: (userId: string) => Promise<MatchWithProfile | null>;
   passUser: (userId: string) => Promise<void>;
   queueSwipe: (userId: string, direction: 'left' | 'right') => Promise<void>;
   processSwipeBatch: () => Promise<void>;
-  getMatches: () => Promise<void>;
-  refreshCandidates: () => Promise<void>;
   clearError: () => void;
   clearNewMatch: () => void;
   resetCacheAndState: () => Promise<void>;
@@ -471,217 +475,87 @@ const matchesStoreCreator: StateCreator<
   pendingMatches: [],
 
   fetchPotentialMatches: async (maxDistance = 50, forceRefresh = false) => {
-    const { user } = useAuthStore.getState();
-    const { isDebugMode } = useDebugStore.getState();
-    
-    if (!user) {
-      console.error('[MatchesStore] Cannot fetch matches - no user');
-      set({ error: 'Please log in to see potential matches', isLoading: false });
-      return;
-    }
+    return await withErrorHandling(async () => {
+      const { user, isReady } = useAuthStore.getState();
+      if (!isReady || !user) {
+        throw {
+          category: ErrorCategory.AUTH,
+          code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
+          message: 'User not ready or authenticated'
+        };
+      }
 
-    if (!user.latitude || !user.longitude) {
-      console.error('[MatchesStore] User location not set');
-      set({ error: 'Please set your location to see potential matches', isLoading: false });
-      return;
-    }
+      set({ isLoading: true, error: null });
 
-    set({ isLoading: true, error: null });
-    
-    try {
-      if (isDebugMode) {
-        console.log('[MatchesStore] Fetching matches:', {
-          userId: user.id,
+      try {
+        // Get current matches and passed users
+        const { passedUsers, pendingLikes } = get();
+        const seenIds = new Set([
+          ...passedUsers.map(p => p.id),
+          ...Array.from(pendingLikes)
+        ]);
+
+        // If not forcing refresh and we have enough matches, use cache
+        if (!forceRefresh && get().potentialMatches.length > get().prefetchThreshold) {
+          set({ isLoading: false });
+          return;
+        }
+
+        // Fetch new potential matches
+        const result = await fetchPotentialMatchesFromSupabase(
+          user.id,
           maxDistance,
-          forceRefresh,
-          currentMatchesCount: get().potentialMatches.length,
-          userLocation: {
-            lat: user.latitude,
-            lon: user.longitude
-          }
-        });
-      }
+          undefined, // isGlobalDiscovery
+          get().batchSize, // limit
+          get().potentialMatches.length // offset
+        );
 
-      const result = await fetchPotentialMatchesFromSupabase(
-        user.id,
-        maxDistance,
-        true, // Global discovery enabled for everyone
-        25 // limit
-      );
-
-      if (!result || !result.matches) {
-        throw new Error('No matches data returned from Supabase');
-      }
-
-      if (isDebugMode) {
-        console.log('[MatchesStore] Fetch result:', {
-          matchCount: result.matches.length,
-          hasValidData: result.matches.every(m => m && typeof m === 'object'),
-          firstMatch: result.matches[0] ? {
-            id: result.matches[0].id,
-            keys: Object.keys(result.matches[0])
-          } : null
-        });
-      }
-
-      // Validate each match profile
-      const validMatches = result.matches.filter(match => {
-        const isValid = match && 
-          typeof match === 'object' && 
-          match.id &&
-          match.name &&
-          typeof match.distance !== 'undefined';
-
-        if (!isValid && isDebugMode) {
-          console.warn('[MatchesStore] Invalid match data:', {
-            hasMatch: !!match,
-            type: typeof match,
-            keys: match ? Object.keys(match) : [],
-            id: match?.id,
-            name: match?.name,
-            distance: match?.distance
-          });
+        if (!result || !result.matches) {
+          throw {
+            category: ErrorCategory.BUSINESS,
+            code: ErrorCodes.DB_NOT_FOUND,
+            message: 'No additional matches found in your area'
+          };
         }
-        return isValid;
-      });
 
-      // Deduplicate matches by ID
-      const uniqueMatches = validMatches.reduce((acc, match) => {
-        if (!acc.some(m => m.id === match.id)) {
-          acc.push(match);
-        } else if (isDebugMode) {
-          console.warn('[MatchesStore] Duplicate match found and removed:', {
-            id: match.id,
-            name: match.name
+        // Filter and validate matches
+        const validMatches = result.matches
+          .filter((match: any): match is UserProfile => {
+            const isValid = match && 
+              typeof match === 'object' && 
+              match.id &&
+              match.name &&
+              typeof match.distance !== 'undefined';
+
+            if (!isValid) {
+              console.warn('[MatchesStore] Invalid match data:', {
+                hasMatch: !!match,
+                type: typeof match,
+                keys: match ? Object.keys(match) : [],
+                id: match?.id,
+                name: match?.name,
+                distance: match?.distance
+              });
+            }
+            return isValid && !seenIds.has(match.id);
           });
-        }
-        return acc;
-      }, [] as UserProfile[]);
 
-      if (uniqueMatches.length === 0) {
-        set({ 
-          potentialMatches: [],
+        // Update state with new matches
+        set(state => ({
+          potentialMatches: forceRefresh ? validMatches : [...state.potentialMatches, ...validMatches],
           isLoading: false,
-          error: 'No potential matches found in your area. Try increasing your search distance.',
+          error: null,
+          noMoreProfiles: validMatches.length === 0
+        }));
+      } catch (error) {
+        const appError = handleError(error);
+        set({
+          error: appError.userMessage,
+          isLoading: false,
           noMoreProfiles: true
         });
-        return;
+        throw appError;
       }
-
-      // Cache valid profiles
-      uniqueMatches.forEach(match => {
-        if (match && match.id) {
-          if (isDebugMode) {
-            console.log('[MatchesStore] Caching profile:', {
-              id: match.id,
-              hasData: !!match,
-              dataKeys: Object.keys(match)
-            });
-          }
-          profileCache.set(match.id, match);
-        }
-      });
-
-      set({ 
-        potentialMatches: uniqueMatches,
-        isLoading: false,
-        error: null,
-        noMoreProfiles: uniqueMatches.length === 0
-      });
-
-    } catch (error) {
-      console.error('[MatchesStore] Error fetching matches:', error);
-      set({ 
-        isLoading: false,
-        error: getReadableError(error),
-        potentialMatches: []
-      });
-    }
-  },
-
-  prefetchNextBatch: async (maxDistance?: number) => {
-    return await withErrorHandling(async () => {
-      return await withNetworkCheck(async () => {
-        const { isDebugMode } = useDebugStore.getState();
-        
-        if (get().isPrefetching || get().isLoading) {
-          if (isDebugMode) {
-            console.log('[MatchesStore] Prefetching skipped - already in progress or loading');
-          }
-          return;
-        }
-
-        if (get().noMoreProfiles) {
-          if (isDebugMode) {
-            console.log('[MatchesStore] Prefetching skipped - no more profiles available');
-          }
-          return;
-        }
-
-        set({ isPrefetching: true, error: null });
-
-        try {
-          const { user } = useAuthStore.getState();
-          if (!user?.id) {
-            set({ isPrefetching: false });
-            return;
-          }
-
-          const userMaxDistance = user.preferredDistance || maxDistance || 50;
-
-          if (isDebugMode) {
-            console.log('[MatchesStore] Starting prefetch:', {
-              userId: user.id,
-              maxDistance: userMaxDistance,
-              currentMatchCount: get().potentialMatches.length
-            });
-          }
-
-          const result = await fetchPotentialMatchesFromSupabase(
-            user.id,
-            userMaxDistance,
-            true, // Global discovery enabled for everyone
-            get().potentialMatches.length
-          );
-
-          if (!result || !result.matches || result.matches.length === 0) {
-            if (isDebugMode) {
-              console.log('[MatchesStore] No additional matches found during prefetch - setting noMoreProfiles to true');
-            }
-            set({
-              isPrefetching: false,
-              noMoreProfiles: true,
-              error: "No additional matches found in your area."
-            });
-            return;
-          }
-
-          const newMatches = result.matches.map(supabaseToUserProfile);
-
-          set({
-            potentialMatches: [...get().potentialMatches, ...newMatches],
-            cachedMatches: [...get().cachedMatches, ...newMatches],
-            isLoading: false,
-            noMoreProfiles: result.matches.length === 0
-          });
-          
-          if (isDebugMode) {
-            console.log('[MatchesStore] Prefetched additional matches', { count: newMatches.length });
-          }
-
-          set({ isPrefetching: false });
-        } catch (error) {
-          if (isDebugMode) {
-            console.error('[MatchesStore] Error during prefetch:', error);
-          }
-          set({ isPrefetching: false });
-          throw error;
-        }
-      });
-    }, {
-      rethrow: true,
-      silent: false,
-      customErrorMessage: "Failed to prefetch next batch of profiles"
     });
   },
 

@@ -474,7 +474,13 @@ end;
 $$ language plpgsql security definer;
 
 -- Create stored procedure to fetch potential matches
-create or replace function fetch_potential_matches(p_user_id uuid, p_max_distance integer, p_is_global_discovery boolean, p_limit integer default 25)
+create or replace function fetch_potential_matches(
+  p_user_id uuid, 
+  p_max_distance integer, 
+  p_is_global_discovery boolean, 
+  p_limit integer default 25,
+  p_offset integer default 0
+)
 returns jsonb as $$
 declare
   v_user jsonb;
@@ -512,52 +518,31 @@ begin
   from public.matches
   where matched_user_id = p_user_id;
 
-  -- Fetch potential matches
+  -- Fetch potential matches with offset
   for v_match in
     select jsonb_build_object(
       'id', u.id,
       'name', u.name,
-      'bio', u.bio,
-      'location', u.location,
-      'zip_code', u.zip_code,
-      'latitude', u.latitude,
-      'longitude', u.longitude,
       'business_field', u.business_field,
-      'entrepreneur_status', u.entrepreneur_status,
-      'photo_url', u.photo_url,
-      'membership_tier', u.membership_tier,
-      'business_verified', u.business_verified,
-      'created_at', u.created_at,
-      'skills_offered', u.skills_offered,
-      'skills_seeking', u.skills_seeking,
-      'industry_focus', u.industry_focus,
-      'business_stage', u.business_stage,
       'looking_for', u.looking_for,
-      'availability_level', u.availability_level,
-      'distance', case
-        when p_is_global_discovery or u.latitude is null or u.longitude is null or v_user_lat is null or v_user_lon is null then null
-        else round((
-          6371 * acos(
-            cos(radians(v_user_lat)) * cos(radians(u.latitude)) * cos(radians(u.longitude) - radians(v_user_lon)) +
-            sin(radians(v_user_lat)) * sin(radians(u.latitude))
-          )
-        )::numeric, 2)
-      end
-    ) as match_data
-    from public.users u
-    where u.id != p_user_id
-    and (v_liked_ids is null or u.id != any(v_liked_ids))
-    and (v_matched_ids is null or u.id != any(v_matched_ids))
-    and (p_is_global_discovery or (
-      u.latitude is not null and u.longitude is not null and
-      v_user_lat is not null and v_user_lon is not null and
-      (
+      'distance', case when p_is_global_discovery then null else
         6371 * acos(
           cos(radians(v_user_lat)) * cos(radians(u.latitude)) * cos(radians(u.longitude) - radians(v_user_lon)) +
           sin(radians(v_user_lat)) * sin(radians(u.latitude))
         )
+      end
+    )
+    from public.users u
+    where u.id != p_user_id
+    and u.id not in (select unnest(v_liked_ids))
+    and u.id not in (select unnest(v_matched_ids))
+    and (
+      p_is_global_discovery or
+      6371 * acos(
+        cos(radians(v_user_lat)) * cos(radians(u.latitude)) * cos(radians(u.longitude) - radians(v_user_lon)) +
+        sin(radians(v_user_lat)) * sin(radians(u.latitude))
       ) <= p_max_distance
-    ))
+    )
     order by
       case when p_is_global_discovery then random() end,
       case when not p_is_global_discovery then
@@ -567,6 +552,7 @@ begin
         )
       end asc,
       u.created_at desc
+    offset p_offset
     limit p_limit
   loop
     v_potential_matches := array_append(v_potential_matches, v_match);
@@ -576,7 +562,8 @@ begin
   perform log_user_action(p_user_id, 'fetch_potential_matches', jsonb_build_object(
     'count', array_length(v_potential_matches, 1),
     'max_distance', p_max_distance,
-    'global_discovery', p_is_global_discovery
+    'global_discovery', p_is_global_discovery,
+    'offset', p_offset
   ));
 
   -- Return the potential matches
