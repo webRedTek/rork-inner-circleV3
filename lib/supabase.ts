@@ -923,7 +923,15 @@ export const fetchPotentialMatches = async (
         })()
       };
       
-      console.error('[Supabase] RPC error details:', errorDetails);
+      console.error('[Supabase] RPC error details:');
+      console.error('Error Type:', errorDetails.errorType);
+      console.error('Error Constructor:', errorDetails.errorConstructor);
+      console.error('Message:', errorDetails.message);
+      console.error('Details:', errorDetails.details);
+      console.error('Hint:', errorDetails.hint);
+      console.error('Code:', errorDetails.code);
+      console.error('Error String:', errorDetails.errorString);
+      console.error('Error JSON:', errorDetails.errorJSON);
       throw error;
     }
     

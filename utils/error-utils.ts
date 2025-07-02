@@ -216,16 +216,19 @@ function mapErrorCode(error: any, category: ErrorCategory): string {
  */
 export function handleError(error: any): AppError {
   // Log the raw error for debugging
-  console.log('[ErrorUtils] Raw error received:', {
-    error,
-    type: typeof error,
-    isError: error instanceof Error,
-    message: error?.message,
-    stack: error?.stack,
-    details: error?.details,
-    code: error?.code,
-    hint: error?.hint
-  });
+  console.log('[ErrorUtils] Raw error received:');
+  console.log('Error type:', typeof error);
+  console.log('Is Error instance:', error instanceof Error);
+  console.log('Error message:', error?.message);
+  console.log('Error details:', error?.details);
+  console.log('Error code:', error?.code);
+  console.log('Error hint:', error?.hint);
+  console.log('Error string:', String(error));
+  try {
+    console.log('Error JSON:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+  } catch (e) {
+    console.log('Could not stringify error');
+  }
 
   const category = categorizeError(error);
   const code = mapErrorCode(error, category);
@@ -243,15 +246,17 @@ export function handleError(error: any): AppError {
     recoverable: category !== ErrorCategory.AUTH && category !== ErrorCategory.VALIDATION,
   };
 
-  console.error(`[Error][${category}][${code}] ${message}`, technical || '');
-  console.log('[ErrorUtils] Processed error:', {
-    category,
-    code,
-    message,
-    userMessage,
-    retry: appError.retry,
-    recoverable: appError.recoverable
-  });
+  console.error(`[Error][${category}][${code}] ${message}`);
+  if (technical) {
+    console.error('Stack trace:', technical);
+  }
+  console.log('[ErrorUtils] Processed error:');
+  console.log('Category:', category);
+  console.log('Code:', code);
+  console.log('Message:', message);
+  console.log('User Message:', userMessage);
+  console.log('Retry:', appError.retry);
+  console.log('Recoverable:', appError.recoverable);
   
   return appError;
 }

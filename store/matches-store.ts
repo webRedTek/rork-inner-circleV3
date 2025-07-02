@@ -689,18 +689,24 @@ const matchesStoreCreator: StateCreator<
         };
         
         if (debugStore.isDebugMode) {
-          console.error(`🔍 [MATCHES-STORE][${callId}] ERROR CAUGHT`, errorDetails);
+          console.error(`🔍 [MATCHES-STORE][${callId}] ERROR CAUGHT`);
+          console.error('Error Type:', errorDetails.errorType);
+          console.error('Error Constructor:', errorDetails.errorConstructor);
+          console.error('Error Message:', errorDetails.errorMessage);
+          console.error('Error String:', errorDetails.errorString);
+          console.error('Error Stack:', errorDetails.errorStack);
+          console.error('Error JSON:', errorDetails.errorJSON);
+          console.error('Original Error:', errorDetails.originalError);
         }
         
         const appError = handleError(error);
         
         if (debugStore.isDebugMode) {
-          console.error(`🔍 [MATCHES-STORE][${callId}] PROCESSED ERROR`, {
-            appError,
-            userMessage: appError.userMessage,
-            category: appError.category,
-            code: appError.code
-          });
+          console.error(`🔍 [MATCHES-STORE][${callId}] PROCESSED ERROR`);
+          console.error('App Error:', appError);
+          console.error('User Message:', appError.userMessage);
+          console.error('Category:', appError.category);
+          console.error('Code:', appError.code);
         }
         
         set({
