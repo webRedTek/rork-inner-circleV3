@@ -1,6 +1,6 @@
 /**
  * FILE: components/SwipeCards.tsx
- * LAST UPDATED: 2025-07-01 20:30
+ * LAST UPDATED: 2025-07-01 21:30
  * 
  * INITIALIZATION ORDER:
  * 1. Initializes when rendered in discover screen
@@ -17,10 +17,11 @@
  * - Stack view with current and next cards
  * 
  * RECENT CHANGES:
- * - Removed automatic prefetching on low profile count
- * - Simplified card stack management to prevent duplicates
- * - Now relies on parent component for profile fetching
- * - Fixed key duplication issues in card rendering
+ * - Fixed callback dependency issue in forceSwipe function
+ * - Added comprehensive debug logging for swipe detection
+ * - Reordered callbacks to prevent stale references
+ * - Removed unused prefetchNextBatch import
+ * - Enhanced error handling and debugging
  * 
  * FILE INTERACTIONS:
  * - Imports from: react-native, matches-store, types/user
@@ -30,9 +31,9 @@
  * 
  * KEY FUNCTIONS/COMPONENTS:
  * - SwipeCards: Main component for card interface
- * - handleSwipe: Processes swipe gestures
- * - renderCard: Renders individual profile cards
- * - handlePrefetch: Manages profile prefetching
+ * - onSwipeComplete: Processes swipe gestures and updates state
+ * - forceSwipe: Handles swipe animations
+ * - renderCards: Renders individual profile cards
  */
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
@@ -93,7 +94,6 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   const [noMoreProfiles, setNoMoreProfiles] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { prefetchNextBatch } = useMatchesStore();
   const { user } = useAuthStore();
   const { getUsageStats, trackUsage } = useUsageStore();
 
@@ -188,41 +188,61 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (_, gesture) => {
         // Only handle horizontal movements greater than 10 units
-        return Math.abs(gesture.dx) > 10 && Math.abs(gesture.dy) < Math.abs(gesture.dx);
+        const shouldHandle = Math.abs(gesture.dx) > 10 && Math.abs(gesture.dy) < Math.abs(gesture.dx);
+        if (isDebugMode && shouldHandle) {
+          console.log('[SwipeCards] Pan gesture detected', { dx: gesture.dx, dy: gesture.dy });
+        }
+        return shouldHandle;
       },
       onPanResponderMove: (_, gesture) => {
         // Only allow horizontal movement for swiping
         position.setValue({ x: gesture.dx, y: 0 });
       },
       onPanResponderRelease: (_, gesture) => {
+        if (isDebugMode) {
+          console.log('[SwipeCards] Pan gesture released', { dx: gesture.dx, threshold: SWIPE_THRESHOLD });
+        }
+        
         if (error || !profiles[currentIndex]) {
+          if (isDebugMode) {
+            console.log('[SwipeCards] Cannot swipe - error or no profile', { error, hasProfile: !!profiles[currentIndex] });
+          }
           resetPosition();
           return;
         }
 
         if (gesture.dx > SWIPE_THRESHOLD) {
+          if (isDebugMode) {
+            console.log('[SwipeCards] Swiping right');
+          }
           forceSwipe('right');
         } else if (gesture.dx < -SWIPE_THRESHOLD) {
+          if (isDebugMode) {
+            console.log('[SwipeCards] Swiping left');
+          }
           forceSwipe('left');
         } else {
+          if (isDebugMode) {
+            console.log('[SwipeCards] Gesture below threshold, resetting');
+          }
           resetPosition();
         }
       }
     })
   ).current;
   
-  const forceSwipe = useCallback((direction: 'left' | 'right') => {
-    const x = direction === 'right' ? SCREEN_WIDTH * 1.5 : -SCREEN_WIDTH * 1.5;
-    Animated.timing(position, {
-      toValue: { x, y: 0 },
-      duration: SWIPE_OUT_DURATION,
-      useNativeDriver: false
-    }).start(() => onSwipeComplete(direction));
-  }, [position]);
-  
   const onSwipeComplete = useCallback((direction: 'left' | 'right') => {
     const item = profiles[currentIndex];
-    if (!item) return;
+    if (!item) {
+      if (isDebugMode) {
+        console.log('[SwipeCards] No item to swipe', { currentIndex, profilesCount: profiles.length });
+      }
+      return;
+    }
+
+    if (isDebugMode) {
+      console.log('[SwipeCards] Processing swipe', { direction, profileId: item.id, profileName: item.name });
+    }
 
     // Process the swipe action first
     const swipePromise = direction === 'right' ? 
@@ -231,6 +251,9 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
 
     swipePromise
       .then(() => {
+        if (isDebugMode) {
+          console.log('[SwipeCards] Swipe processed successfully');
+        }
         // After swipe is processed, update the index
         setCurrentIndex(prevIndex => {
           const nextIndex = prevIndex + 1;
@@ -256,6 +279,15 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       });
 
   }, [currentIndex, profiles, onSwipeRight, onSwipeLeft, onEmpty, isDebugMode]);
+  
+  const forceSwipe = useCallback((direction: 'left' | 'right') => {
+    const x = direction === 'right' ? SCREEN_WIDTH * 1.5 : -SCREEN_WIDTH * 1.5;
+    Animated.timing(position, {
+      toValue: { x, y: 0 },
+      duration: SWIPE_OUT_DURATION,
+      useNativeDriver: false
+    }).start(() => onSwipeComplete(direction));
+  }, [position, onSwipeComplete]);
   
   const resetPosition = () => {
     Animated.spring(position, {
