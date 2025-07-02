@@ -694,21 +694,19 @@ export const retryOperation = async <T>(
       console.log(`[Supabase] Retry attempt ${attempt}/${maxRetries} failed:`, {
         error,
         type: typeof error,
-        message: error?.message || 'No message',
-        details: error?.details || 'No details',
-        hint: error?.hint || 'No hint',
-        code: error?.code || 'No code',
-        status: error?.status || 'No status',
-        statusText: error?.statusText || 'No status text'
+        message: error && typeof error === 'object' && 'message' in error ? error.message : 'No message',
+        details: error && typeof error === 'object' && 'details' in error ? error.details : 'No details',
+        hint: error && typeof error === 'object' && 'hint' in error ? error.hint : 'No hint',
+        code: error && typeof error === 'object' && 'code' in error ? error.code : 'No code'
       });
 
       if (attempt === maxRetries || !shouldRetry(error)) {
         console.error('All operation attempts failed:', {
           error: lastError,
-          message: lastError?.message || 'No message',
-          details: lastError?.details || 'No details',
-          hint: lastError?.hint || 'No hint',
-          code: lastError?.code || 'No code'
+          message: lastError && typeof lastError === 'object' && 'message' in lastError ? lastError.message : 'No message',
+          details: lastError && typeof lastError === 'object' && 'details' in lastError ? lastError.details : 'No details',
+          hint: lastError && typeof lastError === 'object' && 'hint' in lastError ? lastError.hint : 'No hint',
+          code: lastError && typeof lastError === 'object' && 'code' in lastError ? lastError.code : 'No code'
         });
         throw lastError;
       }
@@ -899,19 +897,19 @@ export const fetchPotentialMatches = async (
       dataKeys: data ? Object.keys(data) : [],
       hasError: !!error,
       errorType: typeof error,
-      errorMessage: error?.message || 'No message',
-      errorDetails: error?.details || 'No details',
-      errorHint: error?.hint || 'No hint',
-      errorCode: error?.code || 'No code'
+      errorMessage: error && typeof error === 'object' && 'message' in error ? error.message : 'No message',
+      errorDetails: error && typeof error === 'object' && 'details' in error ? error.details : 'No details',
+      errorHint: error && typeof error === 'object' && 'hint' in error ? error.hint : 'No hint',
+      errorCode: error && typeof error === 'object' && 'code' in error ? error.code : 'No code'
     });
     
     if (error) {
       console.error('[Supabase] RPC error details:', {
         error,
-        message: error.message || 'No message',
-        details: error.details || 'No details',
-        hint: error.hint || 'No hint',
-        code: error.code || 'No code'
+        message: error && typeof error === 'object' && 'message' in error ? error.message : 'No message',
+        details: error && typeof error === 'object' && 'details' in error ? error.details : 'No details',
+        hint: error && typeof error === 'object' && 'hint' in error ? error.hint : 'No hint',
+        code: error && typeof error === 'object' && 'code' in error ? error.code : 'No code'
       });
       throw error;
     }
