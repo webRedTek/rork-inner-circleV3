@@ -15,15 +15,12 @@
  * - Optimized gesture handling with velocity support
  * - Improved performance and responsiveness
  * - Enhanced haptic feedback timing
+ * - Fixed error handling for swipe actions
  * 
  * RECENT CHANGES:
- * - Switched to useNativeDriver: true for all transform animations
- * - Improved animation timing and spring configurations
- * - Enhanced gesture handling with velocity-based thresholds
- * - Optimized performance by reducing unnecessary re-renders
- * - Simplified card stack management for smoother animations
- * - Added proper haptic feedback timing
- * - Improved interpolation ranges for more natural movement
+ * - Fixed error handling in onSwipeComplete to properly stringify error objects
+ * - Improved error logging and user feedback
+ * - Maintained all existing animation and gesture functionality
  * 
  * FILE INTERACTIONS:
  * - Imports from: react-native, matches-store, types/user
@@ -88,6 +85,32 @@ const RESET_SPRING_CONFIG = {
   tension: 120,
   friction: 7,
   useNativeDriver: true
+};
+
+// Helper function to safely stringify errors
+const getErrorMessage = (error: any): string => {
+  if (!error) return 'Unknown error occurred';
+  
+  if (typeof error === 'string') return error;
+  
+  if (error instanceof Error) return error.message;
+  
+  if (typeof error === 'object') {
+    // Try to extract meaningful error information
+    if (error.message) return error.message;
+    if (error.error && error.error.message) return error.error.message;
+    if (error.details) return String(error.details);
+    if (error.code) return `Error code: ${error.code}`;
+    
+    // Last resort: try to stringify
+    try {
+      return JSON.stringify(error);
+    } catch (e) {
+      return 'An error occurred during swipe action';
+    }
+  }
+  
+  return String(error);
 };
 
 export const SwipeCards: React.FC<SwipeCardsProps> = ({
@@ -312,9 +335,25 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
         animateNextCard();
       })
       .catch(error => {
-        console.error(`[SwipeCards] Error on ${direction} swipe:`, error);
+        const errorMessage = getErrorMessage(error);
+        console.error(`[SwipeCards] Error on ${direction} swipe:`, errorMessage);
+        
+        if (isDebugMode) {
+          console.error('[SwipeCards] Full error details:', {
+            error,
+            errorType: typeof error,
+            errorConstructor: error?.constructor?.name,
+            direction,
+            profileId: item.id,
+            profileName: item.name
+          });
+        }
+        
         // Reset position on error
         resetToInitialPosition();
+        
+        // Set user-friendly error message
+        setError(`Failed to ${direction === 'right' ? 'like' : 'pass'} profile. Please try again.`);
       });
 
   }, [currentIndex, profiles, onSwipeRight, onSwipeLeft, onEmpty, isDebugMode]);
@@ -493,6 +532,17 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   
   return (
     <View style={styles.container}>
+      {error && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity 
+            style={styles.retryButton}
+            onPress={() => setError(null)}
+          >
+            <Text style={styles.retryText}>Dismiss</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       {renderCards()}
     </View>
   );
@@ -574,5 +624,33 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.dark.textSecondary,
     textAlign: 'center',
+  },
+  errorContainer: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    right: 20,
+    backgroundColor: Colors.dark.error,
+    padding: 12,
+    borderRadius: 8,
+    zIndex: 1000,
+  },
+  errorText: {
+    color: Colors.dark.text,
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  retryButton: {
+    alignSelf: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 4,
+  },
+  retryText: {
+    color: Colors.dark.text,
+    fontSize: 12,
+    fontWeight: 'bold',
   }
 });

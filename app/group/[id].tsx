@@ -13,6 +13,7 @@ import {
   KeyboardAvoidingView,
   RefreshControl,
   Pressable,
+  Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -39,6 +40,7 @@ import {
 import * as Haptics from 'expo-haptics';
 import { format, parseISO, isValid } from 'date-fns';
 import { notify } from '@/store/notification-store';
+import * as ImagePicker from 'expo-image-picker';
 
 export default function GroupDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -81,7 +83,7 @@ export default function GroupDetailScreen() {
   const [eventTitle, setEventTitle] = useState('');
   const [eventDescription, setEventDescription] = useState('');
   const [eventLocation, setEventLocation] = useState('');
-  const [eventImageUrl, setEventImageUrl] = useState('');
+  const [eventImageUri, setEventImageUri] = useState<string | null>(null);
   const [eventDate, setEventDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -99,7 +101,7 @@ export default function GroupDetailScreen() {
   const [groupDescription, setGroupDescription] = useState('');
   const [groupCategory, setGroupCategory] = useState('');
   const [groupIndustry, setGroupIndustry] = useState('');
-  const [groupImageUrl, setGroupImageUrl] = useState('');
+  const [groupImageUri, setGroupImageUri] = useState<string | null>(null);
   
   // Location autocomplete state
   const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
@@ -131,7 +133,7 @@ export default function GroupDetailScreen() {
       setGroupDescription(currentGroup.description);
       setGroupCategory(currentGroup.category || '');
       setGroupIndustry(currentGroup.industry || '');
-      setGroupImageUrl(currentGroup.imageUrl || '');
+      setGroupImageUri(null); // Reset to null, will show current image in UI
     }
   }, [currentGroup]);
   
@@ -240,6 +242,54 @@ export default function GroupDetailScreen() {
       console.error('Error sending message:', error);
     }
   };
+
+  const handleSelectGroupImage = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (!permissionResult.granted) {
+        Alert.alert('Permission Required', 'You need to grant permission to access your photos.');
+        return;
+      }
+      
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [16, 9],
+        quality: 0.8,
+      });
+      
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setGroupImageUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'An error occurred while selecting an image');
+    }
+  };
+
+  const handleSelectEventImage = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (!permissionResult.granted) {
+        Alert.alert('Permission Required', 'You need to grant permission to access your photos.');
+        return;
+      }
+      
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [16, 9],
+        quality: 0.8,
+      });
+      
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setEventImageUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'An error occurred while selecting an image');
+    }
+  };
   
   const validateEventForm = (): boolean => {
     const errors: Record<string, string> = {};
@@ -310,7 +360,7 @@ export default function GroupDetailScreen() {
         title: eventTitle,
         description: eventDescription,
         location: eventLocation,
-        imageUrl: eventImageUrl || undefined,
+        imageUrl: eventImageUri || undefined,
         startTime: eventDate.getTime(),
         endTime,
         reminder,
@@ -322,7 +372,7 @@ export default function GroupDetailScreen() {
       setEventTitle('');
       setEventDescription('');
       setEventLocation('');
-      setEventImageUrl('');
+      setEventImageUri(null);
       setEventDate(new Date());
       setEventEndDate(null);
       setEventReminder('30');
@@ -360,7 +410,7 @@ export default function GroupDetailScreen() {
         title: eventTitle,
         description: eventDescription,
         location: eventLocation,
-        imageUrl: eventImageUrl || undefined,
+        imageUrl: eventImageUri || selectedEvent.imageUrl,
         startTime: eventDate.getTime(),
         endTime,
         recurrencePattern: recurrencePattern !== 'none' ? recurrencePattern : undefined,
@@ -386,7 +436,7 @@ export default function GroupDetailScreen() {
         id: currentGroup.id,
         name: groupName,
         description: groupDescription,
-        imageUrl: groupImageUrl || undefined,
+        imageUrl: groupImageUri || currentGroup.imageUrl,
         category: groupCategory || 'Interest',
         industry: groupIndustry || undefined
       });
@@ -449,7 +499,7 @@ export default function GroupDetailScreen() {
     setEventTitle(event.title);
     setEventDescription(event.description);
     setEventLocation(event.location || '');
-    setEventImageUrl(event.imageUrl || '');
+    setEventImageUri(null); // Reset to null, will show current image in UI
     setRecurrencePattern(event.recurrencePattern || 'none');
     setRecurrenceEndDate(event.recurrenceEnd ? new Date(event.recurrenceEnd) : null);
     
@@ -965,19 +1015,22 @@ export default function GroupDetailScreen() {
               </View>
               <Text style={styles.inputNote}>Note: Full location autocomplete requires Google Places API integration.</Text>
               
-              <View style={styles.imageInputContainer}>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="Event Image URL (e.g., https://images.unsplash.com/...)"
-                  placeholderTextColor={Colors.dark.textSecondary}
-                  value={eventImageUrl}
-                  onChangeText={setEventImageUrl}
-                />
-                <TouchableOpacity style={styles.imagePickerButton}>
-                  <Camera size={20} color={Colors.dark.textSecondary} />
+              <View style={styles.imageSection}>
+                <Text style={styles.imageLabel}>Event Image</Text>
+                <TouchableOpacity 
+                  style={styles.imagePickerContainer}
+                  onPress={handleSelectEventImage}
+                >
+                  {eventImageUri ? (
+                    <Image source={{ uri: eventImageUri }} style={styles.selectedImage} />
+                  ) : (
+                    <View style={styles.imagePlaceholder}>
+                      <Camera size={40} color={Colors.dark.textSecondary} />
+                      <Text style={styles.imagePlaceholderText}>Tap to select image</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               </View>
-              <Text style={styles.inputNote}>Use image URLs from unsplash.com or other image hosting services.</Text>
               
               <Text style={styles.inputLabel}>Date and Time *</Text>
               <View style={styles.dateTimeContainer}>
@@ -1282,19 +1335,24 @@ export default function GroupDetailScreen() {
               </View>
               <Text style={styles.inputNote}>Note: Full location autocomplete requires Google Places API integration.</Text>
               
-              <View style={styles.imageInputContainer}>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="Event Image URL (e.g., https://images.unsplash.com/...)"
-                  placeholderTextColor={Colors.dark.textSecondary}
-                  value={eventImageUrl}
-                  onChangeText={setEventImageUrl}
-                />
-                <TouchableOpacity style={styles.imagePickerButton}>
-                  <Camera size={20} color={Colors.dark.textSecondary} />
+              <View style={styles.imageSection}>
+                <Text style={styles.imageLabel}>Event Image</Text>
+                <TouchableOpacity 
+                  style={styles.imagePickerContainer}
+                  onPress={handleSelectEventImage}
+                >
+                  {eventImageUri ? (
+                    <Image source={{ uri: eventImageUri }} style={styles.selectedImage} />
+                  ) : selectedEvent?.imageUrl ? (
+                    <Image source={{ uri: selectedEvent.imageUrl }} style={styles.selectedImage} />
+                  ) : (
+                    <View style={styles.imagePlaceholder}>
+                      <Camera size={40} color={Colors.dark.textSecondary} />
+                      <Text style={styles.imagePlaceholderText}>Tap to select image</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               </View>
-              <Text style={styles.inputNote}>Use image URLs from unsplash.com or other image hosting services.</Text>
               
               <Text style={styles.inputLabel}>Date and Time *</Text>
               <View style={styles.dateTimeContainer}>
@@ -1544,19 +1602,24 @@ export default function GroupDetailScreen() {
                 numberOfLines={4}
               />
               
-              <View style={styles.imageInputContainer}>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="Group Image URL (e.g., https://images.unsplash.com/...)"
-                  placeholderTextColor={Colors.dark.textSecondary}
-                  value={groupImageUrl}
-                  onChangeText={setGroupImageUrl}
-                />
-                <TouchableOpacity style={styles.imagePickerButton}>
-                  <Camera size={20} color={Colors.dark.textSecondary} />
+              <View style={styles.imageSection}>
+                <Text style={styles.imageLabel}>Group Image</Text>
+                <TouchableOpacity 
+                  style={styles.imagePickerContainer}
+                  onPress={handleSelectGroupImage}
+                >
+                  {groupImageUri ? (
+                    <Image source={{ uri: groupImageUri }} style={styles.selectedImage} />
+                  ) : currentGroup?.imageUrl ? (
+                    <Image source={{ uri: currentGroup.imageUrl }} style={styles.selectedImage} />
+                  ) : (
+                    <View style={styles.imagePlaceholder}>
+                      <Camera size={40} color={Colors.dark.textSecondary} />
+                      <Text style={styles.imagePlaceholderText}>Tap to select image</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               </View>
-              <Text style={styles.inputNote}>Use image URLs from unsplash.com or other image hosting services.</Text>
               
               <TextInput
                 style={styles.modalInput}
@@ -2000,15 +2063,36 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 24,
   },
-  imageInputContainer: {
-    position: 'relative',
+  imageSection: {
     marginBottom: 16,
   },
-  imagePickerButton: {
-    position: 'absolute',
-    right: 12,
-    top: 12,
-    padding: 4,
+  imageLabel: {
+    fontSize: 16,
+    color: Colors.dark.text,
+    marginBottom: 8,
+    fontWeight: '500',
+  },
+  imagePickerContainer: {
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    borderStyle: 'dashed',
+  },
+  selectedImage: {
+    width: '100%',
+    height: 120,
+  },
+  imagePlaceholder: {
+    height: 120,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.dark.card,
+  },
+  imagePlaceholderText: {
+    color: Colors.dark.textSecondary,
+    fontSize: 14,
+    marginTop: 8,
   },
   locationContainer: {
     position: 'relative',
