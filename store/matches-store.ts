@@ -1,33 +1,32 @@
 /**
  * FILE: store/matches-store.ts
- * LAST UPDATED: 2025-07-02 19:00
+ * LAST UPDATED: 2025-07-02 19:30
  * 
  * INITIALIZATION ORDER:
  * 1. Requires auth-store to be initialized first (for user session)
  * 2. Initializes after auth-store confirms user session
- * 3. Sets up enhanced batch processing and persistent cache management
- * 4. Starts adaptive profile prefetching
- * 5. Race condition: Must wait for user location before fetching matches
+ * 3. Sets up simplified batch processing and persistent cache management
+ * 4. Race condition: Must wait for user location before fetching matches
  * 
  * CURRENT STATE:
- * Significantly enhanced central store for match functionality using Zustand. Features:
+ * Simplified central store for match functionality using Zustand. Features:
  * - Persistent ProfileCache with intelligent eviction and warming strategies
- * - Adaptive prefetching based on user behavior and network conditions
+ * - Manual-only fetching (no automatic prefetching)
  * - Optimistic UI updates with rollback capability for better UX
  * - Intelligent batch processing with deduplication and priority queuing
  * - Enhanced error recovery with exponential backoff and circuit breakers
  * - Network-aware operations with offline queue management
  * - Performance optimizations with memory management and cleanup
+ * - Fixed 10-match batch size for consistent loading
  * 
  * RECENT CHANGES:
- * - Implemented persistent ProfileCache with AsyncStorage backing
- * - Added adaptive prefetching based on swipe velocity and patterns
- * - Enhanced swipe queue with persistence and deduplication
- * - Implemented optimistic UI updates with rollback on failure
- * - Added intelligent batch processing with priority and timing optimization
- * - Enhanced error handling with categorized retry strategies
- * - Improved network awareness with offline queue management
- * - Added performance monitoring and automatic cleanup
+ * - Removed automatic prefetching and adaptive behavior
+ * - Set fixed batch size to 10 matches
+ * - Removed AdaptivePrefetcher class
+ * - Simplified fetching to manual-only (initial load + refresh button)
+ * - Removed automatic batch processing intervals
+ * - Kept optimistic UI updates and error handling
+ * - Maintained cache functionality for performance
  * 
  * FILE INTERACTIONS:
  * - Uses supabase.ts for: database queries, match functions, batch processing
@@ -37,11 +36,10 @@
  * - Used by: discover screen, profile screens, chat screens, messages screen
  * 
  * KEY FUNCTIONS:
- * - fetchPotentialMatches: Enhanced with adaptive prefetching and caching
+ * - fetchPotentialMatches: Simplified manual fetching with 10-match limit
  * - likeUser/passUser: Optimistic updates with rollback capability
  * - processSwipeBatch: Intelligent batching with deduplication
  * - EnhancedProfileCache: Persistent cache with warming and cleanup
- * - AdaptivePrefetcher: Smart prefetching based on user behavior
  * 
  * STORE DEPENDENCIES:
  * 1. auth-store -> User data and authentication (required first)
@@ -86,16 +84,6 @@ interface EnhancedSwipeAction extends SwipeAction {
   retryCount: number;
   optimisticUpdate: boolean;
   timestamp: number;
-}
-
-// User behavior tracking for adaptive prefetching
-interface UserBehavior {
-  averageSwipeTime: number;
-  swipeVelocity: number;
-  likeRatio: number;
-  sessionDuration: number;
-  lastActiveTime: number;
-  prefetchPattern: 'aggressive' | 'normal' | 'conservative';
 }
 
 // Enhanced cache configuration
@@ -154,11 +142,11 @@ class EnhancedProfileCache {
     this.cache = new Map();
     this.config = {
       maxAge: 1000 * 60 * 45, // 45 minutes
-      maxSize: 150, // Increased cache size
-      version: 2, // Incremented for new features
+      maxSize: 100, // Reduced cache size for simpler management
+      version: 2,
       persistenceKey: 'enhanced_profile_cache',
-      warmupSize: 20, // Profiles to keep warm
-      cleanupInterval: 1000 * 60 * 3, // 3 minutes
+      warmupSize: 10, // Match the batch size
+      cleanupInterval: 1000 * 60 * 5, // 5 minutes
       compressionEnabled: true
     };
     this.stats = {
@@ -242,7 +230,7 @@ class EnhancedProfileCache {
     if (this.isEntryValid(entry)) {
       entry.hits++;
       entry.lastAccess = Date.now();
-      entry.priority = Math.min(entry.priority + 1, 10); // Increase priority
+      entry.priority = Math.min(entry.priority + 1, 10);
       this.updateStats();
       return entry.data;
     }
@@ -285,13 +273,6 @@ class EnhancedProfileCache {
     });
   }
 
-  public prefetch(ids: string[]): Promise<UserProfile[]> {
-    // This would typically fetch from API, but for now return cached profiles
-    return Promise.resolve(
-      ids.map(id => this.get(id)).filter(Boolean) as UserProfile[]
-    );
-  }
-
   private calculateProfileSize(profile: UserProfile): number {
     return JSON.stringify(profile).length;
   }
@@ -324,7 +305,7 @@ class EnhancedProfileCache {
 
     for (const [id, entry] of this.cache.entries()) {
       // Score based on hits, recency, and priority
-      const ageScore = (Date.now() - entry.lastAccess) / 1000; // Age in seconds
+      const ageScore = (Date.now() - entry.lastAccess) / 1000;
       const hitScore = Math.max(1, entry.hits);
       const priorityScore = entry.priority;
       const score = ageScore / (hitScore * priorityScore);
@@ -375,7 +356,7 @@ class EnhancedProfileCache {
       hitRate: totalHits / Math.max(this.cache.size, 1),
       averageAge: totalAge / Math.max(this.cache.size, 1),
       memoryUsage: totalSize,
-      compressionRatio: 1, // Placeholder for compression
+      compressionRatio: 1,
       evictionCount: this.stats.evictionCount
     };
   }
@@ -404,81 +385,6 @@ class EnhancedProfileCache {
       clearInterval(this.persistenceTimer);
     }
     this.saveToPersistence(); // Final save
-  }
-}
-
-/**
- * Adaptive Prefetcher that learns from user behavior
- */
-class AdaptivePrefetcher {
-  private behavior: UserBehavior;
-  private prefetchQueue: string[] = [];
-  private isActive = false;
-
-  constructor() {
-    this.behavior = {
-      averageSwipeTime: 3000, // 3 seconds default
-      swipeVelocity: 0.33, // swipes per second
-      likeRatio: 0.3, // 30% like rate
-      sessionDuration: 0,
-      lastActiveTime: Date.now(),
-      prefetchPattern: 'normal'
-    };
-  }
-
-  public updateBehavior(action: 'swipe' | 'like' | 'pass', duration?: number): void {
-    const now = Date.now();
-    
-    if (action === 'swipe' && duration) {
-      // Update average swipe time with exponential moving average
-      this.behavior.averageSwipeTime = 
-        this.behavior.averageSwipeTime * 0.8 + duration * 0.2;
-      
-      // Update swipe velocity
-      const timeSinceLastSwipe = now - this.behavior.lastActiveTime;
-      if (timeSinceLastSwipe > 0) {
-        const currentVelocity = 1000 / timeSinceLastSwipe; // swipes per second
-        this.behavior.swipeVelocity = 
-          this.behavior.swipeVelocity * 0.9 + currentVelocity * 0.1;
-      }
-    }
-
-    this.behavior.lastActiveTime = now;
-    this.updatePrefetchPattern();
-  }
-
-  private updatePrefetchPattern(): void {
-    if (this.behavior.swipeVelocity > 0.5) {
-      this.behavior.prefetchPattern = 'aggressive';
-    } else if (this.behavior.swipeVelocity < 0.2) {
-      this.behavior.prefetchPattern = 'conservative';
-    } else {
-      this.behavior.prefetchPattern = 'normal';
-    }
-  }
-
-  public getPrefetchSize(): number {
-    switch (this.behavior.prefetchPattern) {
-      case 'aggressive': return 15;
-      case 'conservative': return 5;
-      default: return 10;
-    }
-  }
-
-  public getPrefetchThreshold(): number {
-    switch (this.behavior.prefetchPattern) {
-      case 'aggressive': return 8;
-      case 'conservative': return 2;
-      default: return 5;
-    }
-  }
-
-  public shouldPrefetch(currentCount: number): boolean {
-    return currentCount <= this.getPrefetchThreshold();
-  }
-
-  public getBehaviorStats(): UserBehavior {
-    return { ...this.behavior };
   }
 }
 
@@ -569,10 +475,10 @@ class EnhancedSwipeQueue {
       if (action.retryCount >= this.maxRetries) {
         this.queue.delete(id);
         this.saveToPersistence();
-        return false; // Max retries reached
+        return false;
       }
       this.saveToPersistence();
-      return true; // Can retry
+      return true;
     }
     return false;
   }
@@ -630,7 +536,6 @@ const getReadableError = (error: unknown): string => {
 
 // Initialize enhanced components
 const enhancedProfileCache = new EnhancedProfileCache();
-const adaptivePrefetcher = new AdaptivePrefetcher();
 const enhancedSwipeQueue = new EnhancedSwipeQueue();
 
 // Network state tracking
@@ -651,7 +556,6 @@ const updateNetworkState = async () => {
     
     if (networkState.isOnline) {
       networkState.lastOnlineTime = Date.now();
-      // Determine connection quality based on type
       if (status.type === 'wifi') {
         networkState.connectionQuality = 'excellent';
       } else if (status.type === 'cellular') {
@@ -663,7 +567,6 @@ const updateNetworkState = async () => {
       // If we just came back online, process offline queue
       if (wasOffline && enhancedSwipeQueue.size() > 0) {
         console.log('[MatchesStore] Back online, processing offline queue');
-        // Trigger batch processing
         setTimeout(() => {
           useMatchesStore.getState().processSwipeBatch();
         }, 1000);
@@ -727,7 +630,7 @@ const supabaseToUserProfile = (data: Record<string, any>): UserProfile => {
 };
 
 // Rate limiting with adaptive backoff
-const RATE_LIMIT = 800; // Reduced for better responsiveness
+const RATE_LIMIT = 800;
 let lastQueryTime = 0;
 
 const rateLimitedQuery = async () => {
@@ -764,10 +667,7 @@ interface MatchesStateData {
   cachedMatches: UserProfile[];
   matches: MatchWithProfile[];
   batchSize: number;
-  prefetchThreshold: number;
-  batchProcessingInterval: number;
   isLoading: boolean;
-  isPrefetching: boolean;
   error: string | null;
   newMatch: MatchWithProfile | null;
   swipeLimitReached: boolean;
@@ -779,7 +679,6 @@ interface MatchesStateData {
   pendingMatches: MatchWithProfile[];
   // Enhanced state
   networkState: NetworkState;
-  userBehavior: UserBehavior;
   cacheStats: CacheStats;
   optimisticUpdates: Map<string, 'like' | 'pass'>;
   lastSwipeTime: number;
@@ -799,29 +698,24 @@ interface MatchesStateMethods {
   // Enhanced methods
   getNetworkState: () => NetworkState;
   getCacheStats: () => CacheStats;
-  getUserBehavior: () => UserBehavior;
   warmupCache: (profiles: UserProfile[]) => void;
   rollbackOptimisticUpdate: (userId: string) => void;
-  prefetchProfiles: () => Promise<void>;
 }
 
 type MatchesState = MatchesStateData & MatchesStateMethods;
 
 // Constants
-const PASS_EXPIRY_DAYS = 7; // Increased expiry time
+const PASS_EXPIRY_DAYS = 7;
 const PASSED_USERS_KEY = 'passed_users';
 
-// Initial state with enhanced properties
+// Initial state with simplified properties
 const initialState: MatchesStateData & { version: number } = {
-  version: 2, // Incremented for new features
+  version: 3, // Incremented for simplified version
   potentialMatches: [],
   cachedMatches: [],
   matches: [],
-  batchSize: 15, // Increased batch size
-  prefetchThreshold: 5,
-  batchProcessingInterval: 8000, // Reduced for better responsiveness
+  batchSize: 10, // Fixed to 10 matches
   isLoading: false,
-  isPrefetching: false,
   error: null,
   newMatch: null,
   swipeLimitReached: false,
@@ -832,13 +726,12 @@ const initialState: MatchesStateData & { version: number } = {
   matchesLoading: false,
   pendingMatches: [],
   networkState,
-  userBehavior: adaptivePrefetcher.getBehaviorStats(),
   cacheStats: enhancedProfileCache.getStats(),
   optimisticUpdates: new Map(),
   lastSwipeTime: 0
 };
 
-// Define the store creator with enhanced functionality
+// Define the store creator with simplified functionality
 const matchesStoreCreator: StateCreator<
   MatchesState,
   [['zustand/persist', SerializedMatchesState]]
@@ -846,11 +739,8 @@ const matchesStoreCreator: StateCreator<
   potentialMatches: [],
   cachedMatches: [],
   matches: [],
-  batchSize: 15,
-  prefetchThreshold: 5,
-  batchProcessingInterval: 8000,
+  batchSize: 10, // Fixed to 10 matches
   isLoading: false,
-  isPrefetching: false,
   error: null,
   newMatch: null,
   swipeLimitReached: false,
@@ -861,7 +751,6 @@ const matchesStoreCreator: StateCreator<
   matchesLoading: false,
   pendingMatches: [],
   networkState,
-  userBehavior: adaptivePrefetcher.getBehaviorStats(),
   cacheStats: enhancedProfileCache.getStats(),
   optimisticUpdates: new Map(),
   lastSwipeTime: 0,
@@ -872,7 +761,7 @@ const matchesStoreCreator: StateCreator<
     const callId = `fetch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     if (debugStore.isDebugMode) {
-      console.log(`🔍 [ENHANCED-MATCHES][${callId}] fetchPotentialMatches CALLED`, {
+      console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] fetchPotentialMatches CALLED`, {
         maxDistance,
         forceRefresh,
         networkState: get().networkState,
@@ -912,34 +801,20 @@ const matchesStoreCreator: StateCreator<
           networkState: currentNetworkState
         } = get();
         
-        // Get adaptive prefetch threshold
-        const prefetchThreshold = adaptivePrefetcher.getPrefetchThreshold();
-        const adaptiveBatchSize = adaptivePrefetcher.getPrefetchSize();
-        
         const seenIds = new Set([
           ...passedUsers.map(p => p.id),
           ...Array.from(pendingLikes)
         ]);
 
         if (debugStore.isDebugMode) {
-          console.log(`🔍 [ENHANCED-MATCHES][${callId}] Current state`, {
+          console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] Current state`, {
             currentMatches: potentialMatches.length,
             passedUsers: passedUsers.length,
             pendingLikes: pendingLikes.size,
             seenIds: seenIds.size,
-            prefetchThreshold,
-            adaptiveBatchSize,
+            batchSize,
             networkQuality: currentNetworkState.connectionQuality
           });
-        }
-
-        // Enhanced cache check with adaptive threshold
-        if (!forceRefresh && potentialMatches.length > prefetchThreshold) {
-          if (debugStore.isDebugMode) {
-            console.log(`🔍 [ENHANCED-MATCHES][${callId}] Using cache - sufficient matches available`);
-          }
-          set({ isLoading: false });
-          return;
         }
 
         // Check network state before making request
@@ -951,33 +826,28 @@ const matchesStoreCreator: StateCreator<
           };
         }
 
-        // Use adaptive batch size based on network quality
-        const effectiveBatchSize = currentNetworkState.connectionQuality === 'excellent' 
-          ? adaptiveBatchSize 
-          : Math.min(adaptiveBatchSize, 10);
-
         if (debugStore.isDebugMode) {
-          console.log(`🔍 [ENHANCED-MATCHES][${callId}] Calling Supabase fetchPotentialMatches`, {
+          console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] Calling Supabase fetchPotentialMatches`, {
             userId: user.id,
             maxDistance,
-            limit: effectiveBatchSize,
+            limit: batchSize,
             networkQuality: currentNetworkState.connectionQuality
           });
         }
 
-        // Fetch new potential matches with enhanced error handling
+        // Fetch exactly 10 new potential matches
         const result = await withCircuitBreaker(
           () => fetchPotentialMatchesFromSupabase(
             user.id,
             maxDistance,
             undefined,
-            effectiveBatchSize
+            batchSize // Always 10
           ),
           'fetch_potential_matches'
         );
 
         if (debugStore.isDebugMode) {
-          console.log(`🔍 [ENHANCED-MATCHES][${callId}] Supabase response`, {
+          console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] Supabase response`, {
             hasResult: !!result,
             matchesLength: result?.matches?.length || 0,
             count: result?.count,
@@ -989,7 +859,7 @@ const matchesStoreCreator: StateCreator<
         // Handle case where no matches are returned
         if (!result || !result.matches || result.matches.length === 0) {
           if (debugStore.isDebugMode) {
-            console.log(`🔍 [ENHANCED-MATCHES][${callId}] No matches found - setting noMoreProfiles`);
+            console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] No matches found - setting noMoreProfiles`);
           }
           
           set({
@@ -1008,7 +878,7 @@ const matchesStoreCreator: StateCreator<
           return;
         }
 
-        // Enhanced profile processing with caching
+        // Process profiles with caching
         const validMatches = result.matches
           .filter((match: any): match is UserProfile => {
             const isValid = match && 
@@ -1021,10 +891,10 @@ const matchesStoreCreator: StateCreator<
             
             return isValid && isNotSeen;
           })
-          .map((match: any) => supabaseToUserProfile(match)); // This will cache each profile
+          .map((match: any) => supabaseToUserProfile(match));
 
         if (debugStore.isDebugMode) {
-          console.log(`🔍 [ENHANCED-MATCHES][${callId}] Match processing complete`, {
+          console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] Match processing complete`, {
             rawMatches: result.matches.length,
             validMatches: validMatches.length,
             cached: validMatches.length
@@ -1034,7 +904,7 @@ const matchesStoreCreator: StateCreator<
         // Warmup cache with new profiles
         enhancedProfileCache.warmup(validMatches);
 
-        // Update state with new matches
+        // Update state with new matches (replace on refresh, append otherwise)
         const newPotentialMatches = forceRefresh ? validMatches : [...potentialMatches, ...validMatches];
         
         set(state => ({
@@ -1042,12 +912,11 @@ const matchesStoreCreator: StateCreator<
           isLoading: false,
           error: null,
           noMoreProfiles: validMatches.length === 0,
-          cacheStats: enhancedProfileCache.getStats(),
-          userBehavior: adaptivePrefetcher.getBehaviorStats()
+          cacheStats: enhancedProfileCache.getStats()
         }));
         
         if (debugStore.isDebugMode) {
-          console.log(`🔍 [ENHANCED-MATCHES][${callId}] SUCCESS - State updated`, {
+          console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] SUCCESS - State updated`, {
             totalMatches: newPotentialMatches.length,
             newMatches: validMatches.length,
             cacheSize: enhancedProfileCache.getStats().size
@@ -1063,11 +932,6 @@ const matchesStoreCreator: StateCreator<
             duration: 3000
           });
         }
-
-        // Trigger adaptive prefetching if needed
-        if (adaptivePrefetcher.shouldPrefetch(newPotentialMatches.length)) {
-          setTimeout(() => get().prefetchProfiles(), 2000);
-        }
         
       } catch (error) {
         const errorDetails = {
@@ -1077,7 +941,7 @@ const matchesStoreCreator: StateCreator<
         };
         
         if (debugStore.isDebugMode) {
-          console.error(`🔍 [ENHANCED-MATCHES][${callId}] ERROR CAUGHT`, errorDetails);
+          console.error(`🔍 [SIMPLIFIED-MATCHES][${callId}] ERROR CAUGHT`, errorDetails);
         }
         
         const appError = handleError(error);
@@ -1287,10 +1151,6 @@ const matchesStoreCreator: StateCreator<
           lastSwipeTime: swipeStartTime
         }));
 
-        // Update user behavior tracking
-        const swipeDuration = Date.now() - swipeStartTime;
-        adaptivePrefetcher.updateBehavior('like', swipeDuration);
-
         // Queue the swipe action with high priority
         enhancedSwipeQueue.add({
           swiper_id: user.id,
@@ -1302,10 +1162,7 @@ const matchesStoreCreator: StateCreator<
           timestamp: swipeStartTime
         });
 
-        set({ 
-          isLoading: false,
-          userBehavior: adaptivePrefetcher.getBehaviorStats()
-        });
+        set({ isLoading: false });
 
         // Process batch if we have enough high priority items or if offline
         if (enhancedSwipeQueue.getHighPriorityCount() >= 3 || !networkState.isOnline) {
@@ -1394,10 +1251,6 @@ const matchesStoreCreator: StateCreator<
           lastSwipeTime: swipeStartTime
         }));
 
-        // Update user behavior tracking
-        const swipeDuration = Date.now() - swipeStartTime;
-        adaptivePrefetcher.updateBehavior('pass', swipeDuration);
-
         // Queue the swipe action with normal priority
         enhancedSwipeQueue.add({
           swiper_id: user.id,
@@ -1409,10 +1262,7 @@ const matchesStoreCreator: StateCreator<
           timestamp: swipeStartTime
         });
         
-        set({ 
-          isLoading: false,
-          userBehavior: adaptivePrefetcher.getBehaviorStats()
-        });
+        set({ isLoading: false });
 
         // Process batch if queue is getting full
         if (enhancedSwipeQueue.size() >= 5) {
@@ -1493,7 +1343,7 @@ const matchesStoreCreator: StateCreator<
       
       if (currentBatch.length === 0) return;
       
-      console.log(`[EnhancedMatchesStore] Processing batch of ${currentBatch.length} swipes`);
+      console.log(`[SimplifiedMatchesStore] Processing batch of ${currentBatch.length} swipes`);
       
       try {
         // Convert to legacy format for API
@@ -1541,10 +1391,10 @@ const matchesStoreCreator: StateCreator<
         // Update network state
         set({ networkState: { ...networkState, offlineQueueSize: enhancedSwipeQueue.size() } });
         
-        console.log(`[EnhancedMatchesStore] Successfully processed ${currentBatch.length} swipes`);
+        console.log(`[SimplifiedMatchesStore] Successfully processed ${currentBatch.length} swipes`);
       } catch (error) {
         const readableError = getReadableError(error);
-        console.error('[EnhancedMatchesStore] Batch processing error:', readableError);
+        console.error('[SimplifiedMatchesStore] Batch processing error:', readableError);
         
         // Mark failed swipes for retry
         currentBatch.forEach(action => {
@@ -1586,7 +1436,6 @@ const matchesStoreCreator: StateCreator<
         cachedMatches: [],
         matches: [],
         isLoading: false,
-        isPrefetching: false,
         error: null,
         newMatch: null,
         swipeLimitReached: false,
@@ -1608,7 +1457,7 @@ const matchesStoreCreator: StateCreator<
       
       if (updatedPasses.length !== state.passedUsers.length) {
         set((state: MatchesState) => ({ passedUsers: updatedPasses }));
-        console.log(`[EnhancedMatchesStore] Cleaned up ${state.passedUsers.length - updatedPasses.length} expired passes`);
+        console.log(`[SimplifiedMatchesStore] Cleaned up ${state.passedUsers.length - updatedPasses.length} expired passes`);
       }
     });
   },
@@ -1617,8 +1466,6 @@ const matchesStoreCreator: StateCreator<
   getNetworkState: () => get().networkState,
   
   getCacheStats: () => enhancedProfileCache.getStats(),
-  
-  getUserBehavior: () => adaptivePrefetcher.getBehaviorStats(),
   
   warmupCache: (profiles: UserProfile[]) => {
     enhancedProfileCache.warmup(profiles);
@@ -1648,26 +1495,6 @@ const matchesStoreCreator: StateCreator<
       
       return { optimisticUpdates: newOptimisticUpdates };
     });
-  },
-  
-  prefetchProfiles: async () => {
-    const { isPrefetching, potentialMatches } = get();
-    
-    if (isPrefetching) return;
-    
-    set({ isPrefetching: true });
-    
-    try {
-      // This would typically fetch additional profiles
-      // For now, we'll just update the prefetching state
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      console.log('[EnhancedMatchesStore] Prefetch completed');
-    } catch (error) {
-      console.error('[EnhancedMatchesStore] Prefetch failed:', error);
-    } finally {
-      set({ isPrefetching: false });
-    }
   }
 });
 
@@ -1675,7 +1502,7 @@ export const useMatchesStore = create<MatchesState>()(
   persist(
     matchesStoreCreator as any,
     {
-      name: 'enhanced-matches-store',
+      name: 'simplified-matches-store',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state: MatchesState): SerializedMatchesState => ({
         passedUsers: state.passedUsers,
@@ -1688,21 +1515,17 @@ export const useMatchesStore = create<MatchesState>()(
         potentialMatches: state.potentialMatches,
         cachedMatches: state.cachedMatches,
         batchSize: state.batchSize,
-        prefetchThreshold: state.prefetchThreshold,
-        batchProcessingInterval: state.batchProcessingInterval,
         isLoading: state.isLoading,
-        isPrefetching: state.isPrefetching,
         newMatch: state.newMatch,
         matchesLoading: state.matchesLoading,
         pendingMatches: state.pendingMatches,
         networkState: state.networkState,
-        userBehavior: state.userBehavior,
         cacheStats: state.cacheStats,
         lastSwipeTime: state.lastSwipeTime
       }),
       onRehydrateStorage: () => (state: SerializedMatchesState | undefined, error: unknown) => {
         if (error) {
-          console.error('Error rehydrating enhanced matches store:', error);
+          console.error('Error rehydrating simplified matches store:', error);
           useMatchesStore.setState(initialState);
           return;
         }
@@ -1716,18 +1539,16 @@ export const useMatchesStore = create<MatchesState>()(
           ...state,
           pendingLikes: new Set(state.pendingLikes),
           isLoading: false,
-          isPrefetching: false,
           matchesLoading: false,
           optimisticUpdates: new Map(),
-          cacheStats: enhancedProfileCache.getStats(),
-          userBehavior: adaptivePrefetcher.getBehaviorStats()
+          cacheStats: enhancedProfileCache.getStats()
         });
       }
     } as unknown as PersistOptions<MatchesState, SerializedMatchesState>
   )
 );
 
-// Enhanced batch processing with adaptive timing
+// Simplified batch processing - only manual processing
 let batchProcessingInterval: ReturnType<typeof setInterval> | null = null;
 
 export const startBatchProcessing = () => {
@@ -1736,22 +1557,22 @@ export const startBatchProcessing = () => {
       clearInterval(batchProcessingInterval);
     }
 
-    const { batchProcessingInterval: interval } = useMatchesStore.getState();
+    // Only process when there are pending swipes and we're online
     batchProcessingInterval = setInterval(async () => {
       const store = useMatchesStore.getState();
       const queueSize = enhancedSwipeQueue.size();
       
-      // Adaptive processing based on queue size and network state
+      // Only process if we have pending swipes and are online
       const shouldProcess = queueSize > 0 && 
         !store.isLoading && 
-        (queueSize >= 3 || networkState.connectionQuality === 'excellent');
+        networkState.isOnline;
       
       if (shouldProcess) {
         try {
           await store.processSwipeBatch();
         } catch (error) {
           const readableError = getReadableError(error);
-          console.error('[EnhancedMatchesStore] Batch processing interval error:', readableError);
+          console.error('[SimplifiedMatchesStore] Batch processing interval error:', readableError);
           
           // Only show notification for critical errors
           if (queueSize > 10) {
@@ -1764,7 +1585,7 @@ export const startBatchProcessing = () => {
           }
         }
       }
-    }, interval);
+    }, 10000); // Check every 10 seconds
   });
 };
 

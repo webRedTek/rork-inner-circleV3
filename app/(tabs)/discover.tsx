@@ -1,6 +1,6 @@
 /**
  * FILE: app/(tabs)/discover.tsx
- * LAST UPDATED: 2025-07-02 18:00
+ * LAST UPDATED: 2025-07-02 19:30
  * 
  * INITIALIZATION ORDER:
  * 1. Initializes after auth-store confirms user session
@@ -10,20 +10,23 @@
  * 5. Race condition: Must wait for user location before fetching matches
  * 
  * CURRENT STATE:
- * Enhanced discover screen for entrepreneur matching. Handles:
- * - Optimized profile card swiping interface with improved performance
+ * Simplified discover screen for entrepreneur matching. Handles:
+ * - Manual-only profile fetching (initial load + refresh button)
  * - Enhanced distance filtering and global search with better UX
  * - Improved match notifications and modals with better animations
  * - Enhanced usage limit enforcement with better user feedback
  * - Better error handling and user feedback throughout
+ * - Fixed 10-match loading per request
  * 
  * RECENT CHANGES:
+ * - Removed all automatic prefetching and adaptive behavior
+ * - Simplified to manual-only fetching (initial load + refresh button)
+ * - Removed prefetching triggers and thresholds
  * - Enhanced swipe action handling with better error feedback
  * - Improved animation performance and responsiveness
  * - Better haptic feedback integration throughout the interface
  * - Enhanced loading states and error handling
  * - Improved global search logic with better validation
- * - Better coordination with enhanced SwipeCards component
  * 
  * FILE INTERACTIONS:
  * - Imports from: matches-store, auth-store, notification-store, usage-store
@@ -33,7 +36,7 @@
  * 
  * KEY FUNCTIONS:
  * - handleSwipeRight/Left: Enhanced swipe actions with better feedback
- * - handleManualRefresh: Improved refresh with better loading states
+ * - handleManualRefresh: Manual refresh with better loading states
  * - handleToggleGlobalSearch: Enhanced global search toggle
  * - handleModalAction: Better modal action handling
  * 
@@ -80,7 +83,6 @@ export default function DiscoverScreen() {
     likeUser, 
     passUser,
     isLoading,
-    isPrefetching,
     error,
     newMatch,
     clearNewMatch,
@@ -140,9 +142,9 @@ export default function DiscoverScreen() {
     setDebugInfo(prev => [...prev.slice(-4), `${new Date().toLocaleTimeString()}: ${info}`]);
   }, [isDebugMode]);
 
-  // Initial fetch effect
+  // Initial fetch effect - ONLY on first load
   useEffect(() => {
-    if (isReady && user && !initialLoad) {
+    if (isReady && user && initialLoad) {
       console.log('[Discover] Initial fetch triggered:', {
         userId: user.id,
         distance: user.preferredDistance || parseInt(preferredDistance) || 50,
@@ -167,13 +169,13 @@ export default function DiscoverScreen() {
         });
 
       startBatchProcessing();
-      setInitialLoad(true);
+      setInitialLoad(false); // Prevent automatic refetching
     }
     
     return () => {
       stopBatchProcessing();
     };
-  }, [isReady, user, fetchPotentialMatches, isGlobalSearchAllowed, globalSearch, preferredDistance, addNotification]);
+  }, [isReady, user, initialLoad, fetchPotentialMatches, isGlobalSearchAllowed, globalSearch, preferredDistance, addNotification]);
 
   // Add validation for distance changes - skip validation when global search is enabled
   useEffect(() => {
@@ -246,9 +248,9 @@ export default function DiscoverScreen() {
   }, [swipeLimitReached, matchLimitReached, triggerHapticFeedback, addNotification]);
   
   useEffect(() => {
-    console.log('[Discover] Potential matches updated', { count: potentialMatches.length, isLoading, isPrefetching, error: error || 'none' });
-    addDebugInfo(`Matches updated - count: ${potentialMatches.length}, loading: ${isLoading}, prefetching: ${isPrefetching}, error: ${error || 'none'}`);
-  }, [potentialMatches, isLoading, isPrefetching, error, addDebugInfo]);
+    console.log('[Discover] Potential matches updated', { count: potentialMatches.length, isLoading, error: error || 'none' });
+    addDebugInfo(`Matches updated - count: ${potentialMatches.length}, loading: ${isLoading}, error: ${error || 'none'}`);
+  }, [potentialMatches, isLoading, error, addDebugInfo]);
   
   // DEBUG: Add timeout to detect if loading takes too long
   useEffect(() => {
@@ -407,13 +409,14 @@ export default function DiscoverScreen() {
   }, [matchedUser, router, preferredDistance, isGlobalSearchAllowed, globalSearch, fetchPotentialMatches, triggerHapticFeedback, addNotification]);
   
   const handleProfilePress = useCallback((profile: UserProfile) => {
-    triggerHapticFeedback('light');
+    triggerHapticFeedback('selection');
     setSelectedProfile(profile);
     setShowProfileDetail(true);
   }, [triggerHapticFeedback]);
   
+  // MANUAL REFRESH ONLY - No automatic fetching
   const handleManualRefresh = useCallback(async () => {
-    if (isLoading || isPrefetching || refreshing) return;
+    if (isLoading || refreshing) return;
     
     addDebugInfo('Manual refresh triggered');
     setRefreshing(true);
@@ -447,7 +450,7 @@ export default function DiscoverScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, [isLoading, isPrefetching, refreshing, addDebugInfo, isGlobalSearchAllowed, globalSearch, preferredDistance, fetchPotentialMatches, triggerHapticFeedback, addNotification]);
+  }, [isLoading, refreshing, addDebugInfo, isGlobalSearchAllowed, globalSearch, preferredDistance, fetchPotentialMatches, triggerHapticFeedback, addNotification]);
   
   const handleToggleGlobalSearch = useCallback(() => {
     triggerHapticFeedback('medium');
@@ -471,11 +474,10 @@ export default function DiscoverScreen() {
       // Switching to global search - clear distance error and set to infinity symbol
       setDistanceError('');
       setPreferredDistance('∞');
-      fetchPotentialMatches(undefined);
       
       addNotification({
         type: 'info',
-        message: 'Global search enabled - searching worldwide',
+        message: 'Global search enabled - distance filter disabled',
         displayStyle: 'toast',
         duration: 3000
       });
@@ -483,7 +485,6 @@ export default function DiscoverScreen() {
       // Switching back to local search
       const distance = user?.preferredDistance || 50;
       setPreferredDistance(distance.toString());
-      fetchPotentialMatches(distance);
       
       addNotification({
         type: 'info',
@@ -492,7 +493,7 @@ export default function DiscoverScreen() {
         duration: 3000
       });
     }
-  }, [isGlobalSearchAllowed, globalSearch, user, fetchPotentialMatches, triggerHapticFeedback, addNotification]);
+  }, [isGlobalSearchAllowed, globalSearch, user, triggerHapticFeedback, addNotification]);
 
   // Memoized SwipeCards props to prevent unnecessary re-renders
   const swipeCardsProps = useMemo(() => ({
@@ -501,10 +502,9 @@ export default function DiscoverScreen() {
     onSwipeRight: handleSwipeRight,
     onProfilePress: handleProfilePress,
     isLoading,
-    isPrefetching,
     error,
     onRetry: handleManualRefresh
-  }), [potentialMatches, handleSwipeLeft, handleSwipeRight, handleProfilePress, isLoading, isPrefetching, error, handleManualRefresh]);
+  }), [potentialMatches, handleSwipeLeft, handleSwipeRight, handleProfilePress, isLoading, error, handleManualRefresh]);
   
   if (isLoading && potentialMatches.length === 0) {
     return (
@@ -676,28 +676,20 @@ export default function DiscoverScreen() {
         </View>
       ) : (
         <View style={styles.cardsContainer}>
-          {isPrefetching && (
-            <View style={styles.prefetchingIndicator}>
-              <ActivityIndicator size="small" color={Colors.dark.accent} />
-              <Text style={styles.prefetchingText}>
-                {noMoreProfiles ? "No more entrepreneurs found" : "Loading more entrepreneurs..."}
-              </Text>
-            </View>
-          )}
           <SwipeCards {...swipeCardsProps} />
           <View style={styles.buttonContainer}>
             <TouchableOpacity 
               style={[
                 styles.actionButton,
                 styles.refreshButton,
-                (refreshing || isLoading || isPrefetching) && styles.buttonDisabled
+                (refreshing || isLoading) && styles.buttonDisabled
               ]}
               onPress={handleManualRefresh}
-              disabled={refreshing || isLoading || isPrefetching}
+              disabled={refreshing || isLoading}
             >
               <RefreshCw 
                 size={24} 
-                color={refreshing || isLoading || isPrefetching ? Colors.dark.disabled : Colors.dark.accent} 
+                color={refreshing || isLoading ? Colors.dark.disabled : Colors.dark.accent} 
                 style={refreshing ? styles.spinningIcon : undefined}
               />
             </TouchableOpacity>
@@ -735,7 +727,6 @@ export default function DiscoverScreen() {
           <Text style={styles.debugText}>Global Search: {isGlobalSearchAllowed ? 'enabled' : 'disabled'}</Text>
           <Text style={styles.debugText}>Matches: {potentialMatches.length}</Text>
           <Text style={styles.debugText}>Loading: {isLoading ? 'true' : 'false'}</Text>
-          <Text style={styles.debugText}>Prefetching: {isPrefetching ? 'true' : 'false'}</Text>
           <Text style={styles.debugText}>No More: {noMoreProfiles ? 'true' : 'false'}</Text>
           <Text style={styles.debugText}>Error: {error || 'none'}</Text>
           <Text style={styles.debugText}>Ready: {isReady ? 'true' : 'false'}</Text>
@@ -903,21 +894,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  prefetchingIndicator: {
-    position: 'absolute',
-    top: 16,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-    zIndex: 10,
-  },
-  prefetchingText: {
-    color: Colors.dark.text,
-    fontSize: 14,
   },
   buttonContainer: {
     flexDirection: 'row',

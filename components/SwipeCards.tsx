@@ -1,6 +1,6 @@
 /**
  * FILE: components/SwipeCards.tsx
- * LAST UPDATED: 2025-07-02 19:00
+ * LAST UPDATED: 2025-07-02 19:30
  * 
  * INITIALIZATION ORDER:
  * 1. Initializes when rendered in discover screen
@@ -10,19 +10,19 @@
  * 5. Race condition: Must wait for profile data before rendering
  * 
  * CURRENT STATE:
- * Significantly enhanced swipeable card interface for user discovery with:
+ * Simplified swipeable card interface for user discovery with:
  * - Ultra-smooth native-driven animations with optimized spring physics
  * - Highly responsive gesture handling with predictive motion
  * - Enhanced visual feedback with dynamic indicators and micro-interactions
  * - Optimistic UI updates with rollback capability for better UX
  * - Performance optimizations with intelligent memoization and native driver usage
- * - Adaptive animation timing based on gesture velocity and user behavior
  * - Enhanced haptic feedback with contextual intensity and timing
+ * - Removed automatic fetching - only manual refresh
  * 
  * RECENT CHANGES:
- * - Implemented optimistic UI updates with rollback on failure
+ * - Removed all automatic fetching and prefetching logic
+ * - Simplified to manual-only operations
  * - Enhanced gesture prediction and velocity-based animations
- * - Added adaptive animation timing based on user behavior
  * - Improved card stack management with better depth perception
  * - Enhanced visual feedback with dynamic scaling and rotation
  * - Optimized performance with better memoization and reduced re-renders
@@ -30,10 +30,10 @@
  * - Implemented gesture momentum and natural physics
  * 
  * FILE INTERACTIONS:
- * - Imports from: react-native, enhanced matches-store, types/user
+ * - Imports from: react-native, simplified matches-store, types/user
  * - Exports to: discover screen
  * - Dependencies: react-native-reanimated for animations
- * - Data flow: Bidirectional with enhanced matches-store
+ * - Data flow: Bidirectional with simplified matches-store
  * 
  * KEY FUNCTIONS/COMPONENTS:
  * - SwipeCards: Main component with optimistic updates and enhanced animations
@@ -74,7 +74,6 @@ interface SwipeCardsProps {
   onEmpty?: () => void;
   onProfilePress: (profile: UserProfile) => void;
   isLoading?: boolean;
-  isPrefetching?: boolean;
   error?: string | null;
   onRetry?: () => Promise<void>;
 }
@@ -155,7 +154,6 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   onEmpty,
   onProfilePress,
   isLoading = false,
-  isPrefetching = false,
   error: propError = null,
   onRetry
 }) => {
@@ -167,7 +165,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   const [lastGestureTime, setLastGestureTime] = useState(0);
 
   const { user } = useAuthStore();
-  const { optimisticUpdates, getUserBehavior, rollbackOptimisticUpdate } = useMatchesStore();
+  const { optimisticUpdates, rollbackOptimisticUpdate } = useMatchesStore();
 
   // Enhanced animated values with better initial configurations
   const position = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
@@ -244,14 +242,14 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   useEffect(() => {
     if (!profiles || profiles.length === 0) {
       if (isDebugMode) {
-        console.log('[EnhancedSwipeCards] No profiles available');
+        console.log('[SimplifiedSwipeCards] No profiles available');
       }
       return;
     }
 
     if (currentIndex >= profiles.length) {
       if (isDebugMode) {
-        console.log('[EnhancedSwipeCards] Resetting currentIndex due to profiles change', { 
+        console.log('[SimplifiedSwipeCards] Resetting currentIndex due to profiles change', { 
           oldIndex: currentIndex, 
           profilesCount: profiles.length 
         });
@@ -263,7 +261,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     const currentProfile = profiles[currentIndex];
     if (!currentProfile || !currentProfile.id || !currentProfile.name) {
       if (isDebugMode) {
-        console.error('[EnhancedSwipeCards] Invalid profile data:', {
+        console.error('[SimplifiedSwipeCards] Invalid profile data:', {
           index: currentIndex,
           hasProfile: !!currentProfile,
           profileData: currentProfile ? {
@@ -423,7 +421,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
         animateIndicator('pass', false);
         
         if (isDebugMode) {
-          console.log('[EnhancedSwipeCards] Pan gesture released', { 
+          console.log('[SimplifiedSwipeCards] Pan gesture released', { 
             dx, 
             vx, 
             momentum,
@@ -434,7 +432,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
         
         if (error || !profiles[currentIndex]) {
           if (isDebugMode) {
-            console.log('[EnhancedSwipeCards] Cannot swipe - error or no profile', { error, hasProfile: !!profiles[currentIndex] });
+            console.log('[SimplifiedSwipeCards] Cannot swipe - error or no profile', { error, hasProfile: !!profiles[currentIndex] });
           }
           resetPosition();
           return;
@@ -451,19 +449,19 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
 
         if (shouldSwipeRight) {
           if (isDebugMode) {
-            console.log('[EnhancedSwipeCards] Swiping right', { dx, vx, momentum });
+            console.log('[SimplifiedSwipeCards] Swiping right', { dx, vx, momentum });
           }
           triggerHapticFeedback('success');
           forceSwipe('right', Math.abs(vx));
         } else if (shouldSwipeLeft) {
           if (isDebugMode) {
-            console.log('[EnhancedSwipeCards] Swiping left', { dx, vx, momentum });
+            console.log('[SimplifiedSwipeCards] Swiping left', { dx, vx, momentum });
           }
           triggerHapticFeedback('medium');
           forceSwipe('left', Math.abs(vx));
         } else {
           if (isDebugMode) {
-            console.log('[EnhancedSwipeCards] Gesture below threshold, resetting', { dx, vx, momentum });
+            console.log('[SimplifiedSwipeCards] Gesture below threshold, resetting', { dx, vx, momentum });
           }
           triggerHapticFeedback('light');
           resetPosition();
@@ -476,13 +474,13 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     const item = profiles[currentIndex];
     if (!item) {
       if (isDebugMode) {
-        console.log('[EnhancedSwipeCards] No item to swipe', { currentIndex, profilesCount: profiles.length });
+        console.log('[SimplifiedSwipeCards] No item to swipe', { currentIndex, profilesCount: profiles.length });
       }
       return;
     }
 
     if (isDebugMode) {
-      console.log('[EnhancedSwipeCards] Processing swipe', { direction, profileId: item.id, profileName: item.name });
+      console.log('[SimplifiedSwipeCards] Processing swipe', { direction, profileId: item.id, profileName: item.name });
     }
 
     // Check if this is an optimistic update that failed
@@ -494,7 +492,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
 
         if (nextIndex >= profiles.length && onEmpty) {
           if (isDebugMode) {
-            console.log('[EnhancedSwipeCards] Reached end of profiles, triggering onEmpty', { nextIndex, profilesCount: profiles.length });
+            console.log('[SimplifiedSwipeCards] Reached end of profiles, triggering onEmpty', { nextIndex, profilesCount: profiles.length });
           }
           onEmpty();
         }
@@ -515,7 +513,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     swipePromise
       .then(() => {
         if (isDebugMode) {
-          console.log('[EnhancedSwipeCards] Swipe processed successfully');
+          console.log('[SimplifiedSwipeCards] Swipe processed successfully');
         }
         
         setCurrentIndex(prevIndex => {
@@ -523,7 +521,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
 
           if (nextIndex >= profiles.length && onEmpty) {
             if (isDebugMode) {
-              console.log('[EnhancedSwipeCards] Reached end of profiles, triggering onEmpty', { nextIndex, profilesCount: profiles.length });
+              console.log('[SimplifiedSwipeCards] Reached end of profiles, triggering onEmpty', { nextIndex, profilesCount: profiles.length });
             }
             onEmpty();
           }
@@ -536,10 +534,10 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       })
       .catch(error => {
         const errorMessage = getErrorMessage(error);
-        console.error(`[EnhancedSwipeCards] Error on ${direction} swipe:`, errorMessage);
+        console.error(`[SimplifiedSwipeCards] Error on ${direction} swipe:`, errorMessage);
         
         if (isDebugMode) {
-          console.error('[EnhancedSwipeCards] Full error details:', {
+          console.error('[SimplifiedSwipeCards] Full error details:', {
             error,
             errorType: typeof error,
             errorConstructor: error?.constructor?.name,
@@ -648,17 +646,25 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   
   const renderCards = () => {
     if (isDebugMode) {
-      console.log('[EnhancedSwipeCards] Rendering cards', { currentIndex, profilesCount: profiles.length });
+      console.log('[SimplifiedSwipeCards] Rendering cards', { currentIndex, profilesCount: profiles.length });
     }
     
     if (currentIndex >= profiles.length) {
       if (isDebugMode) {
-        console.log('[EnhancedSwipeCards] Showing empty state');
+        console.log('[SimplifiedSwipeCards] Showing empty state');
       }
       return (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No more entrepreneurs to show</Text>
-          <Text style={styles.emptySubtext}>Check back later for new connections</Text>
+          <Text style={styles.emptySubtext}>Press refresh to load more profiles</Text>
+          {onRetry && (
+            <Button
+              title="Refresh"
+              onPress={onRetry}
+              variant="primary"
+              style={styles.retryButton}
+            />
+          )}
         </View>
       );
     }
@@ -666,7 +672,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     return profiles.map((item, index) => {
       if (index < currentIndex) {
         if (isDebugMode) {
-          console.log('[EnhancedSwipeCards] Skipping rendered profile', { index, id: item.id });
+          console.log('[SimplifiedSwipeCards] Skipping rendered profile', { index, id: item.id });
         }
         return null;
       }
@@ -676,7 +682,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       
       if (index === currentIndex) {
         if (isDebugMode) {
-          console.log('[EnhancedSwipeCards] Rendering current card', { 
+          console.log('[SimplifiedSwipeCards] Rendering current card', { 
             index, 
             id: item.id, 
             name: item.name,
@@ -744,7 +750,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       // Next card in stack with enhanced animation
       if (index === currentIndex + 1) {
         if (isDebugMode) {
-          console.log('[EnhancedSwipeCards] Rendering next card', { index, id: item.id, name: item.name });
+          console.log('[SimplifiedSwipeCards] Rendering next card', { index, id: item.id, name: item.name });
         }
         return (
           <Animated.View
@@ -768,7 +774,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       // Background cards with improved stacking and depth
       if (index < currentIndex + 4) { // Show more background cards
         if (isDebugMode) {
-          console.log('[EnhancedSwipeCards] Rendering background card', { index, id: item.id, name: item.name });
+          console.log('[SimplifiedSwipeCards] Rendering background card', { index, id: item.id, name: item.name });
         }
         const cardDepth = index - currentIndex - 1;
         const scaleValue = 0.90 - cardDepth * 0.03; // Better scaling progression
@@ -797,7 +803,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       }
       
       if (isDebugMode) {
-        console.log('[EnhancedSwipeCards] Skipping non-visible card', { index, id: item.id });
+        console.log('[SimplifiedSwipeCards] Skipping non-visible card', { index, id: item.id });
       }
       return null;
     }).reverse();
@@ -916,6 +922,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.dark.textSecondary,
     textAlign: 'center',
+    marginBottom: 20,
   },
   errorContainer: {
     position: 'absolute',
@@ -939,6 +946,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: 4,
+    marginTop: 8,
   },
   retryText: {
     color: Colors.dark.text,
