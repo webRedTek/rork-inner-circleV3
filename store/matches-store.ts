@@ -738,7 +738,7 @@ const matchesStoreCreator: StateCreator<
         }));
         
         // Check swipe limits using usage store
-        const swipeResult = await useUsageStore.getState().trackUsage({ actionType: 'swipe', batchProcess: true });
+        const swipeResult = await useUsageStore.getState().updateUsage(user.id, 'swipe');
         if (!swipeResult.isAllowed) {
           set({ swipeLimitReached: true, isLoading: false });
           throw {
@@ -749,7 +749,7 @@ const matchesStoreCreator: StateCreator<
         }
 
         // Check like limits
-        const likeResult = await useUsageStore.getState().trackUsage({ actionType: 'like', batchProcess: true });
+        const likeResult = await useUsageStore.getState().updateUsage(user.id, 'like');
         if (!likeResult.isAllowed) {
           set({ swipeLimitReached: true, isLoading: false });
           throw {
@@ -833,7 +833,7 @@ const matchesStoreCreator: StateCreator<
       set({ isLoading: true, error: null });
       try {
         // Check swipe limits using usage store
-        const result = await useUsageStore.getState().trackUsage({ actionType: 'swipe', batchProcess: true });
+        const result = await useUsageStore.getState().updateUsage(user.id, 'swipe');
         if (!result.isAllowed) {
           set({ swipeLimitReached: true, isLoading: false });
           throw {

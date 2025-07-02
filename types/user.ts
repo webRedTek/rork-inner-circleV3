@@ -414,4 +414,5 @@ export interface UsageStore {
   queueBatchUpdate: (actionType: string, count: number) => void;
   resetUsage: (actionType?: string) => void;
   clearError: () => void;
+  updateUsage: (userId: string, action: string) => Promise<UsageResult>;
 }
