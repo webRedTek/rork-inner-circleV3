@@ -84,51 +84,51 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   onProfilePress,
   isLoading = false,
   isPrefetching = false,
-  error = null,
+  error: propError = null,
   onRetry
 }) => {
   const { isDebugMode } = useDebugStore();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [renderedProfiles, setRenderedProfiles] = useState<Set<string>>(new Set());
   const [noMoreProfiles, setNoMoreProfiles] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const { prefetchNextBatch } = useMatchesStore();
   const { user } = useAuthStore();
-  const { checkAndUpdateUsage, getCurrentUsage } = useUsageStore();
+  const { getUsageStats, trackUsage } = useUsageStore();
 
-  const panResponder = useRef<Animated.ValueXY>(new Animated.ValueXY());
-  const position = useRef<Animated.ValueXY>(new Animated.ValueXY());
-  const scale = useRef<Animated.Value>(new Animated.Value(1));
-  const opacity = useRef<Animated.Value>(new Animated.Value(1));
-  const rotation = useRef<Animated.Value>(new Animated.Value(0));
+  const position = new Animated.ValueXY();
+  const scale = useRef(new Animated.Value(1));
+  const opacity = useRef(new Animated.Value(1));
+  const rotation = useRef(new Animated.Value(0));
 
   const prefetchThreshold = 3; // Start prefetching when 3 or fewer profiles remain
 
-  const rotate = position.current.x.interpolate({
+  const rotate = position.x.interpolate({
     inputRange: [-SCREEN_WIDTH * 1.5, 0, SCREEN_WIDTH * 1.5],
     outputRange: ['-30deg', '0deg', '30deg'],
     extrapolate: 'clamp'
   });
   
-  const likeOpacity = position.current.x.interpolate({
+  const likeOpacity = position.x.interpolate({
     inputRange: [0, SCREEN_WIDTH * 0.25],
     outputRange: [0, 1],
     extrapolate: 'clamp'
   });
   
-  const nopeOpacity = position.current.x.interpolate({
+  const nopeOpacity = position.x.interpolate({
     inputRange: [-SCREEN_WIDTH * 0.25, 0],
     outputRange: [1, 0],
     extrapolate: 'clamp'
   });
   
-  const nextCardOpacity = position.current.x.interpolate({
+  const nextCardOpacity = position.x.interpolate({
     inputRange: [-SCREEN_WIDTH * 1.5, 0, SCREEN_WIDTH * 1.5],
     outputRange: [1, 0.5, 1],
     extrapolate: 'clamp'
   });
   
-  const nextCardScale = position.current.x.interpolate({
+  const nextCardScale = position.x.interpolate({
     inputRange: [-SCREEN_WIDTH * 1.5, 0, SCREEN_WIDTH * 1.5],
     outputRange: [1, 0.9, 1],
     extrapolate: 'clamp'
@@ -185,27 +185,9 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
         console.log('[SwipeCards] Triggering prefetch due to low profiles', { currentIndex, profilesCount: profiles.length, threshold: prefetchThreshold });
       }
       
-      if (isPrefetching) {
-        if (isDebugMode) {
-          console.log('[SwipeCards] Prefetch skipped - already in progress', { currentIndex, profilesCount: profiles.length });
-        }
-        return;
-      }
-      
-      if (noMoreProfiles) {
-        if (isDebugMode) {
-          console.log('[SwipeCards] Prefetch skipped - no more profiles to load', { currentIndex, profilesCount: profiles.length });
-        }
-        return;
-      }
-
-      setIsPrefetching(true);
       prefetchNextBatch()
         .catch(error => {
           console.error('[SwipeCards] Error prefetching:', error);
-        })
-        .finally(() => {
-          setIsPrefetching(false);
         });
     }
   }, [currentIndex, profiles.length, isPrefetching, noMoreProfiles, prefetchNextBatch, isDebugMode]);
@@ -227,7 +209,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       onPanResponderMove: (_, gesture) => {
         // Only allow horizontal movement for swiping
         // This prevents diagonal swipes from triggering profile opens
-        position.current.setValue({ x: gesture.dx, y: 0 });
+        position.setValue({ x: gesture.dx, y: 0 });
       },
       onPanResponderRelease: (_, gesture) => {
         if (error || !profiles[currentIndex]) {
@@ -248,7 +230,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   
   const forceSwipe = (direction: 'left' | 'right') => {
     const x = direction === 'right' ? SCREEN_WIDTH * 1.5 : -SCREEN_WIDTH * 1.5;
-    Animated.timing(position.current, {
+    Animated.timing(position, {
       toValue: { x, y: 0 },
       duration: SWIPE_OUT_DURATION,
       useNativeDriver: false
@@ -328,7 +310,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
                 ]
               }
             ]}
-            {...panResponder.panHandlers}
+            {...panResponderHandler}
           >
             <Animated.View style={[styles.likeContainer, { opacity: likeOpacity }]}>
               <Heart size={80} color={Colors.dark.success} />

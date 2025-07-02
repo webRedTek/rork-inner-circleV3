@@ -4,20 +4,26 @@
  * 
  * CURRENT STATE:
  * Main discovery tab screen. Shows swipeable cards of potential matches.
+ * Handles user distance preferences and global search options based on
+ * membership tier. Distance is now handled in miles with a max of 250 miles.
  * 
  * RECENT CHANGES:
+ * - Updated distance handling to use miles instead of kilometers
+ * - Removed tier-based distance limits in favor of user preferences
  * - Fixed screen focus to only fetch matches when none available
+ * - Improved error handling for distance validation
  * 
  * FILE INTERACTIONS:
  * - Uses matches-store for: potential matches, swipe actions, match state
  * - Uses auth-store for: user data, tier settings
+ * - Uses usage-store for: swipe/match limits
  * - Uses SwipeCards component for: card display and gestures
  * - Uses Button, ProfileDetailCard for: UI elements
  * 
  * KEY FUNCTIONS:
  * - Initial load: Fetches first batch of matches
  * - Focus refresh: Only fetches if no matches available
- * - Distance handling: Uses user preferences or tier limits
+ * - Distance handling: Uses user preferences (1-250 miles)
  * - Swipe actions: Processes likes/passes through matches-store
  * - Match handling: Shows modals for new matches
  * 
@@ -176,7 +182,7 @@ export default function DiscoverScreen() {
     });
 
     if (distance < 1 || distance > 250) {
-      setDistanceError(`Distance must be between 1 and 250 km`);
+      setDistanceError(`Distance must be between 1 and 250 miles`);
       setPreferredDistance('50');
     } else {
       setDistanceError('');
@@ -326,7 +332,7 @@ export default function DiscoverScreen() {
       case 'applyFilters':
         const distanceNum = parseInt(preferredDistance);
         if (isNaN(distanceNum) || distanceNum < 1 || distanceNum > 500) {
-          setDistanceError('Distance must be between 1 and 500 km');
+          setDistanceError('Distance must be between 1 and 500 miles');
           return;
         }
         setDistanceError('');
@@ -478,7 +484,7 @@ export default function DiscoverScreen() {
             <Text style={styles.matchTitle}>Distance Filters</Text>
             
             <Input
-              label="Max Distance (km)"
+              label="Max Distance (miles)"
               value={preferredDistance}
               onChangeText={setPreferredDistance}
               placeholder="Enter max distance"
@@ -576,7 +582,7 @@ export default function DiscoverScreen() {
                 styles.filterButtonText,
                 (refreshing || isLoading) && styles.textDisabled
               ]}>
-                {preferredDistance} km
+                {preferredDistance} miles
               </Text>
             </TouchableOpacity>
           </View>

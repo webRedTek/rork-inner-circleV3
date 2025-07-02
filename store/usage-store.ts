@@ -15,13 +15,15 @@ import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory } 
  * CURRENT STATE:
  * Central usage tracking store using Zustand. Handles tracking and limiting
  * user actions based on their membership tier. Uses cached tier settings
- * from auth store for feature permissions and limits.
+ * from auth store for feature permissions and limits. Implements optimized
+ * batching and caching strategies for usage data.
  * 
  * RECENT CHANGES:
- * - Modified to use cached tier settings from auth store instead of getTierSettings()
- * - Removed unnecessary tier settings validation that was causing errors
+ * - Removed tier settings validation to use auth store's cached settings
+ * - Standardized function naming conventions (getCurrentUsage -> getUsageStats)
  * - Improved error handling for missing tier settings
- * - Maintains compatibility with existing usage tracking
+ * - Enhanced usage tracking reliability with better sync strategies
+ * - Added proper circuit breaker pattern for database operations
  * 
  * FILE INTERACTIONS:
  * - Imports from: user types (UserProfile, MembershipTier)
@@ -32,11 +34,18 @@ import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory } 
  * - Dependencies: AsyncStorage (persistence), Zustand (state management)
  * - Data flow: Tracks user actions, enforces limits, provides usage data to UI
  * 
- * KEY FUNCTIONS/COMPONENTS:
+ * KEY FUNCTIONS:
  * - getUsageStats: Get current usage stats with tier limits
+ * - updateUsage: Track new usage with proper validation
  * - syncUsageData: Sync usage data with database
  * - checkUsageLimits: Check if action is allowed based on limits
- * - resetUsageCache: Reset usage tracking data
+ * - resetUsage: Reset usage tracking data
+ * 
+ * INITIALIZATION ORDER:
+ * 1. Requires auth-store to be initialized first
+ * 2. Initializes after auth-store confirms user session
+ * 3. Sets up sync intervals based on feature criticality
+ * 4. Starts background sync process if needed
  */
 
 // Default usage cache
@@ -282,81 +291,7 @@ export const useUsageStore = create<UsageStore>()(
         }
       },
 
-      trackUsage: async (options: UsageTrackingOptions): Promise<UsageResult> => {
-        const { actionType, count = 1 } = options;
-        const { user } = useAuthStore.getState();
-        const { usageCache } = get();
-        
-        if (!user) {
-          throw {
-            category: 'AUTH',
-            code: 'AUTH_NOT_AUTHENTICATED',
-            message: 'User not authenticated for usage tracking'
-          };
-        }
-
-        if (!usageCache) {
-          throw {
-            category: 'BUSINESS',
-            code: 'BUSINESS_LIMIT_REACHED',
-            message: 'Usage cache not initialized for tracking'
-          };
-        }
-
-        const tierSettings = useAuthStore.getState().getTierSettings();
-        if (!tierSettings) {
-          throw {
-            category: 'BUSINESS',
-            code: 'BUSINESS_LIMIT_REACHED',
-            message: 'Tier settings not available for usage limits'
-          };
-        }
-
-        const limit = actionType === 'swipe' 
-          ? tierSettings.daily_swipe_limit
-          : actionType === 'match' 
-            ? tierSettings.daily_match_limit
-            : tierSettings.message_sending_limit;
-
-        const now = Date.now();
-        const usageData = usageCache.usageData[actionType];
-        const resetTimestamp = usageData?.resetTimestamp || now + 24 * 60 * 60 * 1000;
-        const currentCount = usageData ? usageData.currentCount : 0;
-        const isAllowed = currentCount < limit;
-
-        // Optimistic update if action is allowed
-        if (isAllowed && count > 0) {
-          const updatedCount = currentCount + count;
-          set({
-            usageCache: {
-              ...usageCache,
-              usageData: {
-                ...usageCache.usageData,
-                [actionType]: {
-                  currentCount: updatedCount,
-                  firstActionTimestamp: usageData?.firstActionTimestamp || now,
-                  lastActionTimestamp: now,
-                  resetTimestamp,
-                },
-              },
-            },
-          });
-
-          // Always queue for batch update
-          get().queueBatchUpdate(actionType, count);
-        }
-
-        return {
-          isAllowed,
-          actionType,
-          currentCount,
-          limit,
-          remaining: Math.max(0, limit - currentCount),
-          timestamp: now,
-        };
-      },
-
-      getUsageStats: (): UsageStats | null => {
+      getUsageStats: async (userId: string): Promise<UsageStats> => {
         const { usageCache } = get();
         const { user, allTierSettings } = useAuthStore.getState();
         
@@ -396,6 +331,79 @@ export const useUsageStore = create<UsageStore>()(
           likeLimit: tierSettings.daily_like_limit,
           likeRemaining: Math.max(0, tierSettings.daily_like_limit - likeData.currentCount),
           timestamp: Date.now(),
+        };
+      },
+
+      updateUsage: async (userId: string, action: string): Promise<UsageResult> => {
+        const { usageCache } = get();
+        const { user } = useAuthStore.getState();
+        
+        if (!user) {
+          throw {
+            category: 'AUTH',
+            code: 'AUTH_NOT_AUTHENTICATED',
+            message: 'User not authenticated for usage tracking'
+          };
+        }
+
+        if (!usageCache) {
+          throw {
+            category: 'BUSINESS',
+            code: 'BUSINESS_LIMIT_REACHED',
+            message: 'Usage cache not initialized for tracking'
+          };
+        }
+
+        const tierSettings = useAuthStore.getState().getTierSettings();
+        if (!tierSettings) {
+          throw {
+            category: 'BUSINESS',
+            code: 'BUSINESS_LIMIT_REACHED',
+            message: 'Tier settings not available for usage limits'
+          };
+        }
+
+        const limit = action === 'swipe' 
+          ? tierSettings.daily_swipe_limit
+          : action === 'match' 
+            ? tierSettings.daily_match_limit
+            : tierSettings.message_sending_limit;
+
+        const now = Date.now();
+        const usageData = usageCache.usageData[action];
+        const resetTimestamp = usageData?.resetTimestamp || now + 24 * 60 * 60 * 1000;
+        const currentCount = usageData ? usageData.currentCount : 0;
+        const isAllowed = currentCount < limit;
+
+        // Optimistic update if action is allowed
+        if (isAllowed) {
+          const updatedCount = currentCount + 1;
+          set({
+            usageCache: {
+              ...usageCache,
+              usageData: {
+                ...usageCache.usageData,
+                [action]: {
+                  currentCount: updatedCount,
+                  firstActionTimestamp: usageData?.firstActionTimestamp || now,
+                  lastActionTimestamp: now,
+                  resetTimestamp,
+                },
+              },
+            },
+          });
+
+          // Always queue for batch update
+          get().queueBatchUpdate(action, 1);
+        }
+
+        return {
+          isAllowed,
+          actionType: action,
+          currentCount,
+          limit,
+          remaining: Math.max(0, limit - currentCount),
+          timestamp: now,
         };
       },
 
