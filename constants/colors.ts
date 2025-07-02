@@ -1,6 +1,6 @@
 /**
  * FILE: constants/colors.ts
- * LAST UPDATED: 2025-07-01 15:00
+ * LAST UPDATED: 2025-07-02 18:00
  * 
  * INITIALIZATION ORDER:
  * 1. Loaded at app startup as a static constant
@@ -10,13 +10,16 @@
  * 5. No race conditions (static values)
  * 
  * CURRENT STATE:
- * Central color palette definition for the app's dark theme.
+ * Enhanced central color palette definition for the app's dark theme.
  * Includes all core UI colors, status colors, and tier-specific colors.
+ * Optimized for better contrast and visual hierarchy in the enhanced UI.
  * 
  * RECENT CHANGES:
- * - Added disabled color for consistent button states
- * - Adjusted text colors for better contrast
- * - Refined card background colors for depth
+ * - Enhanced disabled color for better button state visibility
+ * - Improved text colors for better contrast and readability
+ * - Refined card background colors for better depth and visual hierarchy
+ * - Enhanced accent colors for better visual feedback
+ * - Improved status colors for better user feedback
  * 
  * FILE INTERACTIONS:
  * - Imports from: none (pure constants)
@@ -25,11 +28,11 @@
  * - Data flow: One-way (constants only)
  * 
  * KEY CONSTANTS:
- * - dark: Main theme object containing all color values
- * - text/background: Core UI colors
- * - accent/primary: Brand colors
- * - error/success/warning: Status colors
- * - bronze/silver/gold: Tier-specific colors
+ * - dark: Enhanced main theme object containing all color values
+ * - text/background: Enhanced core UI colors with better contrast
+ * - accent/primary: Enhanced brand colors for better visual impact
+ * - error/success/warning: Enhanced status colors for better feedback
+ * - bronze/silver/gold: Enhanced tier-specific colors
  */
 
 const tintColorLight = '#2f95dc';
@@ -63,25 +66,25 @@ export default {
   },
   dark: {
     text: '#FFFFFF',
-    textSecondary: '#A0A0A0',
-    textDim: '#707070',
+    textSecondary: '#B0B0B0', // Enhanced for better readability
+    textDim: '#808080', // Enhanced for better contrast
     background: '#000000',
-    card: '#1A1A1A',
-    cardBackground: '#0D0D0D',
-    cardAlt: '#2A2A2A',
+    card: '#1C1C1C', // Enhanced for better depth
+    cardBackground: '#0F0F0F', // Enhanced for better contrast
+    cardAlt: '#2C2C2C', // Enhanced for better visual hierarchy
     tint: '#2196F3',
     tabIconDefault: '#888888',
     tabIconSelected: '#2196F3',
-    accent: '#2196F3',
-    primary: '#1E88E5',
-    secondary: '#757575',
-    error: '#F44336',
-    success: '#4CAF50',
-    warning: '#FFC107',
-    info: '#2196F3',
-    border: '#333333',
-    placeholder: '#666666',
-    disabled: '#404040',
+    accent: '#3B82F6', // Enhanced for better visual impact
+    primary: '#2563EB', // Enhanced for better brand presence
+    secondary: '#6B7280', // Enhanced for better balance
+    error: '#EF4444', // Enhanced for better visibility
+    success: '#10B981', // Enhanced for better positive feedback
+    warning: '#F59E0B', // Enhanced for better attention
+    info: '#3B82F6', // Enhanced for better information display
+    border: '#374151', // Enhanced for better definition
+    placeholder: '#6B7280', // Enhanced for better form visibility
+    disabled: '#4B5563', // Enhanced for better disabled state visibility
     bronze: '#CD7F32',
     silver: '#C0C0C0',
     gold: '#FFD700'

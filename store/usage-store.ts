@@ -10,20 +10,21 @@ import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory } 
 
 /**
  * FILE: store/usage-store.ts
- * LAST UPDATED: 2024-12-20 10:30
+ * LAST UPDATED: 2025-07-02 18:00
  * 
  * CURRENT STATE:
- * Central usage tracking store using Zustand. Handles tracking and limiting
+ * Enhanced central usage tracking store using Zustand. Handles tracking and limiting
  * user actions based on their membership tier. Uses cached tier settings
  * from auth store for feature permissions and limits. Implements optimized
- * batching and caching strategies for usage data.
+ * batching and caching strategies for usage data with improved error handling.
  * 
  * RECENT CHANGES:
- * - Fixed fetchDatabaseTotals to use .maybeSingle() instead of .single()
- * - Added date filtering to get today's usage record
- * - Improved error handling to properly display readable error messages
- * - Enhanced notification system integration for better error visibility
- * - Added proper error logging and user-friendly error messages
+ * - Enhanced error handling with proper error stringification to prevent [object Object] errors
+ * - Improved user feedback through notification system integration
+ * - Better error categorization and user-friendly messages
+ * - Enhanced database operations with better error recovery
+ * - Improved sync operations with better error visibility
+ * - Better integration with enhanced SwipeCards and discover components
  * 
  * FILE INTERACTIONS:
  * - Imports from: user types (UserProfile, MembershipTier)
@@ -37,7 +38,7 @@ import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory } 
  * KEY FUNCTIONS:
  * - getUsageStats: Get current usage stats with tier limits
  * - updateUsage: Track new usage with proper validation
- * - syncUsageData: Sync usage data with database
+ * - syncUsageData: Enhanced sync usage data with database
  * - checkUsageLimits: Check if action is allowed based on limits
  * - resetUsage: Reset usage tracking data
  * 
@@ -100,16 +101,29 @@ const defaultRetryStrategy: RetryStrategy = {
   criticalActions: ['swipe', 'match', 'message'],
 };
 
-// Helper function to safely stringify errors
+// Enhanced helper function to safely stringify errors
 const safeStringifyError = (error: any): string => {
   if (typeof error === 'string') return error;
   if (error instanceof Error) return error.message;
   if (error && typeof error === 'object') {
     try {
+      // Handle structured error objects with priority order
+      if (error.userMessage) return error.userMessage;
+      if (error.message) return error.message;
+      if (error.error?.message) return error.error.message;
+      if (error.details) return String(error.details);
+      if (error.hint) return String(error.hint);
+      if (error.description) return String(error.description);
+      if (error.code) return `Error code: ${error.code}`;
+      
       // Try to extract meaningful properties
-      const message = error.message || error.details || error.hint || 'Unknown error';
-      const code = error.code ? ` (Code: ${error.code})` : '';
-      return `${message}${code}`;
+      const meaningfulProps = ['reason', 'cause', 'statusText', 'data'];
+      for (const prop of meaningfulProps) {
+        if (error[prop]) return String(error[prop]);
+      }
+      
+      // Last resort: try to stringify safely
+      return JSON.stringify(error, Object.getOwnPropertyNames(error));
     } catch (e) {
       try {
         return JSON.stringify(error, Object.getOwnPropertyNames(error));
@@ -183,7 +197,8 @@ export const useUsageStore = create<UsageStore>()(
           return data;
         } catch (error) {
           const appError = handleError(error);
-          console.error('Error fetching database totals:', appError);
+          const errorMessage = safeStringifyError(error);
+          console.error('Error fetching database totals:', errorMessage);
           set({ databaseTotals: null });
           
           useNotificationStore.getState().addNotification({
@@ -243,7 +258,8 @@ export const useUsageStore = create<UsageStore>()(
 
           if (findError) {
             const appError = handleError(findError);
-            console.error('Error finding existing usage record:', appError);
+            const errorMessage = safeStringifyError(findError);
+            console.error('Error finding existing usage record:', errorMessage);
             
             useNotificationStore.getState().addNotification({
               type: 'error',
@@ -274,7 +290,8 @@ export const useUsageStore = create<UsageStore>()(
 
             if (updateError) {
               const appError = handleError(updateError);
-              console.error('Failed to update usage record:', appError);
+              const errorMessage = safeStringifyError(updateError);
+              console.error('Failed to update usage record:', errorMessage);
               
               useNotificationStore.getState().addNotification({
                 type: 'error',
@@ -347,7 +364,8 @@ export const useUsageStore = create<UsageStore>()(
 
           if (createError) {
             const appError = handleError(createError);
-            console.error('Failed to create usage record:', appError);
+            const errorMessage = safeStringifyError(createError);
+            console.error('Failed to create usage record:', errorMessage);
             
             useNotificationStore.getState().addNotification({
               type: 'error',
@@ -400,7 +418,8 @@ export const useUsageStore = create<UsageStore>()(
           set({ usageCache });
         } catch (error) {
           const appError = handleError(error);
-          console.error('Error initializing usage:', appError);
+          const errorMessage = safeStringifyError(error);
+          console.error('Error initializing usage:', errorMessage);
           set({ lastSyncError: appError.userMessage });
           
           useNotificationStore.getState().addNotification({
@@ -712,7 +731,8 @@ export const useUsageStore = create<UsageStore>()(
 
             if (fetchError) {
               const appError = handleError(fetchError);
-              console.error('Error fetching existing usage record:', appError);
+              const errorMessage = safeStringifyError(fetchError);
+              console.error('Error fetching existing usage record:', errorMessage);
               
               useNotificationStore.getState().addNotification({
                 type: 'error',
@@ -775,7 +795,8 @@ export const useUsageStore = create<UsageStore>()(
 
             if (updateError) {
               const appError = handleError(updateError);
-              console.error('Error updating usage record:', appError);
+              const errorMessage = safeStringifyError(updateError);
+              console.error('Error updating usage record:', errorMessage);
               
               useNotificationStore.getState().addNotification({
                 type: 'error',
@@ -808,10 +829,11 @@ export const useUsageStore = create<UsageStore>()(
           }
         } catch (error) {
           const appError = handleError(error);
-          console.error('Error syncing usage data:', appError);
+          const errorMessage = safeStringifyError(error);
+          console.error('Error syncing usage data:', errorMessage);
           set({ lastSyncError: appError.userMessage });
           
-          // Show error notification to user
+          // Show error notification to user with readable error message
           useNotificationStore.getState().addNotification({
             type: 'error',
             message: `Usage sync failed: ${appError.userMessage}`,
@@ -939,7 +961,8 @@ export const useUsageStore = create<UsageStore>()(
           });
         } catch (error) {
           const appError = handleError(error);
-          console.error('Error resetting usage cache:', appError);
+          const errorMessage = safeStringifyError(error);
+          console.error('Error resetting usage cache:', errorMessage);
           
           useNotificationStore.getState().addNotification({
             type: 'error',
@@ -975,7 +998,8 @@ export const startUsageSync = () => {
       await useUsageStore.getState().syncUsageData();
     } catch (error) {
       const appError = handleError(error);
-      console.error('Periodic usage sync failed:', appError);
+      const errorMessage = safeStringifyError(error);
+      console.error('Periodic usage sync failed:', errorMessage);
       // Don't show notification for periodic sync failures to avoid spam
     }
   }, intervalMs) as unknown as number;

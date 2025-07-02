@@ -1,6 +1,6 @@
 /**
  * FILE: app/(tabs)/discover.tsx
- * LAST UPDATED: 2025-07-02 12:00
+ * LAST UPDATED: 2025-07-02 18:00
  * 
  * INITIALIZATION ORDER:
  * 1. Initializes after auth-store confirms user session
@@ -10,18 +10,20 @@
  * 5. Race condition: Must wait for user location before fetching matches
  * 
  * CURRENT STATE:
- * Main discover screen for entrepreneur matching. Handles:
- * - Profile card swiping interface with optimized performance
- * - Distance filtering and global search
- * - Match notifications and modals
- * - Usage limit enforcement
- * - Improved animation performance and responsiveness
+ * Enhanced discover screen for entrepreneur matching. Handles:
+ * - Optimized profile card swiping interface with improved performance
+ * - Enhanced distance filtering and global search with better UX
+ * - Improved match notifications and modals with better animations
+ * - Enhanced usage limit enforcement with better user feedback
+ * - Better error handling and user feedback throughout
  * 
  * RECENT CHANGES:
- * - Fixed distance validation to skip when global search is enabled
- * - Updated pricing display to match new subscription rates
- * - Improved global search logic to not require distance input
- * - Enhanced error handling for distance filters
+ * - Enhanced swipe action handling with better error feedback
+ * - Improved animation performance and responsiveness
+ * - Better haptic feedback integration throughout the interface
+ * - Enhanced loading states and error handling
+ * - Improved global search logic with better validation
+ * - Better coordination with enhanced SwipeCards component
  * 
  * FILE INTERACTIONS:
  * - Imports from: matches-store, auth-store, notification-store, usage-store
@@ -30,10 +32,10 @@
  * - Data flow: Bidirectional with matches-store
  * 
  * KEY FUNCTIONS:
- * - handleSwipeRight/Left: Process swipe actions with optimized performance
- * - handleManualRefresh: Fetch new matches on demand
- * - handleToggleGlobalSearch: Toggle global search mode
- * - handleModalAction: Handle match/limit modal actions
+ * - handleSwipeRight/Left: Enhanced swipe actions with better feedback
+ * - handleManualRefresh: Improved refresh with better loading states
+ * - handleToggleGlobalSearch: Enhanced global search toggle
+ * - handleModalAction: Better modal action handling
  * 
  * STORE DEPENDENCIES:
  * matches-store -> Handles all match data and swipe logic
@@ -51,7 +53,8 @@ import {
   Modal,
   Switch,
   Alert,
-  RefreshControl
+  RefreshControl,
+  Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -62,12 +65,12 @@ import { useAuthStore } from '@/store/auth-store';
 import { UserProfile, MatchWithProfile } from '@/types/user';
 import { Button } from '@/components/Button';
 import * as Haptics from 'expo-haptics';
-import { Platform } from 'react-native';
 import { ProfileDetailCard } from '@/components/ProfileDetailCard';
 import { X, ArrowLeft, RefreshCw, MapPin } from 'lucide-react-native';
 import { Input } from '@/components/Input';
 import { useDebugStore } from '@/store/debug-store';
 import { withErrorHandling, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
+import { useNotificationStore } from '@/store/notification-store';
 
 export default function DiscoverScreen() {
   const router = useRouter();
@@ -88,6 +91,7 @@ export default function DiscoverScreen() {
   
   const { user, isReady } = useAuthStore();
   const { isDebugMode } = useDebugStore();
+  const { addNotification } = useNotificationStore();
   
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [matchedUser, setMatchedUser] = useState<UserProfile | null>(null);
@@ -103,6 +107,29 @@ export default function DiscoverScreen() {
   
   // Simplified global search - allow for all users (can be restricted later if needed)
   const isGlobalSearchAllowed = true;
+
+  // Enhanced haptic feedback function
+  const triggerHapticFeedback = useCallback((type: 'light' | 'medium' | 'heavy' | 'success' | 'error') => {
+    if (Platform.OS === 'web') return;
+    
+    switch (type) {
+      case 'light':
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        break;
+      case 'medium':
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        break;
+      case 'heavy':
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        break;
+      case 'success':
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        break;
+      case 'error':
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        break;
+    }
+  }, []);
 
   // DEBUG: Add temporary debugging state
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
@@ -131,6 +158,12 @@ export default function DiscoverScreen() {
         .catch(error => {
           console.error('[Discover] Error fetching matches:', error);
           setDistanceError('Error loading matches');
+          addNotification({
+            type: 'error',
+            message: 'Failed to load matches. Please try again.',
+            displayStyle: 'toast',
+            duration: 5000
+          });
         });
 
       startBatchProcessing();
@@ -140,7 +173,7 @@ export default function DiscoverScreen() {
     return () => {
       stopBatchProcessing();
     };
-  }, [isReady, user, fetchPotentialMatches, isGlobalSearchAllowed, globalSearch, preferredDistance]);
+  }, [isReady, user, fetchPotentialMatches, isGlobalSearchAllowed, globalSearch, preferredDistance, addNotification]);
 
   // Add validation for distance changes - skip validation when global search is enabled
   useEffect(() => {
@@ -178,9 +211,14 @@ export default function DiscoverScreen() {
           setMatchedUser(newMatch.matched_user_profile);
           setShowMatchModal(true);
           
-          if (Platform.OS !== 'web') {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          }
+          triggerHapticFeedback('success');
+          
+          addNotification({
+            type: 'success',
+            message: `It's a match with ${newMatch.matched_user_profile?.name}!`,
+            displayStyle: 'toast',
+            duration: 4000
+          });
         } catch (err) {
           console.error('[Discover] Error handling new match:', err);
         } finally {
@@ -190,14 +228,22 @@ export default function DiscoverScreen() {
     };
     
     checkNewMatch();
-  }, [newMatch, clearNewMatch, user]);
+  }, [newMatch, clearNewMatch, user, triggerHapticFeedback, addNotification]);
   
   useEffect(() => {
     // Show limit modal if swipe or match limit is reached
     if (swipeLimitReached || matchLimitReached) {
       setShowLimitModal(true);
+      triggerHapticFeedback('error');
+      
+      addNotification({
+        type: 'warning',
+        message: swipeLimitReached ? 'Daily swipe limit reached' : 'Daily match limit reached',
+        displayStyle: 'toast',
+        duration: 5000
+      });
     }
-  }, [swipeLimitReached, matchLimitReached]);
+  }, [swipeLimitReached, matchLimitReached, triggerHapticFeedback, addNotification]);
   
   useEffect(() => {
     console.log('[Discover] Potential matches updated', { count: potentialMatches.length, isLoading, isPrefetching, error: error || 'none' });
@@ -214,42 +260,101 @@ export default function DiscoverScreen() {
     }
   }, [isLoading, potentialMatches.length, addDebugInfo]);
   
-  // Memoized callback functions to prevent unnecessary re-renders
+  // Enhanced swipe handlers with better error handling and feedback
   const handleSwipeRight = useCallback(async (profile: UserProfile) => {
     if (swipeLimitReached) {
       setShowLimitModal(true);
+      triggerHapticFeedback('error');
       return;
     }
     
-    const match = await likeUser(profile.id);
-    
-    if (match) {
-      // It's a match!
-      setMatchedUser(profile);
-      setShowMatchModal(true);
+    try {
+      const match = await likeUser(profile.id);
       
-      if (Platform.OS !== 'web') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (match) {
+        // It's a match!
+        setMatchedUser(profile);
+        setShowMatchModal(true);
+        triggerHapticFeedback('success');
+        
+        addNotification({
+          type: 'success',
+          message: `It's a match with ${profile.name}!`,
+          displayStyle: 'toast',
+          duration: 4000
+        });
+      } else {
+        // Just a like, no match yet
+        triggerHapticFeedback('medium');
+        
+        addNotification({
+          type: 'info',
+          message: `Liked ${profile.name}`,
+          displayStyle: 'toast',
+          duration: 2000
+        });
       }
+    } catch (error) {
+      console.error('[Discover] Error liking user:', error);
+      triggerHapticFeedback('error');
+      
+      addNotification({
+        type: 'error',
+        message: 'Failed to like profile. Please try again.',
+        displayStyle: 'toast',
+        duration: 4000
+      });
     }
-  }, [likeUser, swipeLimitReached]);
+  }, [likeUser, swipeLimitReached, triggerHapticFeedback, addNotification]);
   
   const handleSwipeLeft = useCallback(async (profile: UserProfile) => {
     if (swipeLimitReached) {
       setShowLimitModal(true);
+      triggerHapticFeedback('error');
       return;
     }
     
-    await passUser(profile.id);
-  }, [passUser, swipeLimitReached]);
+    try {
+      await passUser(profile.id);
+      triggerHapticFeedback('light');
+      
+      if (isDebugMode) {
+        addNotification({
+          type: 'info',
+          message: `Passed on ${profile.name}`,
+          displayStyle: 'toast',
+          duration: 1500
+        });
+      }
+    } catch (error) {
+      console.error('[Discover] Error passing user:', error);
+      triggerHapticFeedback('error');
+      
+      addNotification({
+        type: 'error',
+        message: 'Failed to pass on profile. Please try again.',
+        displayStyle: 'toast',
+        duration: 4000
+      });
+    }
+  }, [passUser, swipeLimitReached, triggerHapticFeedback, addNotification, isDebugMode]);
   
   const handleModalAction = useCallback((action: 'message' | 'close' | 'upgrade' | 'applyFilters' | 'cancel') => {
+    triggerHapticFeedback('light');
+    
     switch (action) {
       case 'message':
         if (matchedUser) {
           router.push(`/chat/${matchedUser.id}`);
           setShowMatchModal(false);
           setMatchedUser(null);
+          
+          addNotification({
+            type: 'success',
+            message: `Opening chat with ${matchedUser.name}`,
+            displayStyle: 'toast',
+            duration: 2000
+          });
         }
         break;
       case 'close':
@@ -260,6 +365,13 @@ export default function DiscoverScreen() {
       case 'upgrade':
         router.push('/membership');
         setShowLimitModal(false);
+        
+        addNotification({
+          type: 'info',
+          message: 'Redirecting to membership plans',
+          displayStyle: 'toast',
+          duration: 2000
+        });
         break;
       case 'applyFilters':
         // Skip distance validation if global search is enabled
@@ -267,6 +379,7 @@ export default function DiscoverScreen() {
           const distanceNum = parseInt(preferredDistance);
           if (isNaN(distanceNum) || distanceNum < 1 || distanceNum > 500) {
             setDistanceError('Distance must be between 1 and 500 miles');
+            triggerHapticFeedback('error');
             return;
           }
         }
@@ -279,23 +392,32 @@ export default function DiscoverScreen() {
         
         fetchPotentialMatches(distance, true);
         setShowFilterModal(false);
+        
+        addNotification({
+          type: 'success',
+          message: globalSearch ? 'Applied global search' : `Applied ${distance} mile filter`,
+          displayStyle: 'toast',
+          duration: 3000
+        });
         break;
       case 'cancel':
         setShowFilterModal(false);
         break;
     }
-  }, [matchedUser, router, preferredDistance, isGlobalSearchAllowed, globalSearch, fetchPotentialMatches]);
+  }, [matchedUser, router, preferredDistance, isGlobalSearchAllowed, globalSearch, fetchPotentialMatches, triggerHapticFeedback, addNotification]);
   
   const handleProfilePress = useCallback((profile: UserProfile) => {
+    triggerHapticFeedback('light');
     setSelectedProfile(profile);
     setShowProfileDetail(true);
-  }, []);
+  }, [triggerHapticFeedback]);
   
   const handleManualRefresh = useCallback(async () => {
     if (isLoading || isPrefetching || refreshing) return;
     
     addDebugInfo('Manual refresh triggered');
     setRefreshing(true);
+    triggerHapticFeedback('light');
     
     try {
       // Always use fetchPotentialMatches for consistency
@@ -304,18 +426,43 @@ export default function DiscoverScreen() {
         : parseInt(preferredDistance);
       
       await fetchPotentialMatches(distance, true); // Force refresh
+      
+      addNotification({
+        type: 'success',
+        message: 'Refreshed matches successfully',
+        displayStyle: 'toast',
+        duration: 2000
+      });
     } catch (error) {
       console.error('[Discover] Error refreshing matches:', error);
       addDebugInfo(`Refresh error: ${error}`);
+      triggerHapticFeedback('error');
+      
+      addNotification({
+        type: 'error',
+        message: 'Failed to refresh matches. Please try again.',
+        displayStyle: 'toast',
+        duration: 4000
+      });
     } finally {
       setRefreshing(false);
     }
-  }, [isLoading, isPrefetching, refreshing, addDebugInfo, isGlobalSearchAllowed, globalSearch, preferredDistance, fetchPotentialMatches]);
+  }, [isLoading, isPrefetching, refreshing, addDebugInfo, isGlobalSearchAllowed, globalSearch, preferredDistance, fetchPotentialMatches, triggerHapticFeedback, addNotification]);
   
   const handleToggleGlobalSearch = useCallback(() => {
+    triggerHapticFeedback('medium');
+    
     if (!isGlobalSearchAllowed) {
       setDistanceError('Global search not available for your tier');
       setGlobalSearch(false);
+      triggerHapticFeedback('error');
+      
+      addNotification({
+        type: 'warning',
+        message: 'Global search requires premium membership',
+        displayStyle: 'toast',
+        duration: 4000
+      });
       return;
     }
 
@@ -325,13 +472,27 @@ export default function DiscoverScreen() {
       setDistanceError('');
       setPreferredDistance('∞');
       fetchPotentialMatches(undefined);
+      
+      addNotification({
+        type: 'info',
+        message: 'Global search enabled - searching worldwide',
+        displayStyle: 'toast',
+        duration: 3000
+      });
     } else {
       // Switching back to local search
       const distance = user?.preferredDistance || 50;
       setPreferredDistance(distance.toString());
       fetchPotentialMatches(distance);
+      
+      addNotification({
+        type: 'info',
+        message: `Local search enabled - ${distance} mile radius`,
+        displayStyle: 'toast',
+        duration: 3000
+      });
     }
-  }, [isGlobalSearchAllowed, globalSearch, user, fetchPotentialMatches]);
+  }, [isGlobalSearchAllowed, globalSearch, user, fetchPotentialMatches, triggerHapticFeedback, addNotification]);
 
   // Memoized SwipeCards props to prevent unnecessary re-renders
   const swipeCardsProps = useMemo(() => ({

@@ -66,7 +66,7 @@ export function notifyDirect(
   // For now, we'll just log to console as fallback
 }
 
-// Enhanced error notification with better formatting
+// Enhanced error notification with better formatting and error handling
 export function notifyErrorWithDetails(
   error: any,
   customMessage?: string,
@@ -74,26 +74,47 @@ export function notifyErrorWithDetails(
 ) {
   let message = customMessage || 'An error occurred';
   
-  // Try to extract meaningful error information
+  // Enhanced error message extraction with better handling
   if (error) {
     if (typeof error === 'string') {
       message = customMessage ? `${customMessage}: ${error}` : error;
     } else if (error instanceof Error) {
       message = customMessage ? `${customMessage}: ${error.message}` : error.message;
     } else if (error && typeof error === 'object') {
-      // Handle structured errors (like from APIs)
-      const errorMsg = error.message || error.details || error.hint || 'Unknown error';
+      // Handle structured errors (like from APIs) with priority order
+      const errorProps = ['userMessage', 'message', 'details', 'hint', 'description', 'reason'];
+      let errorMsg = 'Unknown error';
+      
+      for (const prop of errorProps) {
+        if (error[prop] && typeof error[prop] === 'string') {
+          errorMsg = error[prop];
+          break;
+        }
+      }
+      
+      // Handle nested error objects
+      if (errorMsg === 'Unknown error' && error.error) {
+        errorMsg = notifyErrorWithDetails(error.error, '', { duration: 0 });
+      }
+      
       message = customMessage ? `${customMessage}: ${errorMsg}` : errorMsg;
     }
+  }
+  
+  // Prevent [object Object] errors
+  if (message.includes('[object Object]')) {
+    message = customMessage || 'An unexpected error occurred';
   }
   
   notifyError(message, {
     duration: 6000, // Longer duration for errors with details
     ...options
   });
+  
+  return message; // Return the processed message for potential reuse
 }
 
-// Usage tracking error notification
+// Enhanced usage tracking error notification
 export function notifyUsageError(error: any) {
   notifyErrorWithDetails(error, 'Usage tracking error', {
     duration: 8000,
@@ -101,10 +122,34 @@ export function notifyUsageError(error: any) {
   });
 }
 
-// Sync error notification
+// Enhanced sync error notification
 export function notifySyncError(error: any, operation: string = 'sync') {
   notifyErrorWithDetails(error, `${operation} failed`, {
     duration: 7000,
     id: `${operation}-error`
+  });
+}
+
+// Enhanced swipe error notification
+export function notifySwipeError(error: any, action: 'like' | 'pass' = 'like') {
+  notifyErrorWithDetails(error, `Failed to ${action} profile`, {
+    duration: 5000,
+    id: `swipe-${action}-error`
+  });
+}
+
+// Enhanced match error notification
+export function notifyMatchError(error: any) {
+  notifyErrorWithDetails(error, 'Match processing failed', {
+    duration: 6000,
+    id: 'match-error'
+  });
+}
+
+// Enhanced network error notification
+export function notifyNetworkError(error: any) {
+  notifyErrorWithDetails(error, 'Network connection failed', {
+    duration: 8000,
+    id: 'network-error'
   });
 }

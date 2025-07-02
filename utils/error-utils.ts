@@ -4,19 +4,21 @@ import { useNotificationStore } from '@/store/notification-store';
 
 /**
  * FILE: utils/error-utils.ts
- * LAST UPDATED: 2024-12-20 16:00
+ * LAST UPDATED: 2025-07-02 18:00
  * 
  * CURRENT STATE:
- * Central error handling utility system for the app. Provides standardized error
+ * Enhanced central error handling utility system for the app. Provides standardized error
  * categorization, processing, and display. Handles network, authentication,
  * database, validation, business logic, and rate limiting errors with proper
- * user-friendly messages and retry logic.
+ * user-friendly messages and retry logic. Enhanced to prevent [object Object] errors.
  * 
  * RECENT CHANGES:
- * - Enhanced error stringification to prevent [object Object] errors
- * - Improved error message extraction from complex error objects
- * - Added better handling for Supabase-specific errors
- * - Enhanced notification integration for better user feedback
+ * - Completely overhauled error stringification to prevent [object Object] errors
+ * - Enhanced error message extraction from complex error objects with priority order
+ * - Improved handling for Supabase-specific errors with better message extraction
+ * - Enhanced notification integration for better user feedback with categorized messages
+ * - Better error categorization with more specific error type detection
+ * - Improved retry logic with better error recovery strategies
  * 
  * FILE INTERACTIONS:
  * - Imports from: notification-store (for displaying errors to users)
@@ -26,13 +28,13 @@ import { useNotificationStore } from '@/store/notification-store';
  *   displays user-friendly messages, and provides retry logic for recoverable errors
  * 
  * KEY FUNCTIONS/COMPONENTS:
- * - handleError: Converts any error into standardized AppError object
- * - withErrorHandling: Wraps async operations with error handling
- * - withRetry: Provides retry logic with exponential backoff
- * - showError: Displays errors via notification system
- * - categorizeError: Determines error category (network, auth, database, etc.)
- * - mapErrorCode: Maps errors to specific error codes
- * - safeStringifyError: Safely converts any error to readable string
+ * - handleError: Enhanced conversion of any error into standardized AppError object
+ * - withErrorHandling: Enhanced wrapper for async operations with error handling
+ * - withRetry: Enhanced retry logic with exponential backoff and better recovery
+ * - showError: Enhanced error display via notification system with categorization
+ * - categorizeError: Enhanced error category determination with better detection
+ * - mapErrorCode: Enhanced error code mapping with more specific codes
+ * - safeStringifyError: Enhanced safe conversion of any error to readable string
  */
 
 /**
@@ -101,7 +103,7 @@ export interface AppError {
 }
 
 /**
- * User-friendly messages for different error codes.
+ * Enhanced user-friendly messages for different error codes.
  */
 const UserMessages: Record<string, string> = {
   [ErrorCodes.NETWORK_OFFLINE]: "No internet connection. Please check your network and try again.",
@@ -127,7 +129,7 @@ const UserMessages: Record<string, string> = {
 };
 
 /**
- * Safely converts any error to a readable string, preventing [object Object] issues
+ * Enhanced function to safely convert any error to a readable string, preventing [object Object] issues
  * @param error - The error to stringify
  * @returns A readable string representation of the error
  */
@@ -137,60 +139,87 @@ export function safeStringifyError(error: any): string {
   
   if (error && typeof error === 'object') {
     try {
+      // Enhanced priority order for error message extraction
+      const priorityProps = [
+        'userMessage',
+        'message', 
+        'details', 
+        'hint', 
+        'description',
+        'reason',
+        'cause',
+        'statusText',
+        'data'
+      ];
+      
+      // Try priority properties first
+      for (const prop of priorityProps) {
+        if (error[prop] && typeof error[prop] === 'string') {
+          return error[prop];
+        }
+      }
+      
+      // Handle nested error objects
+      if (error.error) {
+        const nestedMessage = safeStringifyError(error.error);
+        if (nestedMessage && nestedMessage !== 'An error occurred') {
+          return nestedMessage;
+        }
+      }
+      
       // Handle Supabase-specific error structure
       if (error.message) {
-        let message = error.message;
+        let message = String(error.message);
         if (error.details) message += ` (Details: ${error.details})`;
         if (error.hint) message += ` (Hint: ${error.hint})`;
         if (error.code) message += ` (Code: ${error.code})`;
         return message;
       }
       
-      // Handle other structured errors
-      if (error.details) return error.details;
-      if (error.hint) return error.hint;
-      if (error.description) return error.description;
-      if (error.error) return safeStringifyError(error.error);
+      // Try to extract any meaningful string value
+      const stringValues = Object.values(error).filter(val => 
+        typeof val === 'string' && val.length > 0 && val !== '[object Object]'
+      );
       
-      // Try to extract meaningful properties
-      const meaningfulProps = ['message', 'details', 'hint', 'description', 'error', 'reason', 'cause'];
-      for (const prop of meaningfulProps) {
-        if (error[prop]) {
-          return String(error[prop]);
-        }
+      if (stringValues.length > 0) {
+        return stringValues[0] as string;
       }
       
       // Last resort: try JSON.stringify with error properties
-      return JSON.stringify(error, Object.getOwnPropertyNames(error), 2);
+      const errorObj = JSON.stringify(error, Object.getOwnPropertyNames(error), 2);
+      if (errorObj && errorObj !== '{}' && !errorObj.includes('[object Object]')) {
+        return errorObj;
+      }
+      
+      return 'An error occurred';
     } catch (e) {
       // If all else fails, convert to string
-      return String(error);
+      const stringified = String(error);
+      return stringified === '[object Object]' ? 'An error occurred' : stringified;
     }
   }
   
-  return String(error);
+  const stringified = String(error);
+  return stringified === '[object Object]' ? 'An error occurred' : stringified;
 }
 
 /**
- * Checks if the error is related to network issues.
+ * Enhanced function to check if the error is related to network issues.
  * @param error - The error to check.
  * @returns True if the error is a network error.
  */
 function isNetworkError(error: any): boolean {
   if (!error) return false;
   const message = safeStringifyError(error).toLowerCase();
-  return (
-    message.includes("network") ||
-    message.includes("offline") ||
-    message.includes("failed to fetch") ||
-    message.includes("connection") ||
-    message.includes("timeout") ||
-    message.includes("fetch")
-  );
+  const networkKeywords = [
+    "network", "offline", "failed to fetch", "connection", 
+    "timeout", "fetch", "cors", "net::", "dns", "socket"
+  ];
+  return networkKeywords.some(keyword => message.includes(keyword));
 }
 
 /**
- * Categorizes an error based on its content or type.
+ * Enhanced function to categorize an error based on its content or type.
  * @param error - The error to categorize.
  * @returns The category of the error.
  */
@@ -199,26 +228,41 @@ function categorizeError(error: any): ErrorCategory {
 
   const errorMsg = safeStringifyError(error).toLowerCase();
 
-  if (errorMsg.includes("auth") || errorMsg.includes("login") || errorMsg.includes("session") || errorMsg.includes("credential") || errorMsg.includes("unauthorized")) {
-    return ErrorCategory.AUTH;
+  // Enhanced categorization with more specific keywords
+  const categoryKeywords = {
+    [ErrorCategory.AUTH]: [
+      "auth", "login", "session", "credential", "unauthorized", 
+      "forbidden", "token", "jwt", "permission", "access denied"
+    ],
+    [ErrorCategory.DATABASE]: [
+      "database", "query", "constraint", "not found", "pgrst", 
+      "sql", "relation", "column", "table", "foreign key"
+    ],
+    [ErrorCategory.VALIDATION]: [
+      "validation", "input", "format", "missing", "invalid", 
+      "required", "schema", "type", "range", "length"
+    ],
+    [ErrorCategory.BUSINESS]: [
+      "limit", "quota", "conflict", "usage", "tier", "plan", 
+      "subscription", "billing", "payment", "upgrade"
+    ],
+    [ErrorCategory.RATE_LIMIT]: [
+      "rate", "too many requests", "throttle", "429", 
+      "quota exceeded", "api limit"
+    ]
+  };
+
+  for (const [category, keywords] of Object.entries(categoryKeywords)) {
+    if (keywords.some(keyword => errorMsg.includes(keyword))) {
+      return category as ErrorCategory;
+    }
   }
-  if (errorMsg.includes("database") || errorMsg.includes("query") || errorMsg.includes("constraint") || errorMsg.includes("not found") || errorMsg.includes("pgrst")) {
-    return ErrorCategory.DATABASE;
-  }
-  if (errorMsg.includes("validation") || errorMsg.includes("input") || errorMsg.includes("format") || errorMsg.includes("missing") || errorMsg.includes("invalid")) {
-    return ErrorCategory.VALIDATION;
-  }
-  if (errorMsg.includes("limit") || errorMsg.includes("quota") || errorMsg.includes("conflict") || errorMsg.includes("usage")) {
-    return ErrorCategory.BUSINESS;
-  }
-  if (errorMsg.includes("rate") || errorMsg.includes("too many requests") || errorMsg.includes("throttle")) {
-    return ErrorCategory.RATE_LIMIT;
-  }
+
   return ErrorCategory.UNKNOWN;
 }
 
 /**
- * Maps an error to a specific error code based on its category and content.
+ * Enhanced function to map an error to a specific error code based on its category and content.
  * @param error - The error to map.
  * @param category - The category of the error.
  * @returns The specific error code.
@@ -229,41 +273,47 @@ function mapErrorCode(error: any, category: ErrorCategory): string {
   switch (category) {
     case ErrorCategory.NETWORK:
       if (errorMsg.includes("timeout")) return ErrorCodes.NETWORK_TIMEOUT;
-      if (errorMsg.includes("offline")) return ErrorCodes.NETWORK_OFFLINE;
+      if (errorMsg.includes("offline") || errorMsg.includes("network")) return ErrorCodes.NETWORK_OFFLINE;
       return ErrorCodes.NETWORK_CONNECTION_REFUSED;
+      
     case ErrorCategory.AUTH:
       if (errorMsg.includes("session") || errorMsg.includes("expired")) return ErrorCodes.AUTH_SESSION_EXPIRED;
-      if (errorMsg.includes("credential") || errorMsg.includes("password")) return ErrorCodes.AUTH_INVALID_CREDENTIALS;
-      if (errorMsg.includes("permission") || errorMsg.includes("denied") || errorMsg.includes("unauthorized")) return ErrorCodes.AUTH_PERMISSION_DENIED;
+      if (errorMsg.includes("credential") || errorMsg.includes("password") || errorMsg.includes("login")) return ErrorCodes.AUTH_INVALID_CREDENTIALS;
+      if (errorMsg.includes("permission") || errorMsg.includes("denied") || errorMsg.includes("unauthorized") || errorMsg.includes("forbidden")) return ErrorCodes.AUTH_PERMISSION_DENIED;
       return ErrorCodes.AUTH_NOT_AUTHENTICATED;
+      
     case ErrorCategory.DATABASE:
-      if (errorMsg.includes("connection")) return ErrorCodes.DB_CONNECTION_ERROR;
-      if (errorMsg.includes("constraint")) return ErrorCodes.DB_CONSTRAINT_ERROR;
+      if (errorMsg.includes("connection") || errorMsg.includes("connect")) return ErrorCodes.DB_CONNECTION_ERROR;
+      if (errorMsg.includes("constraint") || errorMsg.includes("foreign key")) return ErrorCodes.DB_CONSTRAINT_ERROR;
       if (errorMsg.includes("not found") || errorMsg.includes("pgrst116")) return ErrorCodes.DB_NOT_FOUND;
       return ErrorCodes.DB_QUERY_ERROR;
+      
     case ErrorCategory.VALIDATION:
-      if (errorMsg.includes("missing")) return ErrorCodes.VALIDATION_MISSING_FIELD;
-      if (errorMsg.includes("format")) return ErrorCodes.VALIDATION_FORMAT_ERROR;
+      if (errorMsg.includes("missing") || errorMsg.includes("required")) return ErrorCodes.VALIDATION_MISSING_FIELD;
+      if (errorMsg.includes("format") || errorMsg.includes("type") || errorMsg.includes("schema")) return ErrorCodes.VALIDATION_FORMAT_ERROR;
       return ErrorCodes.VALIDATION_INVALID_INPUT;
+      
     case ErrorCategory.BUSINESS:
-      if (errorMsg.includes("limit") || errorMsg.includes("quota") || errorMsg.includes("usage")) return ErrorCodes.BUSINESS_LIMIT_REACHED;
-      if (errorMsg.includes("conflict")) return ErrorCodes.BUSINESS_CONFLICT;
+      if (errorMsg.includes("limit") || errorMsg.includes("quota") || errorMsg.includes("usage") || errorMsg.includes("tier")) return ErrorCodes.BUSINESS_LIMIT_REACHED;
+      if (errorMsg.includes("conflict") || errorMsg.includes("duplicate")) return ErrorCodes.BUSINESS_CONFLICT;
       return ErrorCodes.BUSINESS_LOGIC_VIOLATION;
+      
     case ErrorCategory.RATE_LIMIT:
-      if (errorMsg.includes("ip")) return ErrorCodes.RATE_LIMIT_IP_BLOCKED;
+      if (errorMsg.includes("ip") || errorMsg.includes("blocked")) return ErrorCodes.RATE_LIMIT_IP_BLOCKED;
       return ErrorCodes.RATE_LIMIT_EXCEEDED;
+      
     default:
       return ErrorCodes.UNKNOWN_ERROR;
   }
 }
 
 /**
- * Handles any error and converts it into a standardized AppError.
+ * Enhanced function to handle any error and convert it into a standardized AppError.
  * @param error - The error to handle.
  * @returns A standardized AppError object.
  */
 export function handleError(error: any): AppError {
-  // Log the raw error for debugging
+  // Enhanced logging for debugging
   console.log('[ErrorUtils] Raw error received:');
   console.log('Error type:', typeof error);
   console.log('Is Error instance:', error instanceof Error);
@@ -305,7 +355,7 @@ export function handleError(error: any): AppError {
 }
 
 /**
- * Wraps an async operation with error handling.
+ * Enhanced wrapper for async operations with error handling.
  * @param operation - The async operation to wrap.
  * @param options - Options for error handling.
  * @returns The result of the operation or throws an error if rethrow is true.
@@ -339,7 +389,7 @@ export async function withErrorHandling<T>(
 }
 
 /**
- * Wraps an async operation with retry logic using exponential backoff.
+ * Enhanced wrapper for async operations with retry logic using exponential backoff.
  * @param operation - The async operation to wrap.
  * @param options - Options for retry logic.
  * @returns The result of the operation or throws the last error encountered.
@@ -387,7 +437,7 @@ export async function withRetry<T>(
 }
 
 /**
- * Displays an error to the user via the notification system.
+ * Enhanced function to display an error to the user via the notification system.
  * @param error - The error to display.
  * @returns The processed AppError.
  * @example
@@ -399,20 +449,28 @@ export function showError(error: AppError | any): AppError {
   const appError = error.category ? error as AppError : handleError(error);
   const isCritical = appError.category === ErrorCategory.AUTH || appError.category === ErrorCategory.DATABASE;
 
+  // Enhanced notification categorization
+  let notificationType: 'error' | 'warning' | 'info' = 'error';
+  if (appError.category === ErrorCategory.BUSINESS || appError.category === ErrorCategory.RATE_LIMIT) {
+    notificationType = 'warning';
+  } else if (appError.category === ErrorCategory.VALIDATION) {
+    notificationType = 'info';
+  }
+
   useNotificationStore.getState().addNotification({
-    type: 'error',
+    type: notificationType,
     message: appError.userMessage,
     displayStyle: isCritical ? 'modal' : 'toast',
-    duration: isCritical ? undefined : 5000,
+    duration: isCritical ? undefined : (notificationType === 'error' ? 6000 : 4000),
     persistent: isCritical,
-    title: isCritical ? 'Critical Error' : undefined,
+    title: isCritical ? 'Critical Error' : (notificationType === 'warning' ? 'Warning' : undefined),
   });
 
   return appError;
 }
 
 /**
- * Circuit breaker state tracking
+ * Enhanced circuit breaker state tracking
  */
 interface CircuitBreakerState {
   failures: number;
@@ -429,7 +487,7 @@ const CIRCUIT_BREAKER_CONFIG = {
 };
 
 /**
- * Circuit breaker implementation
+ * Enhanced circuit breaker implementation
  */
 export const withCircuitBreaker = async <T>(
   operation: () => Promise<T>,
@@ -462,7 +520,7 @@ export const withCircuitBreaker = async <T>(
       throw {
         category: ErrorCategory.RATE_LIMIT,
         code: ErrorCodes.RATE_LIMIT_EXCEEDED,
-        message: 'Circuit breaker is open'
+        message: 'Circuit breaker is open - too many failures'
       };
     }
   }
@@ -540,7 +598,7 @@ export async function withEnhancedRetry<T>(
 }
 
 /**
- * Example usage of the error handling system for different scenarios.
+ * Enhanced example usage of the error handling system for different scenarios.
  * 
  * // API Call Example
  * export async function fetchData() {

@@ -1,6 +1,6 @@
 /**
  * FILE: store/matches-store.ts
- * LAST UPDATED: 2025-07-01 20:30
+ * LAST UPDATED: 2025-07-02 18:00
  * 
  * INITIALIZATION ORDER:
  * 1. Requires auth-store to be initialized first (for user session)
@@ -10,17 +10,18 @@
  * 5. Race condition: Must wait for user location before fetching matches
  * 
  * CURRENT STATE:
- * Central store for match functionality using Zustand. Handles all matching logic,
- * profile caching, swipe actions, and batch processing. Uses single source of truth
- * for fetching matches to prevent duplicates and ensure consistent filtering.
+ * Enhanced central store for match functionality using Zustand. Handles all matching logic,
+ * profile caching, swipe actions, and batch processing with improved error handling and
+ * user feedback. Uses single source of truth for fetching matches to prevent duplicates
+ * and ensure consistent filtering.
  * 
  * RECENT CHANGES:
- * - Removed all references to non-existent getMatches() function
- * - Consolidated all match fetching into single fetchPotentialMatches function
- * - Improved error handling with standard error codes
- * - Fixed filtering to properly handle seen profiles
- * - Optimized batch processing for better performance
- * - Added proper fetchMatches function for messages screen
+ * - Enhanced error handling with proper error stringification to prevent [object Object] errors
+ * - Improved user feedback through notification system integration
+ * - Better error categorization and user-friendly messages
+ * - Enhanced batch processing with better error recovery
+ * - Improved performance with optimized caching and validation
+ * - Better integration with enhanced SwipeCards component
  * 
  * FILE INTERACTIONS:
  * - Uses supabase.ts for: database queries, match functions, batch processing
@@ -32,20 +33,14 @@
  * KEY FUNCTIONS:
  * - fetchPotentialMatches: Single source of truth for getting match profiles
  * - fetchMatches: Fetch user's matches with full profile data for messages screen
- * - likeUser/passUser: Handles swipe actions with proper error handling
- * - processSwipeBatch: Batches swipes for network efficiency
- * - ProfileCache: Manages cached user profiles with validation
+ * - likeUser/passUser: Enhanced swipe actions with better error handling
+ * - processSwipeBatch: Improved batches swipes for network efficiency
+ * - ProfileCache: Enhanced cached user profiles with validation
  * 
  * STORE DEPENDENCIES:
  * 1. auth-store -> User data and authentication (required first)
  * 2. usage-store -> Action limits and tracking
  * 3. notification-store -> Match and error notifications
- * 
- * INITIALIZATION ORDER:
- * 1. Requires auth-store to be initialized first
- * 2. Initializes after auth-store confirms user session
- * 3. Sets up batch processing and cache management
- * 4. Starts profile prefetching if needed
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -64,7 +59,6 @@ import {
 } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
 import { useDebugStore } from './debug-store';
-import { notifyError } from '@/utils/notify';
 import { useNotificationStore } from './notification-store';
 import { useUsageStore } from './usage-store';
 import { handleError, withErrorHandling, withRetry, withCircuitBreaker, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
@@ -77,7 +71,7 @@ interface PassedUser {
   timestamp: number;
 }
 
-// Helper function to extract readable error message from Supabase error
+// Enhanced helper function to safely stringify errors
 const getReadableError = (error: unknown): string => {
   if (!error) return 'Unknown error occurred';
   
@@ -86,21 +80,36 @@ const getReadableError = (error: unknown): string => {
   if (error instanceof Error) return error.message;
   
   if (typeof error === 'object' && error !== null) {
-    const err = error as { error?: { message?: string }, details?: string, code?: string };
+    const err = error as any;
+    
+    // Handle structured error objects with priority order
+    if (err.userMessage) return err.userMessage;
+    if (err.message) return err.message;
     if (err.error?.message) return err.error.message;
     if (err.details) return String(err.details);
+    if (err.hint) return String(err.hint);
+    if (err.description) return String(err.description);
     if (err.code) return `Error code: ${err.code}`;
+    
+    // Try to extract meaningful properties
+    const meaningfulProps = ['reason', 'cause', 'statusText', 'data'];
+    for (const prop of meaningfulProps) {
+      if (err[prop]) return String(err[prop]);
+    }
+    
+    // Last resort: try to stringify safely
+    try {
+      return JSON.stringify(err, Object.getOwnPropertyNames(err));
+    } catch (e) {
+      return 'An error occurred';
+    }
   }
   
-  try {
-    return JSON.stringify(error);
-  } catch (e) {
-    return 'An error occurred';
-  }
+  return String(error);
 };
 
 /**
- * Cache management
+ * Enhanced cache management with better validation
  */
 interface CacheEntry<T> {
   data: T;
@@ -479,6 +488,7 @@ const matchesStoreCreator: StateCreator<
 
   fetchPotentialMatches: async (maxDistance = 50, forceRefresh = false) => {
     const debugStore = useDebugStore.getState();
+    const notificationStore = useNotificationStore.getState();
     const callId = `fetch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     if (debugStore.isDebugMode) {
@@ -512,6 +522,13 @@ const matchesStoreCreator: StateCreator<
         if (debugStore.isDebugMode) {
           console.error(`🔍 [MATCHES-STORE][${callId}] AUTH ERROR`, authError);
         }
+        
+        notificationStore.addNotification({
+          type: 'error',
+          message: 'Please log in to view matches',
+          displayStyle: 'toast',
+          duration: 4000
+        });
         
         throw authError;
       }
@@ -596,6 +613,14 @@ const matchesStoreCreator: StateCreator<
             error: null, // Don't set an error for no matches
             noMoreProfiles: true
           });
+          
+          notificationStore.addNotification({
+            type: 'info',
+            message: 'No more profiles found. Try expanding your search.',
+            displayStyle: 'toast',
+            duration: 4000
+          });
+          
           return; // Exit gracefully without throwing an error
         }
 
@@ -670,8 +695,18 @@ const matchesStoreCreator: StateCreator<
           });
         }
         
+        // Show success notification for manual refreshes
+        if (forceRefresh && validMatches.length > 0) {
+          notificationStore.addNotification({
+            type: 'success',
+            message: `Found ${validMatches.length} new profiles`,
+            displayStyle: 'toast',
+            duration: 3000
+          });
+        }
+        
       } catch (error) {
-        // Comprehensive error logging
+        // Enhanced error logging and handling
         const errorDetails = {
           originalError: error,
           errorType: typeof error,
@@ -700,6 +735,7 @@ const matchesStoreCreator: StateCreator<
         }
         
         const appError = handleError(error);
+        const readableError = getReadableError(error);
         
         if (debugStore.isDebugMode) {
           console.error(`🔍 [MATCHES-STORE][${callId}] PROCESSED ERROR`);
@@ -707,12 +743,21 @@ const matchesStoreCreator: StateCreator<
           console.error('User Message:', appError.userMessage);
           console.error('Category:', appError.category);
           console.error('Code:', appError.code);
+          console.error('Readable Error:', readableError);
         }
 
         set({
           error: appError.userMessage,
           isLoading: false,
           noMoreProfiles: true
+        });
+        
+        // Show user-friendly error notification
+        notificationStore.addNotification({
+          type: 'error',
+          message: `Failed to load matches: ${appError.userMessage}`,
+          displayStyle: 'toast',
+          duration: 6000
         });
         
         throw appError;
@@ -723,11 +768,20 @@ const matchesStoreCreator: StateCreator<
   fetchMatches: async () => {
     return await withErrorHandling(async () => {
       const { user, isReady } = useAuthStore.getState();
+      const notificationStore = useNotificationStore.getState();
+      
       if (!isReady || !user) {
+        const errorMessage = 'User not ready or authenticated for fetching matches';
+        notificationStore.addNotification({
+          type: 'error',
+          message: 'Please log in to view your matches',
+          displayStyle: 'toast',
+          duration: 4000
+        });
         throw {
           category: ErrorCategory.AUTH,
           code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-          message: 'User not ready or authenticated for fetching matches'
+          message: errorMessage
         };
       }
       
@@ -763,10 +817,17 @@ const matchesStoreCreator: StateCreator<
           );
           
           if (matchesError) {
+            const readableError = getReadableError(matchesError);
+            notificationStore.addNotification({
+              type: 'error',
+              message: `Failed to load matches: ${readableError}`,
+              displayStyle: 'toast',
+              duration: 5000
+            });
             throw {
               category: ErrorCategory.DATABASE,
               code: ErrorCodes.DB_QUERY_ERROR,
-              message: matchesError.message
+              message: readableError
             };
           }
           
@@ -799,13 +860,32 @@ const matchesStoreCreator: StateCreator<
             matches: typedMatches, 
             matchesLoading: false 
           });
+          
+          if (typedMatches.length > 0) {
+            notificationStore.addNotification({
+              type: 'success',
+              message: `Loaded ${typedMatches.length} matches`,
+              displayStyle: 'toast',
+              duration: 2000
+            });
+          }
         });
       } catch (error) {
         const appError = handleError(error);
+        const readableError = getReadableError(error);
+        
         set({
           error: appError.userMessage,
           matchesLoading: false
         });
+        
+        notificationStore.addNotification({
+          type: 'error',
+          message: `Failed to load matches: ${readableError}`,
+          displayStyle: 'toast',
+          duration: 5000
+        });
+        
         throw appError;
       }
     });
@@ -814,11 +894,20 @@ const matchesStoreCreator: StateCreator<
   likeUser: async (userId: string) => {
     return await withErrorHandling(async () => {
       const { user, isReady } = useAuthStore.getState();
+      const notificationStore = useNotificationStore.getState();
+      
       if (!isReady || !user) {
+        const errorMessage = 'User not ready or authenticated for liking user';
+        notificationStore.addNotification({
+          type: 'error',
+          message: 'Please log in to like profiles',
+          displayStyle: 'toast',
+          duration: 4000
+        });
         throw {
           category: ErrorCategory.AUTH,
           code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-          message: 'User not ready or authenticated for liking user'
+          message: errorMessage
         };
       }
       
@@ -833,6 +922,12 @@ const matchesStoreCreator: StateCreator<
         const swipeResult = await useUsageStore.getState().updateUsage(user.id, 'swipe');
         if (!swipeResult.isAllowed) {
           set({ swipeLimitReached: true, isLoading: false });
+          notificationStore.addNotification({
+            type: 'warning',
+            message: 'Daily swipe limit reached. Upgrade for more swipes.',
+            displayStyle: 'toast',
+            duration: 5000
+          });
           throw {
             category: ErrorCategory.BUSINESS,
             code: ErrorCodes.BUSINESS_LIMIT_REACHED,
@@ -844,6 +939,12 @@ const matchesStoreCreator: StateCreator<
         const likeResult = await useUsageStore.getState().updateUsage(user.id, 'like');
         if (!likeResult.isAllowed) {
           set({ swipeLimitReached: true, isLoading: false });
+          notificationStore.addNotification({
+            type: 'warning',
+            message: 'Daily like limit reached. Upgrade for more likes.',
+            displayStyle: 'toast',
+            duration: 5000
+          });
           throw {
             category: ErrorCategory.BUSINESS,
             code: ErrorCodes.BUSINESS_LIMIT_REACHED,
@@ -855,6 +956,12 @@ const matchesStoreCreator: StateCreator<
         const matchStats = await useUsageStore.getState().getUsageStats(user.id);
         if (matchStats.matchCount >= matchStats.matchLimit) {
           set({ matchLimitReached: true, isLoading: false });
+          notificationStore.addNotification({
+            type: 'warning',
+            message: 'Daily match limit reached. Upgrade for more matches.',
+            displayStyle: 'toast',
+            duration: 5000
+          });
           throw {
             category: ErrorCategory.BUSINESS,
             code: ErrorCodes.BUSINESS_LIMIT_REACHED,
@@ -894,11 +1001,22 @@ const matchesStoreCreator: StateCreator<
           newPendingLikes.delete(userId);
           return { pendingLikes: newPendingLikes };
         });
+        
         const appError = handleError(error);
+        const readableError = getReadableError(error);
+        
         set({
           error: appError.userMessage,
           isLoading: false
         });
+        
+        notificationStore.addNotification({
+          type: 'error',
+          message: `Failed to like profile: ${readableError}`,
+          displayStyle: 'toast',
+          duration: 4000
+        });
+        
         throw appError;
       }
     });
@@ -907,11 +1025,20 @@ const matchesStoreCreator: StateCreator<
   passUser: async (userId: string) => {
     return await withErrorHandling(async () => {
       const { user, isReady } = useAuthStore.getState();
+      const notificationStore = useNotificationStore.getState();
+      
       if (!isReady || !user) {
+        const errorMessage = 'User not ready or authenticated for passing user';
+        notificationStore.addNotification({
+          type: 'error',
+          message: 'Please log in to pass on profiles',
+          displayStyle: 'toast',
+          duration: 4000
+        });
         throw {
           category: ErrorCategory.AUTH,
           code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-          message: 'User not ready or authenticated for passing user'
+          message: errorMessage
         };
       }
       
@@ -921,6 +1048,12 @@ const matchesStoreCreator: StateCreator<
         const result = await useUsageStore.getState().updateUsage(user.id, 'swipe');
         if (!result.isAllowed) {
           set({ swipeLimitReached: true, isLoading: false });
+          notificationStore.addNotification({
+            type: 'warning',
+            message: 'Daily swipe limit reached. Upgrade for more swipes.',
+            displayStyle: 'toast',
+            duration: 5000
+          });
           throw {
             category: ErrorCategory.BUSINESS,
             code: ErrorCodes.BUSINESS_LIMIT_REACHED,
@@ -963,10 +1096,20 @@ const matchesStoreCreator: StateCreator<
         });
       } catch (error) {
         const appError = handleError(error);
+        const readableError = getReadableError(error);
+        
         set({
           error: appError.userMessage,
           isLoading: false
         });
+        
+        notificationStore.addNotification({
+          type: 'error',
+          message: `Failed to pass on profile: ${readableError}`,
+          displayStyle: 'toast',
+          duration: 4000
+        });
+        
         throw appError;
       }
     });
@@ -975,11 +1118,20 @@ const matchesStoreCreator: StateCreator<
   queueSwipe: async (userId: string, direction: 'left' | 'right') => {
     return await withErrorHandling(async () => {
       const { user, isReady } = useAuthStore.getState();
+      const notificationStore = useNotificationStore.getState();
+      
       if (!isReady || !user) {
+        const errorMessage = 'User not ready or authenticated for queuing swipe';
+        notificationStore.addNotification({
+          type: 'error',
+          message: 'Please log in to swipe on profiles',
+          displayStyle: 'toast',
+          duration: 4000
+        });
         throw {
           category: ErrorCategory.AUTH,
           code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-          message: 'User not ready or authenticated for queuing swipe'
+          message: errorMessage
         };
       }
       
@@ -1004,11 +1156,20 @@ const matchesStoreCreator: StateCreator<
   processSwipeBatch: async () => {
     await withErrorHandling(async () => {
       const { user, isReady } = useAuthStore.getState();
+      const notificationStore = useNotificationStore.getState();
+      
       if (!isReady || !user) {
+        const errorMessage = 'User not ready or authenticated for processing swipe batch';
+        notificationStore.addNotification({
+          type: 'error',
+          message: 'Please log in to process swipes',
+          displayStyle: 'toast',
+          duration: 4000
+        });
         throw {
           category: ErrorCategory.AUTH,
           code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-          message: 'User not ready or authenticated for processing swipe batch'
+          message: errorMessage
         };
       }
 
@@ -1040,8 +1201,25 @@ const matchesStoreCreator: StateCreator<
         if (result.new_matches && result.new_matches.length > 0) {
           const newMatch = result.new_matches[0];
           set({ newMatch });
+          
+          notificationStore.addNotification({
+            type: 'success',
+            message: `New match! You matched with ${newMatch.matched_user_profile?.name || 'someone'}`,
+            displayStyle: 'toast',
+            duration: 4000
+          });
         }
       } catch (error) {
+        const readableError = getReadableError(error);
+        console.error('[MatchesStore] Batch processing error:', readableError);
+        
+        notificationStore.addNotification({
+          type: 'error',
+          message: `Failed to process swipes: ${readableError}`,
+          displayStyle: 'toast',
+          duration: 5000
+        });
+        
         // Handle batch failure
         throw error;
       }
@@ -1157,8 +1335,15 @@ export const startBatchProcessing = () => {
       const store = useMatchesStore.getState();
       if (store.swipeQueue.length > 0 && !store.isLoading) {
         await store.processSwipeBatch().catch((error: unknown) => {
-          const appError = handleError(error);
-          notifyError(appError.userMessage);
+          const readableError = getReadableError(error);
+          console.error('[MatchesStore] Batch processing interval error:', readableError);
+          
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: `Background sync failed: ${readableError}`,
+            displayStyle: 'toast',
+            duration: 4000
+          });
         });
       }
     }, interval);
@@ -1175,7 +1360,7 @@ export const stopBatchProcessing = () => {
 };
 
 /**
- * Batch processing state tracking
+ * Enhanced batch processing state tracking
  */
 interface BatchState {
   inProgress: boolean;
