@@ -906,13 +906,24 @@ export const fetchPotentialMatches = async (
     });
     
     if (error) {
-      console.error('[Supabase] RPC error details:', {
-        error,
+      const errorDetails = {
+        errorType: typeof error,
+        errorConstructor: error?.constructor?.name,
         message: error && typeof error === 'object' && 'message' in error ? error.message : 'No message',
         details: error && typeof error === 'object' && 'details' in error ? error.details : 'No details',
         hint: error && typeof error === 'object' && 'hint' in error ? error.hint : 'No hint',
-        code: error && typeof error === 'object' && 'code' in error ? error.code : 'No code'
-      });
+        code: error && typeof error === 'object' && 'code' in error ? error.code : 'No code',
+        errorString: String(error),
+        errorJSON: (() => {
+          try {
+            return JSON.stringify(error, Object.getOwnPropertyNames(error), 2);
+          } catch (e) {
+            return 'Could not stringify error';
+          }
+        })()
+      };
+      
+      console.error('[Supabase] RPC error details:', errorDetails);
       throw error;
     }
     

@@ -475,30 +475,86 @@ const matchesStoreCreator: StateCreator<
   pendingMatches: [],
 
   fetchPotentialMatches: async (maxDistance = 50, forceRefresh = false) => {
+    const debugStore = useDebugStore.getState();
+    const callId = `fetch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    if (debugStore.isDebugMode) {
+      console.log(`🔍 [MATCHES-STORE][${callId}] fetchPotentialMatches CALLED`, {
+        maxDistance,
+        forceRefresh,
+        timestamp: new Date().toISOString(),
+        callStack: new Error().stack?.split('\n').slice(1, 5)
+      });
+    }
+    
     return await withErrorHandling(async () => {
       const { user, isReady } = useAuthStore.getState();
+      
+      if (debugStore.isDebugMode) {
+        console.log(`🔍 [MATCHES-STORE][${callId}] Auth check`, {
+          isReady,
+          hasUser: !!user,
+          userId: user?.id,
+          userTier: user?.membershipTier
+        });
+      }
+      
       if (!isReady || !user) {
-        throw {
+        const authError = {
           category: ErrorCategory.AUTH,
           code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
           message: 'User not ready or authenticated'
         };
+        
+        if (debugStore.isDebugMode) {
+          console.error(`🔍 [MATCHES-STORE][${callId}] AUTH ERROR`, authError);
+        }
+        
+        throw authError;
       }
 
       set({ isLoading: true, error: null });
+      
+      if (debugStore.isDebugMode) {
+        console.log(`🔍 [MATCHES-STORE][${callId}] State updated - loading started`);
+      }
 
       try {
         // Get current matches and passed users
-        const { passedUsers, pendingLikes } = get();
+        const { passedUsers, pendingLikes, potentialMatches, prefetchThreshold, batchSize } = get();
         const seenIds = new Set([
           ...passedUsers.map(p => p.id),
           ...Array.from(pendingLikes)
         ]);
 
+        if (debugStore.isDebugMode) {
+          console.log(`🔍 [MATCHES-STORE][${callId}] Current state`, {
+            currentMatches: potentialMatches.length,
+            passedUsers: passedUsers.length,
+            pendingLikes: pendingLikes.size,
+            seenIds: seenIds.size,
+            prefetchThreshold,
+            batchSize
+          });
+        }
+
         // If not forcing refresh and we have enough matches, use cache
-        if (!forceRefresh && get().potentialMatches.length > get().prefetchThreshold) {
+        if (!forceRefresh && potentialMatches.length > prefetchThreshold) {
+          if (debugStore.isDebugMode) {
+            console.log(`🔍 [MATCHES-STORE][${callId}] Using cache - sufficient matches available`);
+          }
           set({ isLoading: false });
           return;
+        }
+
+        if (debugStore.isDebugMode) {
+          console.log(`🔍 [MATCHES-STORE][${callId}] Calling Supabase fetchPotentialMatches`, {
+            userId: user.id,
+            maxDistance,
+            isGlobalDiscovery: undefined,
+            limit: batchSize,
+            offset: potentialMatches.length
+          });
         }
 
         // Fetch new potential matches
@@ -506,18 +562,53 @@ const matchesStoreCreator: StateCreator<
           user.id,
           maxDistance,
           undefined, // isGlobalDiscovery
-          get().batchSize, // limit
-          get().potentialMatches.length // offset
+          batchSize, // limit
+          potentialMatches.length // offset
         );
+
+        if (debugStore.isDebugMode) {
+          console.log(`🔍 [MATCHES-STORE][${callId}] Supabase response`, {
+            hasResult: !!result,
+            resultType: typeof result,
+            hasMatches: !!(result?.matches),
+            matchesLength: result?.matches?.length || 0,
+            count: result?.count,
+            maxDistance: result?.max_distance,
+            isGlobal: result?.is_global,
+            resultKeys: result ? Object.keys(result) : []
+          });
+        }
 
         // Handle case where no matches are returned (this is normal, not an error)
         if (!result || !result.matches || result.matches.length === 0) {
+          const noMatchesMessage = 'No more profiles available in your area. Try expanding your search distance or enabling global search.';
+          
+          if (debugStore.isDebugMode) {
+            console.log(`🔍 [MATCHES-STORE][${callId}] No matches found - setting noMoreProfiles`, {
+              hasResult: !!result,
+              hasMatches: !!(result?.matches),
+              matchesLength: result?.matches?.length || 0
+            });
+          }
+          
           set({
             isLoading: false,
-            error: 'No more profiles available in your area. Try expanding your search distance or enabling global search.',
+            error: noMatchesMessage,
             noMoreProfiles: true
           });
           return; // Exit gracefully without throwing an error
+        }
+
+        if (debugStore.isDebugMode) {
+          console.log(`🔍 [MATCHES-STORE][${callId}] Processing matches`, {
+            rawMatches: result.matches.length,
+            sampleMatch: result.matches[0] ? {
+              id: result.matches[0].id,
+              name: result.matches[0].name,
+              distance: result.matches[0].distance,
+              keys: Object.keys(result.matches[0])
+            } : null
+          });
         }
 
         // Filter and validate matches
@@ -529,8 +620,10 @@ const matchesStoreCreator: StateCreator<
               match.name &&
               typeof match.distance !== 'undefined';
 
-            if (!isValid) {
-              console.warn('[MatchesStore] Invalid match data:', {
+            const isNotSeen = !seenIds.has(match.id);
+
+            if (!isValid && debugStore.isDebugMode) {
+              console.warn(`🔍 [MATCHES-STORE][${callId}] Invalid match data:`, {
                 hasMatch: !!match,
                 type: typeof match,
                 keys: match ? Object.keys(match) : [],
@@ -539,23 +632,83 @@ const matchesStoreCreator: StateCreator<
                 distance: match?.distance
               });
             }
-            return isValid && !seenIds.has(match.id);
+            
+            if (isValid && !isNotSeen && debugStore.isDebugMode) {
+              console.warn(`🔍 [MATCHES-STORE][${callId}] Filtering out seen match:`, {
+                id: match.id,
+                name: match.name
+              });
+            }
+            
+            return isValid && isNotSeen;
           });
 
+        if (debugStore.isDebugMode) {
+          console.log(`🔍 [MATCHES-STORE][${callId}] Match filtering complete`, {
+            rawMatches: result.matches.length,
+            validMatches: validMatches.length,
+            filteredOut: result.matches.length - validMatches.length
+          });
+        }
+
         // Update state with new matches
+        const newPotentialMatches = forceRefresh ? validMatches : [...potentialMatches, ...validMatches];
+        
         set(state => ({
-          potentialMatches: forceRefresh ? validMatches : [...state.potentialMatches, ...validMatches],
+          potentialMatches: newPotentialMatches,
           isLoading: false,
           error: null,
           noMoreProfiles: validMatches.length === 0
         }));
+        
+        if (debugStore.isDebugMode) {
+          console.log(`🔍 [MATCHES-STORE][${callId}] SUCCESS - State updated`, {
+            totalMatches: newPotentialMatches.length,
+            newMatches: validMatches.length,
+            noMoreProfiles: validMatches.length === 0,
+            forceRefresh
+          });
+        }
+        
       } catch (error) {
+        // Comprehensive error logging
+        const errorDetails = {
+          originalError: error,
+          errorType: typeof error,
+          errorConstructor: error?.constructor?.name,
+          errorMessage: (error as any)?.message || 'No message',
+          errorStack: (error as any)?.stack,
+          errorString: String(error),
+          errorJSON: (() => {
+            try {
+              return JSON.stringify(error, Object.getOwnPropertyNames(error), 2);
+            } catch (e) {
+              return 'Could not stringify error';
+            }
+          })()
+        };
+        
+        if (debugStore.isDebugMode) {
+          console.error(`🔍 [MATCHES-STORE][${callId}] ERROR CAUGHT`, errorDetails);
+        }
+        
         const appError = handleError(error);
+        
+        if (debugStore.isDebugMode) {
+          console.error(`🔍 [MATCHES-STORE][${callId}] PROCESSED ERROR`, {
+            appError,
+            userMessage: appError.userMessage,
+            category: appError.category,
+            code: appError.code
+          });
+        }
+        
         set({
           error: appError.userMessage,
           isLoading: false,
           noMoreProfiles: true
         });
+        
         throw appError;
       }
     });
