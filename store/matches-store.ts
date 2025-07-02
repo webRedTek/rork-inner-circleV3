@@ -505,7 +505,7 @@ const matchesStoreCreator: StateCreator<
       const result = await fetchPotentialMatchesFromSupabase(
         user.id,
         maxDistance,
-        false, // isGlobalDiscovery
+        true, // Global discovery enabled for everyone
         25 // limit
       );
 
@@ -608,20 +608,26 @@ const matchesStoreCreator: StateCreator<
         set({ isPrefetching: true, error: null });
 
         try {
-          const { user, allTierSettings } = useAuthStore.getState();
+          const { user } = useAuthStore.getState();
           if (!user?.id) {
             set({ isPrefetching: false });
             return;
           }
 
           const userMaxDistance = user.preferredDistance || maxDistance || 50;
-          const tierSettings = allTierSettings?.[user.membershipTier];
-          const isGlobalDiscovery = tierSettings?.global_discovery || false;
+
+          if (isDebugMode) {
+            console.log('[MatchesStore] Starting prefetch:', {
+              userId: user.id,
+              maxDistance: userMaxDistance,
+              currentMatchCount: get().potentialMatches.length
+            });
+          }
 
           const result = await fetchPotentialMatchesFromSupabase(
             user.id,
             userMaxDistance,
-            isGlobalDiscovery,
+            true, // Global discovery enabled for everyone
             get().potentialMatches.length
           );
 
@@ -632,7 +638,7 @@ const matchesStoreCreator: StateCreator<
             set({
               isPrefetching: false,
               noMoreProfiles: true,
-              error: tierSettings?.global_discovery ? "No additional global matches found." : "No additional matches found in your area."
+              error: "No additional matches found in your area."
             });
             return;
           }

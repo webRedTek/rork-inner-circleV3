@@ -286,12 +286,18 @@ export default function EditProfileScreen() {
   // Function to get coordinates from ZIP code
   const getCoordinatesFromZip = async (zipCode: string) => {
     try {
-      const results = await Location.geocodeAsync(zipCode);
+      // Add USA to make the geocoding more reliable
+      const searchQuery = `${zipCode}, USA`;
+      const results = await Location.geocodeAsync(searchQuery);
+      
       if (results && results.length > 0) {
         const { latitude, longitude } = results[0];
         // Get address details
         const [address] = await Location.reverseGeocodeAsync({ latitude, longitude });
+        
         if (address) {
+          // Verify that the returned postal code matches our input
+          // Some ZIP codes might resolve to a nearby area, which is fine
           setLocation(address.city || '');
           // Update coordinates
           await updateProfile({
@@ -301,6 +307,9 @@ export default function EditProfileScreen() {
             location: address.city || '',
             zipCode
           });
+          setZipCodeError('');
+        } else {
+          setZipCodeError('Could not find a valid location for this ZIP code');
         }
       } else {
         setZipCodeError('Could not find location for this ZIP code');
@@ -337,15 +346,13 @@ export default function EditProfileScreen() {
         isValid = false;
       } else {
         setZipCodeError('');
-        // Get coordinates when ZIP is valid
-        getCoordinatesFromZip(zipCode);
       }
     }
     
     // Preferred distance validation
     const distanceNum = parseInt(preferredDistance);
     if (isNaN(distanceNum) || distanceNum < 1 || distanceNum > 500) {
-      setDistanceError('Distance must be between 1 and 500 km');
+      setDistanceError('Distance must be between 1 and 500 miles');
       isValid = false;
     } else {
       setDistanceError('');
@@ -612,7 +619,7 @@ export default function EditProfileScreen() {
           />
           
           <Input
-            label="Preferred Distance (km)"
+            label="Preferred Distance (miles)"
             value={preferredDistance}
             onChangeText={setPreferredDistance}
             placeholder="Maximum distance for matches"

@@ -143,13 +143,6 @@ export const EntrepreneurCard: FC<EntrepreneurCardProps> = ({
                 <Text style={styles.tagText}>{profile.businessStage}</Text>
               </View>
             )}
-            
-            {profile.distance !== undefined && (
-              <View style={[styles.tag, styles.distanceTag]}>
-                <MapPin size={14} color={Colors.dark.text} style={styles.distanceIcon} />
-                <Text style={styles.tagText}>{Math.round(profile.distance)}mi away</Text>
-              </View>
-            )}
           </View>
         </View>
       </LinearGradient>
@@ -204,10 +197,10 @@ const styles = StyleSheet.create({
   },
   retryButton: {
     marginTop: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    backgroundColor: Colors.dark.accent,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
     borderRadius: 8,
+    backgroundColor: Colors.dark.accent,
   },
   retryText: {
     color: Colors.dark.text,
@@ -220,26 +213,28 @@ const styles = StyleSheet.create({
     resizeMode: 'cover',
   },
   imagePlaceholder: {
-    backgroundColor: Colors.dark.cardDark,
+    backgroundColor: Colors.dark.card,
   },
   imageLoadingContainer: {
-    position: 'absolute',
+    backgroundColor: Colors.dark.card,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.dark.cardDark,
   },
   absoluteFill: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   gradient: {
     position: 'absolute',
-    bottom: 0,
     left: 0,
     right: 0,
+    bottom: 0,
     height: '50%',
-    justifyContent: 'flex-end',
     padding: 16,
+    justifyContent: 'flex-end',
   },
   infoContainer: {
     gap: 8,
@@ -248,13 +243,13 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   name: {
-    fontSize: 24,
-    fontWeight: 'bold',
     color: Colors.dark.text,
+    fontSize: 24,
+    fontWeight: '600',
   },
   field: {
-    fontSize: 16,
     color: Colors.dark.textSecondary,
+    fontSize: 16,
   },
   tags: {
     flexDirection: 'row',
@@ -262,33 +257,30 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   tag: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    backgroundColor: Colors.dark.card,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
     borderRadius: 16,
-  },
-  distanceTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  distanceIcon: {
-    marginRight: 2,
   },
   tagText: {
     fontSize: 14,
-    color: Colors.dark.text,
+    color: Colors.dark.textSecondary,
   },
   profileDetailButton: {
     position: 'absolute',
-    bottom: 16,
+    top: 16,
     right: 16,
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: Colors.dark.card,
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
   buttonDisabled: {
     opacity: 0.5,
