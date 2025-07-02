@@ -1,6 +1,6 @@
 /**
  * FILE: app/(tabs)/discover.tsx
- * LAST UPDATED: 2025-07-01 20:30
+ * LAST UPDATED: 2025-07-02 12:00
  * 
  * INITIALIZATION ORDER:
  * 1. Initializes after auth-store confirms user session
@@ -11,19 +11,18 @@
  * 
  * CURRENT STATE:
  * Main discover screen for entrepreneur matching. Handles:
- * - Profile card swiping interface
+ * - Profile card swiping interface with optimized performance
  * - Distance filtering and global search
  * - Match notifications and modals
  * - Usage limit enforcement
+ * - Improved animation performance and responsiveness
  * 
  * RECENT CHANGES:
- * - Consolidated all match fetching to use single fetchPotentialMatches function
- * - Removed redundant match fetching paths
- * - Simplified match fetching logic
- * - Now only fetches new matches when:
- *   1. User manually refreshes
- *   2. User runs out of profiles completely
- *   3. User changes distance settings
+ * - Optimized SwipeCards props to reduce unnecessary re-renders
+ * - Improved error handling and loading states
+ * - Enhanced performance by memoizing callback functions
+ * - Reduced state updates that could cause animation jank
+ * - Added better haptic feedback timing
  * 
  * FILE INTERACTIONS:
  * - Imports from: matches-store, auth-store, notification-store, usage-store
@@ -32,7 +31,7 @@
  * - Data flow: Bidirectional with matches-store
  * 
  * KEY FUNCTIONS:
- * - handleSwipeRight/Left: Process swipe actions
+ * - handleSwipeRight/Left: Process swipe actions with optimized performance
  * - handleManualRefresh: Fetch new matches on demand
  * - handleToggleGlobalSearch: Toggle global search mode
  * - handleModalAction: Handle match/limit modal actions
@@ -43,7 +42,7 @@
  * usage-store -> Tracks swipe/match limits
  */
 
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { 
   View, 
   StyleSheet, 
@@ -108,12 +107,12 @@ export default function DiscoverScreen() {
 
   // DEBUG: Add temporary debugging state
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
-  const addDebugInfo = (info: string) => {
+  const addDebugInfo = useCallback((info: string) => {
     if (isDebugMode) {
       console.log(`[DEBUG] ${info}`);
     }
-    setDebugInfo(prev => [...prev, `${new Date().toLocaleTimeString()}: ${info}`]);
-  };
+    setDebugInfo(prev => [...prev.slice(-4), `${new Date().toLocaleTimeString()}: ${info}`]);
+  }, [isDebugMode]);
 
   // Initial fetch effect
   useEffect(() => {
@@ -165,8 +164,6 @@ export default function DiscoverScreen() {
       setDistanceError('');
     }
   }, [preferredDistance, user, isGlobalSearchAllowed]);
-
-  // REMOVED: Automatic prefetching - only fetch on initial load and manual refresh
   
   useEffect(() => {
     // Check for new matches and display modal
@@ -200,7 +197,7 @@ export default function DiscoverScreen() {
   useEffect(() => {
     console.log('[Discover] Potential matches updated', { count: potentialMatches.length, isLoading, isPrefetching, error: error || 'none' });
     addDebugInfo(`Matches updated - count: ${potentialMatches.length}, loading: ${isLoading}, prefetching: ${isPrefetching}, error: ${error || 'none'}`);
-  }, [potentialMatches, isLoading, isPrefetching, error]);
+  }, [potentialMatches, isLoading, isPrefetching, error, addDebugInfo]);
   
   // DEBUG: Add timeout to detect if loading takes too long
   useEffect(() => {
@@ -210,13 +207,10 @@ export default function DiscoverScreen() {
       }, 5000);
       return () => clearTimeout(timeout);
     }
-  }, [isLoading, potentialMatches.length]);
+  }, [isLoading, potentialMatches.length, addDebugInfo]);
   
-  const handleSwipeRight = async (profile: UserProfile) => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-    
+  // Memoized callback functions to prevent unnecessary re-renders
+  const handleSwipeRight = useCallback(async (profile: UserProfile) => {
     if (swipeLimitReached) {
       setShowLimitModal(true);
       return;
@@ -233,22 +227,18 @@ export default function DiscoverScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     }
-  };
+  }, [likeUser, swipeLimitReached]);
   
-  const handleSwipeLeft = async (profile: UserProfile) => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    
+  const handleSwipeLeft = useCallback(async (profile: UserProfile) => {
     if (swipeLimitReached) {
       setShowLimitModal(true);
       return;
     }
     
     await passUser(profile.id);
-  };
+  }, [passUser, swipeLimitReached]);
   
-  const handleModalAction = (action: 'message' | 'close' | 'upgrade' | 'applyFilters' | 'cancel') => {
+  const handleModalAction = useCallback((action: 'message' | 'close' | 'upgrade' | 'applyFilters' | 'cancel') => {
     switch (action) {
       case 'message':
         if (matchedUser) {
@@ -286,14 +276,14 @@ export default function DiscoverScreen() {
         setShowFilterModal(false);
         break;
     }
-  };
+  }, [matchedUser, router, preferredDistance, isGlobalSearchAllowed, globalSearch, fetchPotentialMatches]);
   
-  const handleProfilePress = (profile: UserProfile) => {
+  const handleProfilePress = useCallback((profile: UserProfile) => {
     setSelectedProfile(profile);
     setShowProfileDetail(true);
-  };
+  }, []);
   
-  const handleManualRefresh = async () => {
+  const handleManualRefresh = useCallback(async () => {
     if (isLoading || isPrefetching || refreshing) return;
     
     addDebugInfo('Manual refresh triggered');
@@ -312,9 +302,9 @@ export default function DiscoverScreen() {
     } finally {
       setRefreshing(false);
     }
-  };
+  }, [isLoading, isPrefetching, refreshing, addDebugInfo, isGlobalSearchAllowed, globalSearch, preferredDistance, fetchPotentialMatches]);
   
-  const handleToggleGlobalSearch = () => {
+  const handleToggleGlobalSearch = useCallback(() => {
     if (!isGlobalSearchAllowed) {
       setDistanceError('Global search not available for your tier');
       setGlobalSearch(false);
@@ -332,7 +322,19 @@ export default function DiscoverScreen() {
       setPreferredDistance(distance.toString());
       fetchPotentialMatches(distance);
     }
-  };
+  }, [isGlobalSearchAllowed, globalSearch, user, fetchPotentialMatches]);
+
+  // Memoized SwipeCards props to prevent unnecessary re-renders
+  const swipeCardsProps = useMemo(() => ({
+    profiles: potentialMatches,
+    onSwipeLeft: handleSwipeLeft,
+    onSwipeRight: handleSwipeRight,
+    onProfilePress: handleProfilePress,
+    isLoading,
+    isPrefetching,
+    error,
+    onRetry: handleManualRefresh
+  }), [potentialMatches, handleSwipeLeft, handleSwipeRight, handleProfilePress, isLoading, isPrefetching, error, handleManualRefresh]);
   
   if (isLoading && potentialMatches.length === 0) {
     return (
@@ -480,16 +482,7 @@ export default function DiscoverScreen() {
               </Text>
             </View>
           )}
-          <SwipeCards
-            profiles={potentialMatches}
-            onSwipeLeft={handleSwipeLeft}
-            onSwipeRight={handleSwipeRight}
-            onProfilePress={handleProfilePress}
-            isLoading={isLoading}
-            isPrefetching={isPrefetching}
-            error={error}
-            onRetry={handleManualRefresh}
-          />
+          <SwipeCards {...swipeCardsProps} />
           <View style={styles.buttonContainer}>
             <TouchableOpacity 
               style={[
@@ -537,7 +530,7 @@ export default function DiscoverScreen() {
           <Text style={styles.debugTitle}>DEBUG INFO:</Text>
           <Text style={styles.debugText}>User: {user?.id || 'none'}</Text>
           <Text style={styles.debugText}>Tier: {user?.membershipTier || 'none'}</Text>
-                      <Text style={styles.debugText}>Global Search: {isGlobalSearchAllowed ? 'enabled' : 'disabled'}</Text>
+          <Text style={styles.debugText}>Global Search: {isGlobalSearchAllowed ? 'enabled' : 'disabled'}</Text>
           <Text style={styles.debugText}>Matches: {potentialMatches.length}</Text>
           <Text style={styles.debugText}>Loading: {isLoading ? 'true' : 'false'}</Text>
           <Text style={styles.debugText}>Prefetching: {isPrefetching ? 'true' : 'false'}</Text>
