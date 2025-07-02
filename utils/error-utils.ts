@@ -4,7 +4,7 @@ import { useNotificationStore } from '@/store/notification-store';
 
 /**
  * FILE: utils/error-utils.ts
- * LAST UPDATED: 2024-12-19 16:00
+ * LAST UPDATED: 2024-12-20 16:00
  * 
  * CURRENT STATE:
  * Central error handling utility system for the app. Provides standardized error
@@ -13,9 +13,10 @@ import { useNotificationStore } from '@/store/notification-store';
  * user-friendly messages and retry logic.
  * 
  * RECENT CHANGES:
- * - Fixed withErrorHandling function to always throw processed appError instead of original error object
- * - Removed conditional logic that was causing [object Object] errors
- * - Ensured all errors are properly stringified and have meaningful messages
+ * - Enhanced error stringification to prevent [object Object] errors
+ * - Improved error message extraction from complex error objects
+ * - Added better handling for Supabase-specific errors
+ * - Enhanced notification integration for better user feedback
  * 
  * FILE INTERACTIONS:
  * - Imports from: notification-store (for displaying errors to users)
@@ -31,6 +32,7 @@ import { useNotificationStore } from '@/store/notification-store';
  * - showError: Displays errors via notification system
  * - categorizeError: Determines error category (network, auth, database, etc.)
  * - mapErrorCode: Maps errors to specific error codes
+ * - safeStringifyError: Safely converts any error to readable string
  */
 
 /**
@@ -125,19 +127,65 @@ const UserMessages: Record<string, string> = {
 };
 
 /**
+ * Safely converts any error to a readable string, preventing [object Object] issues
+ * @param error - The error to stringify
+ * @returns A readable string representation of the error
+ */
+export function safeStringifyError(error: any): string {
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) return error.message;
+  
+  if (error && typeof error === 'object') {
+    try {
+      // Handle Supabase-specific error structure
+      if (error.message) {
+        let message = error.message;
+        if (error.details) message += ` (Details: ${error.details})`;
+        if (error.hint) message += ` (Hint: ${error.hint})`;
+        if (error.code) message += ` (Code: ${error.code})`;
+        return message;
+      }
+      
+      // Handle other structured errors
+      if (error.details) return error.details;
+      if (error.hint) return error.hint;
+      if (error.description) return error.description;
+      if (error.error) return safeStringifyError(error.error);
+      
+      // Try to extract meaningful properties
+      const meaningfulProps = ['message', 'details', 'hint', 'description', 'error', 'reason', 'cause'];
+      for (const prop of meaningfulProps) {
+        if (error[prop]) {
+          return String(error[prop]);
+        }
+      }
+      
+      // Last resort: try JSON.stringify with error properties
+      return JSON.stringify(error, Object.getOwnPropertyNames(error), 2);
+    } catch (e) {
+      // If all else fails, convert to string
+      return String(error);
+    }
+  }
+  
+  return String(error);
+}
+
+/**
  * Checks if the error is related to network issues.
  * @param error - The error to check.
  * @returns True if the error is a network error.
  */
 function isNetworkError(error: any): boolean {
   if (!error) return false;
-  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  const message = safeStringifyError(error).toLowerCase();
   return (
     message.includes("network") ||
     message.includes("offline") ||
     message.includes("failed to fetch") ||
     message.includes("connection") ||
-    message.includes("timeout")
+    message.includes("timeout") ||
+    message.includes("fetch")
   );
 }
 
@@ -149,21 +197,21 @@ function isNetworkError(error: any): boolean {
 function categorizeError(error: any): ErrorCategory {
   if (isNetworkError(error)) return ErrorCategory.NETWORK;
 
-  const errorMsg = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  const errorMsg = safeStringifyError(error).toLowerCase();
 
-  if (errorMsg.includes("auth") || errorMsg.includes("login") || errorMsg.includes("session") || errorMsg.includes("credential")) {
+  if (errorMsg.includes("auth") || errorMsg.includes("login") || errorMsg.includes("session") || errorMsg.includes("credential") || errorMsg.includes("unauthorized")) {
     return ErrorCategory.AUTH;
   }
-  if (errorMsg.includes("database") || errorMsg.includes("query") || errorMsg.includes("constraint") || errorMsg.includes("not found")) {
+  if (errorMsg.includes("database") || errorMsg.includes("query") || errorMsg.includes("constraint") || errorMsg.includes("not found") || errorMsg.includes("pgrst")) {
     return ErrorCategory.DATABASE;
   }
-  if (errorMsg.includes("validation") || errorMsg.includes("input") || errorMsg.includes("format") || errorMsg.includes("missing")) {
+  if (errorMsg.includes("validation") || errorMsg.includes("input") || errorMsg.includes("format") || errorMsg.includes("missing") || errorMsg.includes("invalid")) {
     return ErrorCategory.VALIDATION;
   }
-  if (errorMsg.includes("limit") || errorMsg.includes("quota") || errorMsg.includes("conflict")) {
+  if (errorMsg.includes("limit") || errorMsg.includes("quota") || errorMsg.includes("conflict") || errorMsg.includes("usage")) {
     return ErrorCategory.BUSINESS;
   }
-  if (errorMsg.includes("rate") || errorMsg.includes("too many requests")) {
+  if (errorMsg.includes("rate") || errorMsg.includes("too many requests") || errorMsg.includes("throttle")) {
     return ErrorCategory.RATE_LIMIT;
   }
   return ErrorCategory.UNKNOWN;
@@ -176,7 +224,7 @@ function categorizeError(error: any): ErrorCategory {
  * @returns The specific error code.
  */
 function mapErrorCode(error: any, category: ErrorCategory): string {
-  const errorMsg = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  const errorMsg = safeStringifyError(error).toLowerCase();
 
   switch (category) {
     case ErrorCategory.NETWORK:
@@ -186,19 +234,19 @@ function mapErrorCode(error: any, category: ErrorCategory): string {
     case ErrorCategory.AUTH:
       if (errorMsg.includes("session") || errorMsg.includes("expired")) return ErrorCodes.AUTH_SESSION_EXPIRED;
       if (errorMsg.includes("credential") || errorMsg.includes("password")) return ErrorCodes.AUTH_INVALID_CREDENTIALS;
-      if (errorMsg.includes("permission") || errorMsg.includes("denied")) return ErrorCodes.AUTH_PERMISSION_DENIED;
+      if (errorMsg.includes("permission") || errorMsg.includes("denied") || errorMsg.includes("unauthorized")) return ErrorCodes.AUTH_PERMISSION_DENIED;
       return ErrorCodes.AUTH_NOT_AUTHENTICATED;
     case ErrorCategory.DATABASE:
       if (errorMsg.includes("connection")) return ErrorCodes.DB_CONNECTION_ERROR;
       if (errorMsg.includes("constraint")) return ErrorCodes.DB_CONSTRAINT_ERROR;
-      if (errorMsg.includes("not found")) return ErrorCodes.DB_NOT_FOUND;
+      if (errorMsg.includes("not found") || errorMsg.includes("pgrst116")) return ErrorCodes.DB_NOT_FOUND;
       return ErrorCodes.DB_QUERY_ERROR;
     case ErrorCategory.VALIDATION:
       if (errorMsg.includes("missing")) return ErrorCodes.VALIDATION_MISSING_FIELD;
       if (errorMsg.includes("format")) return ErrorCodes.VALIDATION_FORMAT_ERROR;
       return ErrorCodes.VALIDATION_INVALID_INPUT;
     case ErrorCategory.BUSINESS:
-      if (errorMsg.includes("limit") || errorMsg.includes("quota")) return ErrorCodes.BUSINESS_LIMIT_REACHED;
+      if (errorMsg.includes("limit") || errorMsg.includes("quota") || errorMsg.includes("usage")) return ErrorCodes.BUSINESS_LIMIT_REACHED;
       if (errorMsg.includes("conflict")) return ErrorCodes.BUSINESS_CONFLICT;
       return ErrorCodes.BUSINESS_LOGIC_VIOLATION;
     case ErrorCategory.RATE_LIMIT:
@@ -224,15 +272,10 @@ export function handleError(error: any): AppError {
   console.log('Error code:', error?.code);
   console.log('Error hint:', error?.hint);
   console.log('Error string:', String(error));
-  try {
-    console.log('Error JSON:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
-  } catch (e) {
-    console.log('Could not stringify error');
-  }
-
+  
   const category = categorizeError(error);
   const code = mapErrorCode(error, category);
-  const message = error instanceof Error ? error.message : String(error);
+  const message = safeStringifyError(error);
   const technical = error instanceof Error ? error.stack : undefined;
   const userMessage = UserMessages[code] || "An unexpected error occurred. Please try again.";
 

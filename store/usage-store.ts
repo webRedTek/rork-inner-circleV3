@@ -19,11 +19,10 @@ import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory } 
  * batching and caching strategies for usage data.
  * 
  * RECENT CHANGES:
- * - Removed tier settings validation to use auth store's cached settings
- * - Standardized function naming conventions (getCurrentUsage -> getUsageStats)
- * - Improved error handling for missing tier settings
- * - Enhanced usage tracking reliability with better sync strategies
- * - Added proper circuit breaker pattern for database operations
+ * - Fixed error handling to properly display readable error messages
+ * - Improved error stringification to avoid [object Object] errors
+ * - Enhanced notification system integration for better error visibility
+ * - Added proper error logging and user-friendly error messages
  * 
  * FILE INTERACTIONS:
  * - Imports from: user types (UserProfile, MembershipTier)
@@ -100,6 +99,27 @@ const defaultRetryStrategy: RetryStrategy = {
   criticalActions: ['swipe', 'match', 'message'],
 };
 
+// Helper function to safely stringify errors
+const safeStringifyError = (error: any): string => {
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object') {
+    try {
+      // Try to extract meaningful properties
+      const message = error.message || error.details || error.hint || 'Unknown error';
+      const code = error.code ? ` (Code: ${error.code})` : '';
+      return `${message}${code}`;
+    } catch (e) {
+      try {
+        return JSON.stringify(error, Object.getOwnPropertyNames(error));
+      } catch (e2) {
+        return 'Error occurred but could not be parsed';
+      }
+    }
+  }
+  return String(error);
+};
+
 export const useUsageStore = create<UsageStore>()(
   persist(
     ((set: StoreApi<UsageStore>['setState'], get: StoreApi<UsageStore>['getState']) => ({
@@ -127,21 +147,43 @@ export const useUsageStore = create<UsageStore>()(
             .single();
 
           if (error) {
-            throw new Error(`Failed to fetch database totals: ${handleError(error).userMessage}`);
+            const errorMessage = safeStringifyError(error);
+            console.error('Failed to fetch database totals:', errorMessage);
+            useNotificationStore.getState().addNotification({
+              type: 'error',
+              message: `Failed to fetch usage data: ${errorMessage}`,
+              displayStyle: 'toast',
+              duration: 5000
+            });
+            throw new Error(`Failed to fetch database totals: ${errorMessage}`);
           }
 
           set({ databaseTotals: data });
           return data;
         } catch (error) {
-          console.error('Error fetching database totals:', error);
+          const errorMessage = safeStringifyError(error);
+          console.error('Error fetching database totals:', errorMessage);
           set({ databaseTotals: null });
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: `Database error: ${errorMessage}`,
+            displayStyle: 'toast',
+            duration: 5000
+          });
         }
       },
 
       initializeUsage: async (userId: string) => {
         if (!userId || !isSupabaseConfigured() || !supabase) {
-          console.log('Skipping usage initialization: Invalid user ID or Supabase not configured');
-          throw new Error('Cannot initialize usage: Invalid user ID or Supabase not configured');
+          const errorMessage = 'Cannot initialize usage: Invalid user ID or Supabase not configured';
+          console.log('Skipping usage initialization:', errorMessage);
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: errorMessage,
+            displayStyle: 'toast',
+            duration: 5000
+          });
+          throw new Error(errorMessage);
         }
 
         try {
@@ -151,8 +193,15 @@ export const useUsageStore = create<UsageStore>()(
           // Check if user is authenticated
           const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
           if (authError || !authUser || authUser.id !== userId) {
-            console.log('User not authenticated, skipping usage initialization');
-            throw new Error('User not authenticated for usage initialization');
+            const errorMessage = 'User not authenticated for usage initialization';
+            console.log(errorMessage);
+            useNotificationStore.getState().addNotification({
+              type: 'error',
+              message: errorMessage,
+              displayStyle: 'toast',
+              duration: 5000
+            });
+            throw new Error(errorMessage);
           }
           
           // First try to find any existing record for this user
@@ -164,8 +213,15 @@ export const useUsageStore = create<UsageStore>()(
             .maybeSingle();
 
           if (findError) {
-            console.error('Error finding existing usage record:', findError);
-            throw new Error(`Failed to check for existing usage record: ${handleError(findError).userMessage}`);
+            const errorMessage = safeStringifyError(findError);
+            console.error('Error finding existing usage record:', errorMessage);
+            useNotificationStore.getState().addNotification({
+              type: 'error',
+              message: `Failed to check usage record: ${errorMessage}`,
+              displayStyle: 'toast',
+              duration: 5000
+            });
+            throw new Error(`Failed to check for existing usage record: ${errorMessage}`);
           }
 
           // If record exists, update it (including resetting if expired)
@@ -187,7 +243,15 @@ export const useUsageStore = create<UsageStore>()(
               .single();
 
             if (updateError) {
-              throw new Error(`Failed to update usage record: ${handleError(updateError).userMessage}`);
+              const errorMessage = safeStringifyError(updateError);
+              console.error('Failed to update usage record:', errorMessage);
+              useNotificationStore.getState().addNotification({
+                type: 'error',
+                message: `Failed to update usage: ${errorMessage}`,
+                displayStyle: 'toast',
+                duration: 5000
+              });
+              throw new Error(`Failed to update usage record: ${errorMessage}`);
             }
 
             const usageCache: UsageCache = {
@@ -250,7 +314,15 @@ export const useUsageStore = create<UsageStore>()(
             .single();
 
           if (createError) {
-            throw new Error(`Failed to create usage record: ${handleError(createError).userMessage}`);
+            const errorMessage = safeStringifyError(createError);
+            console.error('Failed to create usage record:', errorMessage);
+            useNotificationStore.getState().addNotification({
+              type: 'error',
+              message: `Failed to create usage record: ${errorMessage}`,
+              displayStyle: 'toast',
+              duration: 5000
+            });
+            throw new Error(`Failed to create usage record: ${errorMessage}`);
           }
 
           const usageCache: UsageCache = {
@@ -294,8 +366,15 @@ export const useUsageStore = create<UsageStore>()(
           console.log('Created new usage record:', usageCache);
           set({ usageCache });
         } catch (error) {
-          console.error('Error initializing usage:', handleError(error).userMessage);
-          set({ lastSyncError: handleError(error).userMessage });
+          const errorMessage = safeStringifyError(error);
+          console.error('Error initializing usage:', errorMessage);
+          set({ lastSyncError: errorMessage });
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: `Usage initialization failed: ${errorMessage}`,
+            displayStyle: 'toast',
+            duration: 5000
+          });
           throw error;
         }
       },
@@ -305,19 +384,33 @@ export const useUsageStore = create<UsageStore>()(
         const { user, allTierSettings } = useAuthStore.getState();
         
         if (!usageCache || !user || !allTierSettings) {
+          const errorMessage = 'Usage cache or tier settings not available for stats';
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: errorMessage,
+            displayStyle: 'toast',
+            duration: 5000
+          });
           throw {
             category: ErrorCategory.BUSINESS,
             code: ErrorCodes.BUSINESS_LIMIT_REACHED,
-            message: 'Usage cache or tier settings not available for stats'
+            message: errorMessage
           };
         }
 
         const tierSettings = allTierSettings[user.membershipTier];
         if (!tierSettings) {
+          const errorMessage = 'Tier settings not available for your membership level';
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: errorMessage,
+            displayStyle: 'toast',
+            duration: 5000
+          });
           throw {
             category: ErrorCategory.BUSINESS,
             code: ErrorCodes.BUSINESS_LIMIT_REACHED,
-            message: 'Tier settings not available for your membership level'
+            message: errorMessage
           };
         }
 
@@ -348,27 +441,48 @@ export const useUsageStore = create<UsageStore>()(
         const { user } = useAuthStore.getState();
         
         if (!user) {
+          const errorMessage = 'User not authenticated for usage tracking';
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: errorMessage,
+            displayStyle: 'toast',
+            duration: 5000
+          });
           throw {
             category: 'AUTH',
             code: 'AUTH_NOT_AUTHENTICATED',
-            message: 'User not authenticated for usage tracking'
+            message: errorMessage
           };
         }
 
         if (!usageCache) {
+          const errorMessage = 'Usage cache not initialized for tracking';
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: errorMessage,
+            displayStyle: 'toast',
+            duration: 5000
+          });
           throw {
             category: 'BUSINESS',
             code: 'BUSINESS_LIMIT_REACHED',
-            message: 'Usage cache not initialized for tracking'
+            message: errorMessage
           };
         }
 
         const tierSettings = useAuthStore.getState().getTierSettings();
         if (!tierSettings) {
+          const errorMessage = 'Tier settings not available for usage limits';
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: errorMessage,
+            displayStyle: 'toast',
+            duration: 5000
+          });
           throw {
             category: 'BUSINESS',
             code: 'BUSINESS_LIMIT_REACHED',
-            message: 'Tier settings not available for usage limits'
+            message: errorMessage
           };
         }
 
@@ -419,10 +533,17 @@ export const useUsageStore = create<UsageStore>()(
       trackUsage: async (options: UsageTrackingOptions): Promise<UsageResult> => {
         const { user } = useAuthStore.getState();
         if (!user) {
+          const errorMessage = 'User not authenticated for usage tracking';
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: errorMessage,
+            displayStyle: 'toast',
+            duration: 5000
+          });
           throw {
             category: 'AUTH',
             code: 'AUTH_NOT_AUTHENTICATED',
-            message: 'User not authenticated for usage tracking'
+            message: errorMessage
           };
         }
 
@@ -452,10 +573,17 @@ export const useUsageStore = create<UsageStore>()(
       queueBatchUpdate: (actionType: string, countChange: number) => {
         const { user } = useAuthStore.getState();
         if (!user) {
+          const errorMessage = 'User not authenticated for batch update';
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: errorMessage,
+            displayStyle: 'toast',
+            duration: 5000
+          });
           throw {
             category: 'AUTH',
             code: 'AUTH_NOT_AUTHENTICATED',
-            message: 'User not authenticated for batch update'
+            message: errorMessage
           };
         }
 
@@ -500,7 +628,14 @@ export const useUsageStore = create<UsageStore>()(
         const { usageCache, batchUpdates } = get();
 
         if (!user || !isSupabaseConfigured() || !supabase) {
-          console.warn('Cannot save usage data: User not authenticated or Supabase not configured');
+          const errorMessage = 'Cannot save usage data: User not authenticated or Supabase not configured';
+          console.warn(errorMessage);
+          useNotificationStore.getState().addNotification({
+            type: 'warning',
+            message: errorMessage,
+            displayStyle: 'toast',
+            duration: 5000
+          });
           return;
         }
 
@@ -522,6 +657,14 @@ export const useUsageStore = create<UsageStore>()(
               .maybeSingle();
 
             if (fetchError) {
+              const errorMessage = safeStringifyError(fetchError);
+              console.error('Error fetching existing usage record:', errorMessage);
+              useNotificationStore.getState().addNotification({
+                type: 'error',
+                message: `Failed to fetch usage record: ${errorMessage}`,
+                displayStyle: 'toast',
+                duration: 5000
+              });
               throw fetchError;
             }
 
@@ -575,7 +718,14 @@ export const useUsageStore = create<UsageStore>()(
               });
 
             if (updateError) {
-              console.error('Error updating usage record:', updateError);
+              const errorMessage = safeStringifyError(updateError);
+              console.error('Error updating usage record:', errorMessage);
+              useNotificationStore.getState().addNotification({
+                type: 'error',
+                message: `Failed to sync usage data: ${errorMessage}`,
+                displayStyle: 'toast',
+                duration: 5000
+              });
               throw updateError;
             }
 
@@ -585,14 +735,34 @@ export const useUsageStore = create<UsageStore>()(
             set(state => ({
               ...state,
               batchUpdates: [],
-              lastSyncTimestamp: Date.now()
+              lastSyncTimestamp: Date.now(),
+              lastSyncError: null // Clear any previous errors on success
             }));
+
+            // Show success notification for manual syncs
+            if (force) {
+              useNotificationStore.getState().addNotification({
+                type: 'success',
+                message: 'Usage data synced successfully',
+                displayStyle: 'toast',
+                duration: 3000
+              });
+            }
           }
         } catch (error) {
-          console.error('Error syncing usage data:', error);
-          const appError = handleError(error);
-          set({ lastSyncError: appError.userMessage });
-          throw appError;
+          const errorMessage = safeStringifyError(error);
+          console.error('Error syncing usage data:', errorMessage);
+          set({ lastSyncError: errorMessage });
+          
+          // Show error notification to user
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: `Usage sync failed: ${errorMessage}`,
+            displayStyle: 'toast',
+            duration: 8000
+          });
+          
+          throw new Error(errorMessage);
         } finally {
           set({ isSyncing: false });
         }
@@ -601,10 +771,17 @@ export const useUsageStore = create<UsageStore>()(
       checkLimit: (actionType: string, limit: number) => {
         const { usageCache } = get();
         if (!usageCache || !usageCache.usageData[actionType]) {
+          const errorMessage = `Usage data not available for action type: ${actionType}`;
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: errorMessage,
+            displayStyle: 'toast',
+            duration: 5000
+          });
           throw {
             category: 'BUSINESS',
             code: 'BUSINESS_LIMIT_REACHED',
-            message: `Usage data not available for action type: ${actionType}`
+            message: errorMessage
           };
         }
 
@@ -634,10 +811,17 @@ export const useUsageStore = create<UsageStore>()(
       resetUsage: (actionType?: string) => {
         const { usageCache } = get();
         if (!usageCache) {
+          const errorMessage = 'Usage cache not available for reset';
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: errorMessage,
+            displayStyle: 'toast',
+            duration: 5000
+          });
           throw {
             category: 'BUSINESS',
             code: 'BUSINESS_LIMIT_REACHED',
-            message: 'Usage cache not available for reset'
+            message: errorMessage
           };
         }
 
@@ -693,10 +877,11 @@ export const useUsageStore = create<UsageStore>()(
             duration: 3000
           });
         } catch (error) {
-          console.error('Error resetting usage cache:', handleError(error).userMessage);
+          const errorMessage = safeStringifyError(error);
+          console.error('Error resetting usage cache:', errorMessage);
           useNotificationStore.getState().addNotification({
             type: 'error',
-            message: 'Failed to reset usage data',
+            message: `Failed to reset usage data: ${errorMessage}`,
             displayStyle: 'toast',
             duration: 5000
           });
@@ -724,7 +909,13 @@ export const startUsageSync = () => {
     const { user } = useAuthStore.getState();
     if (!user) return; // Silent fail if not authenticated
 
-    await useUsageStore.getState().syncUsageData();
+    try {
+      await useUsageStore.getState().syncUsageData();
+    } catch (error) {
+      const errorMessage = safeStringifyError(error);
+      console.error('Periodic usage sync failed:', errorMessage);
+      // Don't show notification for periodic sync failures to avoid spam
+    }
   }, intervalMs) as unknown as number;
 
   console.log('Usage data save started');
