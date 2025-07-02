@@ -118,64 +118,34 @@ export default function DiscoverScreen() {
     setDebugInfo(prev => [...prev, `${new Date().toLocaleTimeString()}: ${info}`]);
   };
 
+  // Initial fetch effect
   useEffect(() => {
-    if (isReady && user) {
-      addDebugInfo(`Initial load - user: ${user.id}, tier: ${user.membershipTier}`);
-      addDebugInfo(`Tier settings available: ${!!tierSettings}`);
-      addDebugInfo(`Global discovery allowed: ${isGlobalSearchAllowed}`);
-      
-      // Add detailed debugging
-      console.log('[Discover] Debug State:', {
-        user: {
-          id: user.id,
-          tier: user.membershipTier,
-          distance: user.preferredDistance
-        },
-        tierSettings: tierSettings ? {
-          tier: tierSettings.tier,
-          globalDiscovery: tierSettings.global_discovery,
-          maxDistance: 250 // Fixed maximum distance
-        } : null,
-        matches: {
-          count: potentialMatches.length,
-          isLoading,
-          isPrefetching,
-          error
-        },
-        ui: {
-          showMatchModal,
-          showLimitModal,
-          showFilterModal,
-          globalSearch,
-          preferredDistance
-        }
+    if (isReady && user && !initialLoad) {
+      console.log('[Discover] Initial fetch triggered:', {
+        userId: user.id,
+        distance: user.preferredDistance || parseInt(preferredDistance) || 50,
+        globalSearch: isGlobalSearchAllowed && globalSearch
       });
 
-      // Log first potential match if exists
-      if (potentialMatches.length > 0) {
-        console.log('[Discover] First potential match:', {
-          id: potentialMatches[0].id,
-          hasProfile: !!potentialMatches[0],
-          profileKeys: Object.keys(potentialMatches[0] || {})
-        });
-      } else {
-        console.log('[Discover] No potential matches available');
-      }
+      // Initial fetch with proper distance
+      const distance = isGlobalSearchAllowed && globalSearch 
+        ? undefined 
+        : (user.preferredDistance || parseInt(preferredDistance) || 50);
 
-      fetchPotentialMatches(user.preferredDistance || parseInt(preferredDistance) || 50)
+      fetchPotentialMatches(distance)
         .catch(error => {
           console.error('[Discover] Error fetching matches:', error);
           setDistanceError('Error loading matches');
         });
 
       startBatchProcessing();
-      setInitialLoad(false);
+      setInitialLoad(true);
     }
     
     return () => {
       stopBatchProcessing();
     };
-  }, [isReady, user, fetchPotentialMatches]);
+  }, [isReady, user, fetchPotentialMatches, isGlobalSearchAllowed, globalSearch, preferredDistance]);
 
   // Add validation for distance changes
   useEffect(() => {

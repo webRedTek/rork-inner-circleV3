@@ -192,7 +192,6 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       },
       onPanResponderMove: (_, gesture) => {
         // Only allow horizontal movement for swiping
-        // This prevents diagonal swipes from triggering profile opens
         position.setValue({ x: gesture.dx, y: 0 });
       },
       onPanResponderRelease: (_, gesture) => {
@@ -212,32 +211,45 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     })
   ).current;
   
-  const forceSwipe = (direction: 'left' | 'right') => {
+  const forceSwipe = useCallback((direction: 'left' | 'right') => {
     const x = direction === 'right' ? SCREEN_WIDTH * 1.5 : -SCREEN_WIDTH * 1.5;
     Animated.timing(position, {
       toValue: { x, y: 0 },
       duration: SWIPE_OUT_DURATION,
       useNativeDriver: false
     }).start(() => onSwipeComplete(direction));
-  };
+  }, [position]);
   
-  const onSwipeComplete = (direction: 'left' | 'right') => {
+  const onSwipeComplete = useCallback((direction: 'left' | 'right') => {
     const item = profiles[currentIndex];
-    
-    direction === 'right' ? onSwipeRight(item) : onSwipeLeft(item);
-    
+    if (!item) return;
+
     position.setValue({ x: 0, y: 0 });
     setCurrentIndex(prevIndex => {
       const nextIndex = prevIndex + 1;
+      
+      // Process the swipe action
+      if (direction === 'right') {
+        onSwipeRight(item).catch(error => {
+          console.error('[SwipeCards] Error on right swipe:', error);
+        });
+      } else {
+        onSwipeLeft(item).catch(error => {
+          console.error('[SwipeCards] Error on left swipe:', error);
+        });
+      }
+
+      // Check if we've reached the end
       if (nextIndex >= profiles.length && onEmpty) {
         if (isDebugMode) {
           console.log('[SwipeCards] Reached end of profiles, triggering onEmpty', { nextIndex, profilesCount: profiles.length });
         }
         onEmpty();
       }
+
       return nextIndex;
     });
-  };
+  }, [currentIndex, profiles, onSwipeRight, onSwipeLeft, onEmpty, isDebugMode]);
   
   const resetPosition = () => {
     Animated.spring(position, {
