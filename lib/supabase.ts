@@ -874,7 +874,17 @@ export const fetchPotentialMatches = async (
   }
   const client = supabase as SupabaseClient<Database>;
   
+  console.log('[Supabase] fetchPotentialMatches called with:', {
+    userId,
+    maxDistance,
+    isGlobalDiscovery,
+    limit,
+    offset
+  });
+  
   return retryOperation(async () => {
+    console.log('[Supabase] Making RPC call to fetch_potential_matches');
+    
     const { data, error } = await client.rpc('fetch_potential_matches', {
       p_user_id: userId,
       p_max_distance: maxDistance,
@@ -883,11 +893,30 @@ export const fetchPotentialMatches = async (
       p_offset: offset
     });
     
+    console.log('[Supabase] RPC response:', {
+      hasData: !!data,
+      dataType: typeof data,
+      dataKeys: data ? Object.keys(data) : [],
+      hasError: !!error,
+      errorType: typeof error,
+      errorMessage: error?.message || 'No message',
+      errorDetails: error?.details || 'No details',
+      errorHint: error?.hint || 'No hint',
+      errorCode: error?.code || 'No code'
+    });
+    
     if (error) {
-      console.error('Error fetching potential matches:', error);
+      console.error('[Supabase] RPC error details:', {
+        error,
+        message: error.message || 'No message',
+        details: error.details || 'No details',
+        hint: error.hint || 'No hint',
+        code: error.code || 'No code'
+      });
       throw error;
     }
     
+    console.log('[Supabase] RPC successful, returning data');
     return data as PotentialMatchesResult;
   });
 };
