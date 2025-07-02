@@ -18,7 +18,7 @@ import { useAuthStore } from '@/store/auth-store';
 import { useGroupsStore } from '@/store/groups-store';
 import { Group } from '@/types/user';
 import { Button } from '@/components/Button';
-import { Users, Plus, X } from 'lucide-react-native';
+import { Users, Plus, X, Camera } from 'lucide-react-native';
 import { Platform } from 'react-native';
 import * as Haptics from 'expo-haptics';
 
@@ -41,6 +41,7 @@ export default function GroupsScreen() {
   const [groupDescription, setGroupDescription] = useState('');
   const [groupCategory, setGroupCategory] = useState('');
   const [groupIndustry, setGroupIndustry] = useState('');
+  const [groupImageUrl, setGroupImageUrl] = useState('');
   const [createLoading, setCreateLoading] = useState(false);
   const [joinLoading, setJoinLoading] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -119,7 +120,7 @@ export default function GroupsScreen() {
         description: groupDescription,
         category: groupCategory || 'Interest',
         industry: groupIndustry || undefined,
-        imageUrl: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=2942&auto=format&fit=crop'
+        imageUrl: groupImageUrl || 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=2942&auto=format&fit=crop'
       });
       
       setShowCreateModal(false);
@@ -127,6 +128,7 @@ export default function GroupsScreen() {
       setGroupDescription('');
       setGroupCategory('');
       setGroupIndustry('');
+      setGroupImageUrl('');
       // Refresh the groups list after creating a new group
       await fetchGroups();
     } catch (error) {
@@ -304,7 +306,7 @@ export default function GroupsScreen() {
               </TouchableOpacity>
             </View>
             
-            <View style={styles.modalContent}>
+            <ScrollView style={styles.modalContent}>
               {createError && (
                 <Text style={styles.createErrorText}>{createError}</Text>
               )}
@@ -326,6 +328,20 @@ export default function GroupsScreen() {
                 multiline
                 numberOfLines={4}
               />
+              
+              <View style={styles.imageInputContainer}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Group Image URL (e.g., https://images.unsplash.com/...)"
+                  placeholderTextColor={Colors.dark.textSecondary}
+                  value={groupImageUrl}
+                  onChangeText={setGroupImageUrl}
+                />
+                <TouchableOpacity style={styles.imagePickerButton}>
+                  <Camera size={20} color={Colors.dark.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.inputNote}>Use image URLs from unsplash.com or other image hosting services.</Text>
               
               <TextInput
                 style={styles.input}
@@ -352,7 +368,7 @@ export default function GroupsScreen() {
                 error={!!createError}
                 style={styles.createGroupButton}
               />
-            </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -562,6 +578,22 @@ const styles = StyleSheet.create({
   textArea: {
     height: 100,
     textAlignVertical: 'top',
+  },
+  imageInputContainer: {
+    position: 'relative',
+    marginBottom: 16,
+  },
+  imagePickerButton: {
+    position: 'absolute',
+    right: 12,
+    top: 12,
+    padding: 4,
+  },
+  inputNote: {
+    fontSize: 12,
+    color: Colors.dark.textSecondary,
+    marginTop: -12,
+    marginBottom: 16,
   },
   createGroupButton: {
     marginTop: 8,

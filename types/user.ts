@@ -176,6 +176,7 @@ export interface GroupEvent {
   title: string;
   description: string;
   location?: string;
+  imageUrl?: string;
   startTime: number;
   endTime?: number;
   reminder?: number;

@@ -34,6 +34,7 @@ import {
   MapPin,
   Send,
   ChevronDown,
+  Camera,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { format, parseISO, isValid } from 'date-fns';
@@ -80,6 +81,7 @@ export default function GroupDetailScreen() {
   const [eventTitle, setEventTitle] = useState('');
   const [eventDescription, setEventDescription] = useState('');
   const [eventLocation, setEventLocation] = useState('');
+  const [eventImageUrl, setEventImageUrl] = useState('');
   const [eventDate, setEventDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -97,6 +99,7 @@ export default function GroupDetailScreen() {
   const [groupDescription, setGroupDescription] = useState('');
   const [groupCategory, setGroupCategory] = useState('');
   const [groupIndustry, setGroupIndustry] = useState('');
+  const [groupImageUrl, setGroupImageUrl] = useState('');
   
   // Location autocomplete state
   const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
@@ -128,6 +131,7 @@ export default function GroupDetailScreen() {
       setGroupDescription(currentGroup.description);
       setGroupCategory(currentGroup.category || '');
       setGroupIndustry(currentGroup.industry || '');
+      setGroupImageUrl(currentGroup.imageUrl || '');
     }
   }, [currentGroup]);
   
@@ -306,6 +310,7 @@ export default function GroupDetailScreen() {
         title: eventTitle,
         description: eventDescription,
         location: eventLocation,
+        imageUrl: eventImageUrl || undefined,
         startTime: eventDate.getTime(),
         endTime,
         reminder,
@@ -317,6 +322,7 @@ export default function GroupDetailScreen() {
       setEventTitle('');
       setEventDescription('');
       setEventLocation('');
+      setEventImageUrl('');
       setEventDate(new Date());
       setEventEndDate(null);
       setEventReminder('30');
@@ -354,6 +360,7 @@ export default function GroupDetailScreen() {
         title: eventTitle,
         description: eventDescription,
         location: eventLocation,
+        imageUrl: eventImageUrl || undefined,
         startTime: eventDate.getTime(),
         endTime,
         recurrencePattern: recurrencePattern !== 'none' ? recurrencePattern : undefined,
@@ -379,6 +386,7 @@ export default function GroupDetailScreen() {
         id: currentGroup.id,
         name: groupName,
         description: groupDescription,
+        imageUrl: groupImageUrl || undefined,
         category: groupCategory || 'Interest',
         industry: groupIndustry || undefined
       });
@@ -441,6 +449,7 @@ export default function GroupDetailScreen() {
     setEventTitle(event.title);
     setEventDescription(event.description);
     setEventLocation(event.location || '');
+    setEventImageUrl(event.imageUrl || '');
     setRecurrencePattern(event.recurrencePattern || 'none');
     setRecurrenceEndDate(event.recurrenceEnd ? new Date(event.recurrenceEnd) : null);
     
@@ -749,95 +758,128 @@ export default function GroupDetailScreen() {
                       const isEventCreator = event.createdBy === user?.id;
                       
                       return (
-                        <View key={event.id} style={[styles.eventItem, !isUpcoming && styles.pastEvent]}>
-                          <View style={styles.eventHeader}>
-                            <Text style={styles.eventTitle}>{event.title}</Text>
-                            {(isGroupAdmin || isEventCreator) && isUpcoming && (
-                              <TouchableOpacity 
-                                style={styles.editEventButton}
-                                onPress={() => openEditEventModal(event)}
-                              >
-                                <Edit size={16} color={Colors.dark.textSecondary} />
-                              </TouchableOpacity>
-                            )}
-                          </View>
+                        <TouchableOpacity 
+                          key={event.id} 
+                          style={[styles.eventItem, !isUpcoming && styles.pastEvent]}
+                          onPress={() => {
+                            if (isGroupAdmin || isEventCreator) {
+                              openEditEventModal(event);
+                            }
+                          }}
+                          activeOpacity={isGroupAdmin || isEventCreator ? 0.7 : 1}
+                        >
+                          {event.imageUrl && (
+                            <Image
+                              source={{ uri: event.imageUrl }}
+                              style={styles.eventImage}
+                            />
+                          )}
                           
-                          <View style={styles.eventDetails}>
-                            <View style={styles.eventDetailItem}>
-                              <Clock size={16} color={Colors.dark.textSecondary} style={styles.eventDetailIcon} />
-                              <Text style={styles.eventDetailText}>
-                                {format(eventDate, 'EEEE, MMMM d, yyyy')} at {format(eventDate, 'h:mm a')}
-                              </Text>
+                          <View style={styles.eventContent}>
+                            <View style={styles.eventHeader}>
+                              <Text style={styles.eventTitle}>{event.title}</Text>
+                              {(isGroupAdmin || isEventCreator) && isUpcoming && (
+                                <TouchableOpacity 
+                                  style={styles.editEventButton}
+                                  onPress={(e) => {
+                                    e.stopPropagation();
+                                    openEditEventModal(event);
+                                  }}
+                                >
+                                  <Edit size={16} color={Colors.dark.textSecondary} />
+                                </TouchableOpacity>
+                              )}
                             </View>
                             
-                            {event.location && (
+                            <View style={styles.eventDetails}>
                               <View style={styles.eventDetailItem}>
-                                <MapPin size={16} color={Colors.dark.textSecondary} style={styles.eventDetailIcon} />
-                                <Text style={styles.eventDetailText}>{event.location}</Text>
+                                <Clock size={16} color={Colors.dark.textSecondary} style={styles.eventDetailIcon} />
+                                <Text style={styles.eventDetailText}>
+                                  {format(eventDate, 'EEEE, MMMM d, yyyy')} at {format(eventDate, 'h:mm a')}
+                                </Text>
+                              </View>
+                              
+                              {event.location && (
+                                <View style={styles.eventDetailItem}>
+                                  <MapPin size={16} color={Colors.dark.textSecondary} style={styles.eventDetailIcon} />
+                                  <Text style={styles.eventDetailText}>{event.location}</Text>
+                                </View>
+                              )}
+                            </View>
+                            
+                            {event.description && (
+                              <Text style={styles.eventDescription}>{event.description}</Text>
+                            )}
+                            
+                            {isUpcoming && (
+                              <View style={styles.eventActions}>
+                                <View style={styles.rsvpButtons}>
+                                  <TouchableOpacity 
+                                    style={[
+                                      styles.rsvpButton, 
+                                      userRSVP === 'yes' && styles.rsvpButtonActive,
+                                      styles.rsvpYesButton
+                                    ]}
+                                    onPress={(e) => {
+                                      e.stopPropagation();
+                                      handleRSVP(event.id, 'yes');
+                                    }}
+                                  >
+                                    <Text style={[
+                                      styles.rsvpButtonText,
+                                      userRSVP === 'yes' && styles.rsvpButtonTextActive
+                                    ]}>Going</Text>
+                                  </TouchableOpacity>
+                                  
+                                  <TouchableOpacity 
+                                    style={[
+                                      styles.rsvpButton, 
+                                      userRSVP === 'maybe' && styles.rsvpButtonActive,
+                                      styles.rsvpMaybeButton
+                                    ]}
+                                    onPress={(e) => {
+                                      e.stopPropagation();
+                                      handleRSVP(event.id, 'maybe');
+                                    }}
+                                  >
+                                    <Text style={[
+                                      styles.rsvpButtonText,
+                                      userRSVP === 'maybe' && styles.rsvpButtonTextActive
+                                    ]}>Maybe</Text>
+                                  </TouchableOpacity>
+                                  
+                                  <TouchableOpacity 
+                                    style={[
+                                      styles.rsvpButton, 
+                                      userRSVP === 'no' && styles.rsvpButtonActive,
+                                      styles.rsvpNoButton
+                                    ]}
+                                    onPress={(e) => {
+                                      e.stopPropagation();
+                                      handleRSVP(event.id, 'no');
+                                    }}
+                                  >
+                                    <Text style={[
+                                      styles.rsvpButtonText,
+                                      userRSVP === 'no' && styles.rsvpButtonTextActive
+                                    ]}>Can't Go</Text>
+                                  </TouchableOpacity>
+                                </View>
+                                
+                                <TouchableOpacity 
+                                  style={styles.calendarButton}
+                                  onPress={(e) => {
+                                    e.stopPropagation();
+                                    handleAddToCalendar(event);
+                                  }}
+                                >
+                                  <CalendarIcon size={16} color={Colors.dark.accent} />
+                                  <Text style={styles.calendarButtonText}>Add to Calendar</Text>
+                                </TouchableOpacity>
                               </View>
                             )}
                           </View>
-                          
-                          {event.description && (
-                            <Text style={styles.eventDescription}>{event.description}</Text>
-                          )}
-                          
-                          {isUpcoming && (
-                            <View style={styles.eventActions}>
-                              <View style={styles.rsvpButtons}>
-                                <TouchableOpacity 
-                                  style={[
-                                    styles.rsvpButton, 
-                                    userRSVP === 'yes' && styles.rsvpButtonActive,
-                                    styles.rsvpYesButton
-                                  ]}
-                                  onPress={() => handleRSVP(event.id, 'yes')}
-                                >
-                                  <Text style={[
-                                    styles.rsvpButtonText,
-                                    userRSVP === 'yes' && styles.rsvpButtonTextActive
-                                  ]}>Going</Text>
-                                </TouchableOpacity>
-                                
-                                <TouchableOpacity 
-                                  style={[
-                                    styles.rsvpButton, 
-                                    userRSVP === 'maybe' && styles.rsvpButtonActive,
-                                    styles.rsvpMaybeButton
-                                  ]}
-                                  onPress={() => handleRSVP(event.id, 'maybe')}
-                                >
-                                  <Text style={[
-                                    styles.rsvpButtonText,
-                                    userRSVP === 'maybe' && styles.rsvpButtonTextActive
-                                  ]}>Maybe</Text>
-                                </TouchableOpacity>
-                                
-                                <TouchableOpacity 
-                                  style={[
-                                    styles.rsvpButton, 
-                                    userRSVP === 'no' && styles.rsvpButtonActive,
-                                    styles.rsvpNoButton
-                                  ]}
-                                  onPress={() => handleRSVP(event.id, 'no')}
-                                >
-                                  <Text style={[
-                                    styles.rsvpButtonText,
-                                    userRSVP === 'no' && styles.rsvpButtonTextActive
-                                  ]}>Can't Go</Text>
-                                </TouchableOpacity>
-                              </View>
-                              
-                              <TouchableOpacity 
-                                style={styles.calendarButton}
-                                onPress={() => handleAddToCalendar(event)}
-                              >
-                                <CalendarIcon size={16} color={Colors.dark.accent} />
-                                <Text style={styles.calendarButtonText}>Add to Calendar</Text>
-                              </TouchableOpacity>
-                            </View>
-                          )}
-                        </View>
+                        </TouchableOpacity>
                       );
                     })}
                   {isEventsLoadingMore && (
@@ -922,6 +964,20 @@ export default function GroupDetailScreen() {
                 )}
               </View>
               <Text style={styles.inputNote}>Note: Full location autocomplete requires Google Places API integration.</Text>
+              
+              <View style={styles.imageInputContainer}>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Event Image URL (e.g., https://images.unsplash.com/...)"
+                  placeholderTextColor={Colors.dark.textSecondary}
+                  value={eventImageUrl}
+                  onChangeText={setEventImageUrl}
+                />
+                <TouchableOpacity style={styles.imagePickerButton}>
+                  <Camera size={20} color={Colors.dark.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.inputNote}>Use image URLs from unsplash.com or other image hosting services.</Text>
               
               <Text style={styles.inputLabel}>Date and Time *</Text>
               <View style={styles.dateTimeContainer}>
@@ -1226,6 +1282,20 @@ export default function GroupDetailScreen() {
               </View>
               <Text style={styles.inputNote}>Note: Full location autocomplete requires Google Places API integration.</Text>
               
+              <View style={styles.imageInputContainer}>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Event Image URL (e.g., https://images.unsplash.com/...)"
+                  placeholderTextColor={Colors.dark.textSecondary}
+                  value={eventImageUrl}
+                  onChangeText={setEventImageUrl}
+                />
+                <TouchableOpacity style={styles.imagePickerButton}>
+                  <Camera size={20} color={Colors.dark.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.inputNote}>Use image URLs from unsplash.com or other image hosting services.</Text>
+              
               <Text style={styles.inputLabel}>Date and Time *</Text>
               <View style={styles.dateTimeContainer}>
                 <Pressable
@@ -1473,6 +1543,20 @@ export default function GroupDetailScreen() {
                 multiline
                 numberOfLines={4}
               />
+              
+              <View style={styles.imageInputContainer}>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Group Image URL (e.g., https://images.unsplash.com/...)"
+                  placeholderTextColor={Colors.dark.textSecondary}
+                  value={groupImageUrl}
+                  onChangeText={setGroupImageUrl}
+                />
+                <TouchableOpacity style={styles.imagePickerButton}>
+                  <Camera size={20} color={Colors.dark.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.inputNote}>Use image URLs from unsplash.com or other image hosting services.</Text>
               
               <TextInput
                 style={styles.modalInput}
@@ -1747,14 +1831,21 @@ const styles = StyleSheet.create({
   eventItem: {
     backgroundColor: Colors.dark.card,
     borderRadius: 12,
-    padding: 16,
     marginBottom: 16,
     borderLeftWidth: 4,
     borderLeftColor: Colors.dark.accent,
+    overflow: 'hidden',
   },
   pastEvent: {
     opacity: 0.7,
     borderLeftColor: Colors.dark.border,
+  },
+  eventImage: {
+    width: '100%',
+    height: 120,
+  },
+  eventContent: {
+    padding: 16,
   },
   eventHeader: {
     flexDirection: 'row',
@@ -1908,6 +1999,16 @@ const styles = StyleSheet.create({
   modalButton: {
     marginTop: 8,
     marginBottom: 24,
+  },
+  imageInputContainer: {
+    position: 'relative',
+    marginBottom: 16,
+  },
+  imagePickerButton: {
+    position: 'absolute',
+    right: 12,
+    top: 12,
+    padding: 4,
   },
   locationContainer: {
     position: 'relative',

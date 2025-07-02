@@ -23,6 +23,7 @@ import { withNetworkCheck } from '@/utils/network-utils';
  * - Improved error handling for missing tier settings
  * - Maintains compatibility with existing group functionality
  * - Fixed groups loading issues and improved error handling
+ * - Added image URL support for groups and events
  * 
  * FILE INTERACTIONS:
  * - Imports from: user types (UserProfile, Group, MembershipTier)
@@ -104,6 +105,7 @@ const supabaseToGroupEvent = (data: Record<string, any>): GroupEvent => {
     title: String(camelCaseData.title || ''),
     description: String(camelCaseData.description || ''),
     location: camelCaseData.location || undefined,
+    imageUrl: camelCaseData.imageUrl || undefined,
     startTime: Number(camelCaseData.startTime || Date.now()),
     endTime: camelCaseData.endTime ? Number(camelCaseData.endTime) : undefined,
     reminder: camelCaseData.reminder ? Number(camelCaseData.reminder) : undefined,
@@ -827,6 +829,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           title: eventData.title || 'New Event',
           description: eventData.description || '',
           location: eventData.location,
+          image_url: eventData.imageUrl,
           start_time: eventData.startTime || Date.now(),
           end_time: eventData.endTime,
           reminder: eventData.reminder,
@@ -891,6 +894,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
             title: eventData.title || 'Updated Event',
             description: eventData.description || '',
             location: eventData.location,
+            image_url: eventData.imageUrl,
             start_time: eventData.startTime || Date.now(),
             end_time: eventData.endTime,
             recurrence_pattern: eventData.recurrencePattern,
@@ -1145,6 +1149,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           const updatedGroup = {
             name: groupData.name,
             description: groupData.description,
+            image_url: groupData.imageUrl,
             category: groupData.category,
             industry: groupData.industry
           };
