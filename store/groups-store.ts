@@ -187,15 +187,6 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     
     try {
       await withErrorHandling(async () => {
-        const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) {
-          throw {
-            category: ErrorCategory.AUTH,
-            code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-            message: 'User not ready or authenticated for fetching groups'
-          };
-        }
-        
         await withNetworkCheck(async () => {
           if (!isSupabaseConfigured() || !supabase) {
             throw {
@@ -204,22 +195,16 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
               message: 'Database is not configured'
             };
           }
-          
-          // Fetch groups from Supabase with retry on network errors
+
           const { data: groupsData, error: groupsError } = await withRetry(
             async () => {
               if (!supabase) throw new Error('Supabase client is not initialized');
               return await supabase
                 .from('groups')
-                .select('*')
-                .order('created_at', { ascending: false });
-            },
-            {
-              maxRetries: 3,
-              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
+                .select('*');
             }
           );
-          
+
           if (groupsError) {
             throw {
               category: ErrorCategory.DATABASE,
@@ -227,25 +212,46 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
               message: groupsError.message
             };
           }
-          
-          // Convert Supabase response to Group type
-          const typedGroups: Group[] = (groupsData || []).map(supabaseToGroup);
-          
+
+          const typedGroups = (groupsData || []).map(data => {
+            const camelCaseData = convertToCamelCase(data);
+            return {
+              id: String(camelCaseData.id || ''),
+              name: String(camelCaseData.name || ''),
+              description: String(camelCaseData.description || ''),
+              memberIds: Array.isArray(camelCaseData.memberIds) ? camelCaseData.memberIds : [],
+              createdAt: Number(camelCaseData.createdAt || Date.now()),
+              updatedAt: Number(camelCaseData.updatedAt || Date.now()),
+              type: String(camelCaseData.type || 'public'),
+              createdBy: String(camelCaseData.createdBy || ''),
+              category: String(camelCaseData.category || 'general')
+            } satisfies Group;
+          });
+
+          const userId = useAuthStore.getState().user?.id;
+          if (!userId) {
+            throw {
+              category: ErrorCategory.AUTH,
+              code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
+              message: 'User ID not available'
+            };
+          }
+
           // Filter groups for the current user
           const userGroups = typedGroups.filter((group: Group) => 
-            group.memberIds.includes(user.id)
+            group.memberIds.includes(userId)
           );
           
           // Filter available groups (not joined by the user)
           const availableGroups = typedGroups.filter((group: Group) => 
-            !group.memberIds.includes(user.id)
+            !group.memberIds.includes(userId)
           );
-          
-          set({ 
-            groups: typedGroups, 
-            userGroups, 
-            availableGroups, 
-            isLoading: false 
+
+          set({
+            groups: typedGroups,
+            userGroups,
+            availableGroups,
+            isLoading: false
           });
         });
       });
@@ -255,7 +261,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         error: appError.userMessage, 
         isLoading: false 
       });
-      console.error('Error fetching groups:', appError);
+      throw appError;
     }
   },
 
@@ -672,15 +678,6 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     
     try {
       await withErrorHandling(async () => {
-        const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) {
-          throw {
-            category: ErrorCategory.AUTH,
-            code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-            message: 'User not ready or authenticated for fetching group details'
-          };
-        }
-        
         await withNetworkCheck(async () => {
           if (!isSupabaseConfigured() || !supabase) {
             throw {
@@ -872,16 +869,16 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     
     try {
       await withErrorHandling(async () => {
-        const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) {
-          throw {
-            category: ErrorCategory.AUTH,
-            code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-            message: 'User not ready or authenticated for updating group event'
-          };
-        }
-        
         await withNetworkCheck(async () => {
+          const userId = useAuthStore.getState().user?.id;
+          if (!userId) {
+            throw {
+              category: ErrorCategory.AUTH,
+              code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
+              message: 'User ID not available'
+            };
+          }
+
           if (!isSupabaseConfigured() || !supabase) {
             throw {
               category: ErrorCategory.DATABASE,
@@ -926,7 +923,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           }
           
           // Log the action using usage store
-          await useUsageStore.getState().updateUsage(user.id, 'update_group_event');
+          await useUsageStore.getState().updateUsage(userId, 'update_group_event');
           
           // Refresh events
           if (eventData.groupId) {
@@ -1004,16 +1001,16 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     
     try {
       await withErrorHandling(async () => {
-        const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) {
-          throw {
-            category: ErrorCategory.AUTH,
-            code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-            message: 'User not ready or authenticated for RSVPing to event'
-          };
-        }
-        
         await withNetworkCheck(async () => {
+          const userId = useAuthStore.getState().user?.id;
+          if (!userId) {
+            throw {
+              category: ErrorCategory.AUTH,
+              code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
+              message: 'User ID not available'
+            };
+          }
+
           if (!isSupabaseConfigured() || !supabase) {
             throw {
               category: ErrorCategory.DATABASE,
@@ -1029,7 +1026,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
               return await supabase
                 .from('group_event_rsvps')
                 .select('*')
-                .eq('user_id', user.id)
+                .eq('user_id', userId)
                 .eq('event_id', eventId)
                 .single();
             },
@@ -1074,7 +1071,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
             // Create new RSVP
             const newRSVP = {
               event_id: eventId,
-              user_id: user.id,
+              user_id: userId,
               response,
               created_at: Date.now()
             };
@@ -1102,7 +1099,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           }
           
           // Log the action using usage store
-          await useUsageStore.getState().updateUsage(user.id, 'rsvp_event');
+          await useUsageStore.getState().updateUsage(userId, 'rsvp_event');
           
           // Refresh RSVPs
           const groupId = get().groupEvents.find(event => event.id === eventId)?.groupId;
@@ -1128,16 +1125,16 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     
     try {
       await withErrorHandling(async () => {
-        const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) {
-          throw {
-            category: ErrorCategory.AUTH,
-            code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-            message: 'User not ready or authenticated for updating group'
-          };
-        }
-        
         await withNetworkCheck(async () => {
+          const userId = useAuthStore.getState().user?.id;
+          if (!userId) {
+            throw {
+              category: ErrorCategory.AUTH,
+              code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
+              message: 'User ID not available'
+            };
+          }
+
           if (!isSupabaseConfigured() || !supabase) {
             throw {
               category: ErrorCategory.DATABASE,
@@ -1177,7 +1174,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           }
           
           // Log the action using usage store
-          await useUsageStore.getState().updateUsage(user.id, 'update_group');
+          await useUsageStore.getState().updateUsage(userId, 'update_group');
           
           // Refresh group details
           if (groupData.id) {

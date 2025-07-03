@@ -111,7 +111,7 @@ export default function ProfileDetailScreen() {
       setLoading(false);
     }
   };
-
+  
   const handleLike = async () => {
     try {
       await likeUser(id);
@@ -121,7 +121,7 @@ export default function ProfileDetailScreen() {
       Alert.alert('Error', appError.userMessage);
     }
   };
-
+  
   const handlePass = async () => {
     try {
       await passUser(id);
@@ -131,11 +131,11 @@ export default function ProfileDetailScreen() {
       Alert.alert('Error', appError.userMessage);
     }
   };
-
+  
   const handleMessage = () => {
     router.push(`/chat/${id}`);
   };
-
+  
   if (loading || !profile) {
     return (
       <View style={styles.loadingContainer}>
@@ -143,7 +143,7 @@ export default function ProfileDetailScreen() {
       </View>
     );
   }
-
+  
   if (error) {
     return (
       <View style={styles.errorContainer}>
@@ -158,10 +158,10 @@ export default function ProfileDetailScreen() {
       </View>
     );
   }
-
+  
   return (
     <ScrollView style={styles.container}>
-      <Stack.Screen
+      <Stack.Screen 
         options={{
           headerLeft: () => (
             <TouchableOpacity 
@@ -173,14 +173,14 @@ export default function ProfileDetailScreen() {
           ),
           headerRight: isMatch ? () => (
             <TouchableOpacity 
-              onPress={handleMessage}
+            onPress={handleMessage}
               style={styles.headerButton}
             >
               <MessageCircle size={24} color={Colors.dark.text} />
             </TouchableOpacity>
           ) : undefined,
         }}
-      />
+          />
       
       <View style={styles.detailsContainer}>
         <ProfileDetailCard 

@@ -229,22 +229,6 @@ export const useUsageStore = create<UsageStore>()(
           console.log('Initializing usage data for user:', userId);
           const now = Date.now();
           
-          // Check if user is authenticated
-          const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
-          if (authError || !authUser || authUser.id !== userId) {
-            const errorMessage = 'User not authenticated for usage initialization';
-            console.log(errorMessage);
-            
-            const appError = handleError(new Error(errorMessage));
-            useNotificationStore.getState().addNotification({
-              type: 'error',
-              message: appError.userMessage,
-              displayStyle: 'toast',
-              duration: 5000
-            });
-            throw new Error(errorMessage);
-          }
-          
           // Get today's date in YYYY-MM-DD format
           const today = new Date().toISOString().split('T')[0];
           
@@ -495,25 +479,7 @@ export const useUsageStore = create<UsageStore>()(
 
       updateUsage: async (userId: string, action: string): Promise<UsageResult> => {
         const { usageCache } = get();
-        const { user } = useAuthStore.getState();
         
-        if (!user) {
-          const errorMessage = 'User not authenticated for usage tracking';
-          const appError = handleError(new Error(errorMessage));
-          
-          useNotificationStore.getState().addNotification({
-            type: 'error',
-            message: appError.userMessage,
-            displayStyle: 'toast',
-            duration: 5000
-          });
-          throw {
-            category: 'AUTH',
-            code: 'AUTH_NOT_AUTHENTICATED',
-            message: appError.userMessage
-          };
-        }
-
         if (!usageCache) {
           const errorMessage = 'Usage cache not initialized for tracking';
           const appError = handleError(new Error(errorMessage));
@@ -636,27 +602,18 @@ export const useUsageStore = create<UsageStore>()(
       },
 
       queueBatchUpdate: (actionType: string, countChange: number) => {
-        const { user } = useAuthStore.getState();
-        if (!user) {
-          const errorMessage = 'User not authenticated for batch update';
-          const appError = handleError(new Error(errorMessage));
-          
-          useNotificationStore.getState().addNotification({
-            type: 'error',
-            message: appError.userMessage,
-            displayStyle: 'toast',
-            duration: 5000
-          });
+        const userId = useAuthStore.getState().user?.id;
+        if (!userId) {
           throw {
-            category: 'AUTH',
-            code: 'AUTH_NOT_AUTHENTICATED',
-            message: appError.userMessage
+            category: 'BUSINESS',
+            code: 'BUSINESS_LOGIC_VIOLATION',
+            message: 'User ID not available for batch update'
           };
         }
 
         const now = Date.now();
         set(state => {
-          const existingBatch = state.batchUpdates.find(b => b.user_id === user.id);
+          const existingBatch = state.batchUpdates.find(b => b.user_id === userId);
           if (existingBatch) {
             const existingUpdate = existingBatch.updates.find(u => u.action_type === actionType);
             if (existingUpdate) {
@@ -675,7 +632,7 @@ export const useUsageStore = create<UsageStore>()(
               batchUpdates: [
                 ...state.batchUpdates,
                 {
-                  user_id: user.id,
+                  user_id: userId,
                   updates: [
                     {
                       action_type: actionType,
@@ -974,7 +931,7 @@ export const useUsageStore = create<UsageStore>()(
       }
     })) as StateCreator<UsageStore>,
     {
-      name: 'usage-storage',
+      name: 'usage-store',
       storage: createJSONStorage(() => AsyncStorage),
     }
   )

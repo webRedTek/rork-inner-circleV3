@@ -88,7 +88,7 @@ export default function DiscoverScreen() {
     noMoreProfiles
   } = useMatchesStore();
   
-  const { user, isReady } = useAuthStore();
+  const { user } = useAuthStore();
   const { isDebugMode } = useDebugStore();
   const { addNotification } = useNotificationStore();
   
@@ -133,17 +133,17 @@ export default function DiscoverScreen() {
     setDebugInfo(prev => [...prev.slice(-4), `${new Date().toLocaleTimeString()}: ${info}`]);
   }, [isDebugMode]);
 
-  // SINGLE INITIALIZATION EFFECT - Only runs once when component mounts and user is ready
+  // SINGLE INITIALIZATION EFFECT - Only runs once when component mounts
   useEffect(() => {
     let isMounted = true;
     
     const initializeDiscoverScreen = async () => {
-      if (!isReady || !user || hasInitialized) {
-        addDebugInfo(`Skipping init - ready: ${isReady}, user: ${!!user}, initialized: ${hasInitialized}`);
+      if (hasInitialized) {
+        addDebugInfo(`Skipping init - already initialized`);
         return;
       }
 
-      addDebugInfo(`Starting initialization for user: ${user.id}`);
+      addDebugInfo(`Starting initialization for user: ${user!.id}`);
       setHasInitialized(true);
 
       try {
@@ -173,12 +173,12 @@ export default function DiscoverScreen() {
       isMounted = false;
       stopBatchProcessing();
     };
-  }, [isReady, user]); // Only depend on isReady and user, not other state
+  }, []); // Only run once on mount since we're in a protected route
 
   useEffect(() => {
     // Check for new matches and display modal
     const checkNewMatch = async () => {
-      if (newMatch && user) {
+      if (newMatch) {
         try {
           setMatchedUser(newMatch.matched_user_profile);
           setShowMatchModal(true);
@@ -198,9 +198,9 @@ export default function DiscoverScreen() {
         }
       }
     };
-    
+
     checkNewMatch();
-  }, [newMatch, clearNewMatch, user, triggerHapticFeedback, addNotification]);
+  }, [newMatch]);
   
   useEffect(() => {
     // Show limit modal if swipe or match limit is reached
@@ -464,7 +464,7 @@ export default function DiscoverScreen() {
       )}
 
       {/* Main Content */}
-      {!isReady || !user ? (
+      {!user ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.dark.primary} />
           <Text style={styles.loadingText}>Loading...</Text>

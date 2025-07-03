@@ -44,11 +44,11 @@ const supabaseToMessage = (data: Record<string, any>): Message => {
 };
 
 interface MessagesState {
-  messages: Record<string, Message[]>; // Keyed by conversationId (matchId or groupId)
-  isLoading: Record<string, boolean>; // Loading state per conversation
-  error: Record<string, string | null>; // Error state per conversation
-  pagination: Record<string, { page: number; hasMore: boolean; lastFetched: number }>; // Pagination info per conversation
-  subscriptions: Record<string, any>; // Real-time subscriptions per conversation
+  messages: Record<string, Message[]>;
+  isLoading: Record<string, boolean>;
+  error: Record<string, string | null>;
+  pagination: Record<string, { page: number; hasMore: boolean; lastFetched: number }>;
+  subscriptions: Record<string, any>;
   sendMessage: (conversationId: string, content: string, receiverId: string) => Promise<void>;
   getMessages: (conversationId: string, pageSize?: number) => Promise<void>;
   loadMoreMessages: (conversationId: string, pageSize?: number) => Promise<void>;
@@ -61,7 +61,7 @@ interface MessagesState {
   fetchMessages: () => Promise<void>;
 }
 
-type SetState = (fn: (state: MessagesState) => Partial<MessagesState>) => void;
+type SetState = (fn: (state: MessagesState) => Partial<MessagesState> | MessagesState) => void;
 type GetState = () => MessagesState;
 
 export const useMessagesStore = create<MessagesState>()((set: SetState, get: GetState) => ({
@@ -79,18 +79,11 @@ export const useMessagesStore = create<MessagesState>()((set: SetState, get: Get
 
     try {
       await withErrorHandling(async () => {
-        const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) {
-          throw {
-            category: ErrorCategory.AUTH,
-            code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-            message: 'User not ready or authenticated for sending message'
-          };
-        }
-
         await withNetworkCheck(async () => {
+          const userId = useAuthStore.getState().user!.id;
+
           // Check message sending limit based on tier settings
-          const result = await useUsageStore.getState().updateUsage(user.id, 'message');
+          const result = await useUsageStore.getState().updateUsage(userId, 'message');
           if (!result.isAllowed) {
             throw {
               category: ErrorCategory.RATE_LIMIT,
@@ -110,7 +103,7 @@ export const useMessagesStore = create<MessagesState>()((set: SetState, get: Get
           // Create message in Supabase
           const newMessage: Message = {
             id: `msg-${Date.now()}`,
-            senderId: user.id,
+            senderId: userId,
             receiverId,
             content,
             type: 'text',
@@ -200,15 +193,6 @@ export const useMessagesStore = create<MessagesState>()((set: SetState, get: Get
 
     try {
       await withErrorHandling(async () => {
-        const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) {
-          throw {
-            category: ErrorCategory.AUTH,
-            code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-            message: 'User not ready or authenticated for getting messages'
-          };
-        }
-
         await withNetworkCheck(async () => {
           if (!isSupabaseConfigured() || !supabase) {
             throw {
@@ -282,15 +266,6 @@ export const useMessagesStore = create<MessagesState>()((set: SetState, get: Get
 
     try {
       await withErrorHandling(async () => {
-        const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) {
-          throw {
-            category: ErrorCategory.AUTH,
-            code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-            message: 'User not ready or authenticated for loading more messages'
-          };
-        }
-
         const currentPagination = get().pagination[conversationId];
         if (!currentPagination || !currentPagination.hasMore) {
           throw {
@@ -377,16 +352,16 @@ export const useMessagesStore = create<MessagesState>()((set: SetState, get: Get
   markAsRead: async (conversationId: string): Promise<void> => {
     try {
       await withErrorHandling(async () => {
-        const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) {
-          throw {
-            category: ErrorCategory.AUTH,
-            code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-            message: 'User not ready or authenticated for marking messages as read'
-          };
-        }
-
         await withNetworkCheck(async () => {
+          const userId = useAuthStore.getState().user?.id;
+          if (!userId) {
+            throw {
+              category: ErrorCategory.AUTH,
+              code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
+              message: 'User ID not available'
+            };
+          }
+
           if (!isSupabaseConfigured() || !supabase) {
             throw {
               category: ErrorCategory.DATABASE,
@@ -402,7 +377,7 @@ export const useMessagesStore = create<MessagesState>()((set: SetState, get: Get
           
           // Mark messages as read in Supabase
           const unreadMessageIds = conversationMessages
-            .filter((msg: Message) => msg.receiverId === user.id && !msg.read)
+            .filter((msg: Message) => msg.receiverId === userId && !msg.read)
             .map((msg: Message) => msg.id);
             
           if (unreadMessageIds.length === 0) return;
@@ -431,7 +406,7 @@ export const useMessagesStore = create<MessagesState>()((set: SetState, get: Get
           
           // Update local state
           const updatedMessages = conversationMessages.map((msg: Message) => {
-            if (msg.receiverId === user.id && !msg.read) {
+            if (msg.receiverId === userId && !msg.read) {
               return { ...msg, read: true };
             }
             return msg;

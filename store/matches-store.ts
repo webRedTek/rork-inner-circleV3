@@ -6,7 +6,6 @@
  * 1. Requires auth-store to be initialized first (for user session)
  * 2. Initializes after auth-store confirms user session
  * 3. Sets up simplified batch processing and persistent cache management
- * 4. Race condition: Must wait for user location before fetching matches
  * 
  * CURRENT STATE:
  * Simplified central store for match functionality using Zustand. Features:
@@ -526,9 +525,9 @@ const getReadableError = (error: unknown): string => {
     // Last resort: try to stringify safely
     try {
       return JSON.stringify(err, Object.getOwnPropertyNames(err));
-    } catch (e) {
-      return 'An error occurred';
-    }
+  } catch (e) {
+    return 'An error occurred';
+  }
   }
   
   return String(error);
@@ -728,18 +727,18 @@ const PASSED_USERS_KEY = 'passed_users';
 // Initial state with simplified properties
 const initialState: MatchesStateData & { version: number } = {
   version: 3, // Incremented for simplified version
-  potentialMatches: [],
-  cachedMatches: [],
-  matches: [],
+      potentialMatches: [],
+      cachedMatches: [],
+      matches: [],
   batchSize: 10, // Fixed to 10 matches
-  isLoading: false,
-  error: null,
-  newMatch: null,
-  swipeLimitReached: false,
-  matchLimitReached: false,
-  noMoreProfiles: false,
-  passedUsers: [],
-  pendingLikes: new Set(),
+      isLoading: false,
+      error: null,
+      newMatch: null,
+      swipeLimitReached: false,
+      matchLimitReached: false,
+      noMoreProfiles: false,
+      passedUsers: [],
+      pendingLikes: new Set(),
   matchesLoading: false,
   pendingMatches: [],
   networkState,
@@ -774,26 +773,7 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
     }
     
     return await withErrorHandling(async () => {
-      const { user, isReady } = useAuthStore.getState();
-      
-      if (!isReady || !user) {
-        const authError = {
-          category: ErrorCategory.AUTH,
-          code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-          message: 'User not ready or authenticated'
-        };
-        
-        notificationStore.addNotification({
-          type: 'error',
-          message: 'Please log in to view matches',
-          displayStyle: 'toast',
-          duration: 4000
-        });
-        
-        throw authError;
-      }
-
-      set({ isLoading: true, error: null });
+        set({ isLoading: true, error: null });
       
       try {
         const { 
@@ -831,7 +811,7 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
 
         if (debugStore.isDebugMode) {
           console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] Calling Supabase fetchPotentialMatches`, {
-            userId: user.id,
+            userId: useAuthStore.getState().user!.id,
             limit: batchSize,
             networkQuality: currentNetworkState.connectionQuality
           });
@@ -840,7 +820,7 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
         // Fetch exactly 10 new potential matches
         const result = await withCircuitBreaker(
           () => fetchPotentialMatchesFromSupabase(
-            user.id,
+            useAuthStore.getState().user!.id,
             undefined,
             undefined,
             batchSize // Always 10
@@ -862,8 +842,8 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
             console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] No matches found - setting noMoreProfiles`);
           }
           
-          set({
-            isLoading: false,
+            set({ 
+              isLoading: false,
             error: null,
             noMoreProfiles: true
           });
@@ -875,9 +855,9 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
             duration: 4000
           });
           
-          return;
-        }
-
+            return;
+          }
+          
         // Process profiles with caching
         const validMatches = result.matches
           .filter((match: any): match is UserProfile => {
@@ -908,7 +888,7 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
         
         set(state => ({
           potentialMatches: newPotentialMatches,
-          isLoading: false,
+              isLoading: false,
           error: null,
           noMoreProfiles: validMatches.length === 0,
           cacheStats: enhancedProfileCache.getStats()
@@ -932,7 +912,7 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
           });
         }
         
-      } catch (error) {
+        } catch (error) {
         const errorDetails = {
           originalError: error,
           networkState: get().networkState,
@@ -946,11 +926,11 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
         const appError = handleError(error);
         const readableError = getReadableError(error);
 
-        set({
+          set({ 
           error: appError.userMessage,
-          isLoading: false,
-          noMoreProfiles: true
-        });
+            isLoading: false,
+            noMoreProfiles: true
+          });
         
         notificationStore.addNotification({
           type: 'error',
@@ -966,10 +946,10 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
 
   fetchMatches: async () => {
     return await withErrorHandling(async () => {
-      const { user, isReady } = useAuthStore.getState();
+        const { user, isReady } = useAuthStore.getState();
       const notificationStore = useNotificationStore.getState();
       
-      if (!isReady || !user) {
+        if (!isReady || !user) {
         const errorMessage = 'User not ready or authenticated for fetching matches';
         notificationStore.addNotification({
           type: 'error',
@@ -1049,7 +1029,7 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
                    match.matched_user_profile.name;
           });
           
-          set({ 
+            set({ 
             matches: typedMatches, 
             matchesLoading: false,
             cacheStats: enhancedProfileCache.getStats()
@@ -1064,11 +1044,11 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
             });
           }
         });
-      } catch (error) {
+        } catch (error) {
         const appError = handleError(error);
         const readableError = getReadableError(error);
         
-        set({
+          set({ 
           error: appError.userMessage,
           matchesLoading: false
         });
@@ -1083,36 +1063,20 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
         throw appError;
       }
     });
-  },
+      },
 
-  likeUser: async (userId: string) => {
-    return await withErrorHandling(async () => {
-      const { user, isReady } = useAuthStore.getState();
+      likeUser: async (userId: string) => {
+    await withErrorHandling(async () => {
       const notificationStore = useNotificationStore.getState();
       const swipeStartTime = Date.now();
-      
-      if (!isReady || !user) {
-        const errorMessage = 'User not ready or authenticated for liking user';
-        notificationStore.addNotification({
-          type: 'error',
-          message: 'Please log in to like profiles',
-          displayStyle: 'toast',
-          duration: 4000
-        });
-        throw {
-          category: ErrorCategory.AUTH,
-          code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-          message: errorMessage
-        };
-      }
-      
-      set({ isLoading: true, error: null });
+        
+        set({ isLoading: true, error: null });
       
       try {
         // Check usage limits
-        const swipeResult = await useUsageStore.getState().updateUsage(user.id, 'swipe');
+        const swipeResult = await useUsageStore.getState().updateUsage(useAuthStore.getState().user!.id, 'swipe');
         if (!swipeResult.isAllowed) {
-          set({ swipeLimitReached: true, isLoading: false });
+            set({ swipeLimitReached: true, isLoading: false });
           notificationStore.addNotification({
             type: 'warning',
             message: 'Daily swipe limit reached. Upgrade for more swipes.',
@@ -1126,7 +1090,7 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
           };
         }
 
-        const likeResult = await useUsageStore.getState().updateUsage(user.id, 'like');
+        const likeResult = await useUsageStore.getState().updateUsage(useAuthStore.getState().user!.id, 'like');
         if (!likeResult.isAllowed) {
           set({ swipeLimitReached: true, isLoading: false });
           notificationStore.addNotification({
@@ -1152,7 +1116,7 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
 
         // Queue the swipe action with high priority
         enhancedSwipeQueue.add({
-          swiper_id: user.id,
+          swiper_id: useAuthStore.getState().user!.id,
           swipee_id: userId,
           direction: 'right',
           swipe_timestamp: swipeStartTime,
@@ -1176,11 +1140,11 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
         const appError = handleError(error);
         const readableError = getReadableError(error);
         
-        set({
+          set({ 
           error: appError.userMessage,
-          isLoading: false
-        });
-        
+            isLoading: false 
+          });
+          
         notificationStore.addNotification({
           type: 'error',
           message: `Failed to like profile: ${readableError}`,
@@ -1191,15 +1155,15 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
         throw appError;
       }
     });
-  },
+      },
 
-  passUser: async (userId: string) => {
+      passUser: async (userId: string) => {
     return await withErrorHandling(async () => {
-      const { user, isReady } = useAuthStore.getState();
+        const { user, isReady } = useAuthStore.getState();
       const notificationStore = useNotificationStore.getState();
       const swipeStartTime = Date.now();
       
-      if (!isReady || !user) {
+        if (!isReady || !user) {
         const errorMessage = 'User not ready or authenticated for passing user';
         notificationStore.addNotification({
           type: 'error',
@@ -1212,15 +1176,15 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
           code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
           message: errorMessage
         };
-      }
+        }
+        
+        set({ isLoading: true, error: null });
       
-      set({ isLoading: true, error: null });
-      
-      try {
+        try {
         // Check swipe limits
         const result = await useUsageStore.getState().updateUsage(user.id, 'swipe');
-        if (!result.isAllowed) {
-          set({ swipeLimitReached: true, isLoading: false });
+          if (!result.isAllowed) {
+            set({ swipeLimitReached: true, isLoading: false });
           notificationStore.addNotification({
             type: 'warning',
             message: 'Daily swipe limit reached. Upgrade for more swipes.',
@@ -1235,15 +1199,15 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
         }
         
         // Enhanced passed user with expiration
-        const passedUser: PassedUser = {
-          id: userId,
+          const passedUser: PassedUser = {
+            id: userId,
           timestamp: swipeStartTime,
           reason: 'manual',
           expiresAt: swipeStartTime + (PASS_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
-        };
-        
+          };
+          
         // Optimistic update
-        set(state => ({
+          set(state => ({
           passedUsers: [...state.passedUsers, passedUser],
           optimisticUpdates: new Map([...state.optimisticUpdates, [userId, 'pass']]),
           potentialMatches: state.potentialMatches.filter(u => u.id !== userId),
@@ -1274,10 +1238,10 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
         const appError = handleError(error);
         const readableError = getReadableError(error);
         
-        set({
+          set({ 
           error: appError.userMessage,
-          isLoading: false
-        });
+            isLoading: false 
+          });
         
         notificationStore.addNotification({
           type: 'error',
@@ -1289,14 +1253,14 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
         throw appError;
       }
     });
-  },
+      },
 
-  queueSwipe: async (userId: string, direction: 'left' | 'right') => {
+      queueSwipe: async (userId: string, direction: 'left' | 'right') => {
     return await withErrorHandling(async () => {
-      const { user, isReady } = useAuthStore.getState();
+        const { user, isReady } = useAuthStore.getState();
       const notificationStore = useNotificationStore.getState();
       
-      if (!isReady || !user) {
+        if (!isReady || !user) {
         const errorMessage = 'User not ready or authenticated for queuing swipe';
         notificationStore.addNotification({
           type: 'error',
@@ -1312,9 +1276,9 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
       }
       
       enhancedSwipeQueue.add({
-        swiper_id: user.id,
-        swipee_id: userId,
-        direction,
+            swiper_id: user.id,
+            swipee_id: userId,
+            direction,
         swipe_timestamp: Date.now(),
         priority: direction === 'right' ? 'high' : 'normal',
         optimisticUpdate: false,
@@ -1323,17 +1287,17 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
       
       // Process batch if we have enough items
       if (enhancedSwipeQueue.size() >= 3) {
-        await get().processSwipeBatch();
-      }
+            await get().processSwipeBatch();
+          }
     });
-  },
+      },
 
-  processSwipeBatch: async () => {
+      processSwipeBatch: async () => {
     await withErrorHandling(async () => {
-      const { user, isReady } = useAuthStore.getState();
+        const { user, isReady } = useAuthStore.getState();
       const notificationStore = useNotificationStore.getState();
       
-      if (!isReady || !user) {
+        if (!isReady || !user) {
         return; // Silent fail for batch processing
       }
 
@@ -1366,7 +1330,7 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
         enhancedSwipeQueue.remove(processedIds);
         
         // Clear optimistic updates for processed swipes
-        set(state => {
+            set(state => {
           const newOptimisticUpdates = new Map(state.optimisticUpdates);
           currentBatch.forEach(action => {
             newOptimisticUpdates.delete(action.swipee_id);
@@ -1418,28 +1382,28 @@ const createMatchesStore = (set: SetState, get: GetState) => ({
       silent: false,
       customErrorMessage: 'Failed to process swipe batch'
     });
-  },
+      },
 
-  clearError: () => set({ error: null }),
-  
-  clearNewMatch: () => set({ newMatch: null }),
+      clearError: () => set({ error: null }),
+      
+      clearNewMatch: () => set({ newMatch: null }),
 
-  resetCacheAndState: async () => {
+      resetCacheAndState: async () => {
     return await withErrorHandling(async () => {
       // Clear enhanced cache
       enhancedProfileCache.clear();
       enhancedSwipeQueue.clear();
       
       set((state: MatchesState) => ({
-        potentialMatches: [],
-        cachedMatches: [],
-        matches: [],
+            potentialMatches: [],
+            cachedMatches: [],
+            matches: [],
         isLoading: false,
-        error: null,
-        newMatch: null,
-        swipeLimitReached: false,
-        matchLimitReached: false,
-        noMoreProfiles: false,
+            error: null,
+            newMatch: null,
+            swipeLimitReached: false,
+            matchLimitReached: false,
+            noMoreProfiles: false,
         optimisticUpdates: new Map(),
         cacheStats: enhancedProfileCache.getStats()
       }));
