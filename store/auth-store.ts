@@ -647,7 +647,8 @@ export const useAuthStore = create<AuthState>()(
               match: tierSettings.daily_match_limit,
               message: tierSettings.message_sending_limit,
               like: tierSettings.daily_like_limit
-            }
+            },
+            tierSettings: tierSettings
           },
           source: 'auth-store'
         });

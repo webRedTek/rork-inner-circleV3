@@ -6,6 +6,7 @@ import { UsageCache, BatchUpdate, SyncStrategy, RateLimits, CacheConfig, RetrySt
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
 import { useNotificationStore } from './notification-store';
+import { useDebugStore } from './debug-store';
 import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
 
 /**
@@ -217,9 +218,25 @@ export const useUsageStore = create<UsageStore>()(
       },
 
       initializeUsage: async (userId: string) => {
+        const debugStore = useDebugStore.getState();
+        
+        debugStore.addDebugLog({
+          event: 'initializeUsage Started',
+          status: 'info',
+          details: `Starting usage initialization for user: ${userId}`,
+          source: 'usage-store'
+        });
+
         if (!userId || !isSupabaseConfigured() || !supabase) {
           const errorMessage = 'Cannot initialize usage: Invalid user ID or Supabase not configured';
           console.log('Skipping usage initialization:', errorMessage);
+          
+          debugStore.addDebugLog({
+            event: 'initializeUsage Failed',
+            status: 'error',
+            details: errorMessage,
+            source: 'usage-store'
+          });
           
           const appError = handleError(new Error(errorMessage));
           useNotificationStore.getState().addNotification({
@@ -331,6 +348,18 @@ export const useUsageStore = create<UsageStore>()(
             };
 
             console.log('Updated existing usage record:', usageCache);
+            
+            debugStore.addDebugLog({
+              event: 'initializeUsage Success',
+              status: 'success',
+              details: 'Successfully updated existing usage record',
+              data: {
+                lastSyncTimestamp: usageCache.lastSyncTimestamp,
+                usageDataKeys: Object.keys(usageCache.usageData)
+              },
+              source: 'usage-store'
+            });
+            
             set({ usageCache });
             return;
           }
@@ -405,6 +434,18 @@ export const useUsageStore = create<UsageStore>()(
           };
 
           console.log('Created new usage record:', usageCache);
+          
+          debugStore.addDebugLog({
+            event: 'initializeUsage Success',
+            status: 'success',
+            details: 'Successfully created new usage record',
+            data: {
+              lastSyncTimestamp: usageCache.lastSyncTimestamp,
+              usageDataKeys: Object.keys(usageCache.usageData)
+            },
+            source: 'usage-store'
+          });
+          
           set({ usageCache });
         } catch (error) {
           const appError = handleError(error);

@@ -688,8 +688,8 @@ export const useMatchesStore = create<MatchesState>((set, get) => ({
         const result = await withCircuitBreaker(
           () => fetchPotentialMatchesFromSupabase(
             useAuthStore.getState().user!.id,
-            undefined,
-            undefined,
+            50, // 50km radius
+            false, // Local discovery
             batchSize // Always 10
           ),
           'fetch_potential_matches'
