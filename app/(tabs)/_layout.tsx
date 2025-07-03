@@ -1,7 +1,7 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import Colors from '@/constants/colors';
-import { Home, Users, MessageCircle, User, UsersRound } from 'lucide-react-native';
+import { Home, Users, MessageCircle, User, UsersRound, Bug } from 'lucide-react-native';
 
 export default function TabsLayout() {
   return (
@@ -58,6 +58,13 @@ export default function TabsLayout() {
         options={{
           title: 'Profile',
           tabBarIcon: ({ color, size }) => <User size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="debug"
+        options={{
+          title: 'Debug',
+          tabBarIcon: ({ color, size }) => <Bug size={size} color={color} />,
         }}
       />
     </Tabs>

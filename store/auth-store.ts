@@ -65,6 +65,7 @@ import { useMatchesStore } from './matches-store';
 import { useGroupsStore } from './groups-store';
 import { useMessagesStore } from './messages-store';
 import { useAffiliateStore } from './affiliate-store';
+import { useDebugStore } from './debug-store';
 
 interface AuthState {
   user: UserProfile | null;
@@ -491,6 +492,15 @@ export const useAuthStore = create<AuthState>()(
 
       fetchAllTierSettings: async () => {
         console.log('Fetching all tier settings');
+        const debugStore = useDebugStore.getState();
+        
+        debugStore.addDebugLog({
+          event: 'fetchAllTierSettings Started',
+          status: 'info',
+          details: 'Starting to fetch all tier settings from database',
+          source: 'auth-store'
+        });
+
         try {
           await withNetworkCheck(async () => {
             await initSupabase();
@@ -498,6 +508,13 @@ export const useAuthStore = create<AuthState>()(
             if (!isSupabaseConfigured() || !supabase) {
               throw new Error('Supabase not configured for tier settings fetch');
             }
+
+            debugStore.addDebugLog({
+              event: 'fetchAllTierSettings Database Query',
+              status: 'info',
+              details: 'Querying app_settings table',
+              source: 'auth-store'
+            });
 
             const { data, error } = await supabase
               .from('app_settings')
@@ -508,6 +525,14 @@ export const useAuthStore = create<AuthState>()(
             if (!data || !Array.isArray(data)) {
               throw new Error('Invalid tier settings data format');
             }
+
+            debugStore.addDebugLog({
+              event: 'fetchAllTierSettings Data Received',
+              status: 'success',
+              details: `Received ${data.length} tier settings from database`,
+              data: data.map(tier => ({ tier: tier.tier, limits: { swipe: tier.daily_swipe_limit, match: tier.daily_match_limit, message: tier.message_sending_limit, like: tier.daily_like_limit } })),
+              source: 'auth-store'
+            });
 
             const settings: Record<MembershipTier, TierSettings> = {} as Record<MembershipTier, TierSettings>;
             data.forEach(tier => {
@@ -520,11 +545,28 @@ export const useAuthStore = create<AuthState>()(
               tierSettingsTimestamp: Date.now()
             });
 
+            debugStore.addDebugLog({
+              event: 'fetchAllTierSettings Completed',
+              status: 'success',
+              details: `Successfully cached ${Object.keys(settings).length} tier settings`,
+              data: Object.keys(settings),
+              source: 'auth-store'
+            });
+
             console.log('Successfully cached all tier settings');
           });
         } catch (error) {
           console.error('Error fetching tier settings:', error);
           const appError = handleError(error);
+          
+          debugStore.addDebugLog({
+            event: 'fetchAllTierSettings Failed',
+            status: 'error',
+            details: `Failed to fetch tier settings: ${appError.userMessage}`,
+            data: error,
+            source: 'auth-store'
+          });
+
           useNotificationStore.getState().addNotification({
             type: 'error',
             message: appError.userMessage,
@@ -560,17 +602,55 @@ export const useAuthStore = create<AuthState>()(
 
       getTierSettings: () => {
         const { user, allTierSettings } = get();
+        const debugStore = useDebugStore.getState();
+        
+        debugStore.addDebugLog({
+          event: 'getTierSettings Called',
+          status: 'info',
+          details: `getTierSettings called for user: ${user?.name || 'unknown'} (${user?.membershipTier || 'unknown tier'})`,
+          data: { userId: user?.id, membershipTier: user?.membershipTier },
+          source: 'auth-store'
+        });
         
         if (!allTierSettings) {
           console.warn('Tier settings not loaded yet');
+          debugStore.addDebugLog({
+            event: 'getTierSettings Failed',
+            status: 'error',
+            details: 'allTierSettings is null - tier settings not loaded yet',
+            source: 'auth-store'
+          });
           return null;
         }
         
         const tierSettings = allTierSettings[user!.membershipTier];
         if (!tierSettings) {
           console.warn(`No tier settings found for membership level: ${user!.membershipTier}`);
+          debugStore.addDebugLog({
+            event: 'getTierSettings Failed',
+            status: 'error',
+            details: `No tier settings found for membership level: ${user!.membershipTier}`,
+            data: { availableTiers: Object.keys(allTierSettings), requestedTier: user!.membershipTier },
+            source: 'auth-store'
+          });
           return null;
         }
+        
+        debugStore.addDebugLog({
+          event: 'getTierSettings Success',
+          status: 'success',
+          details: `Successfully retrieved tier settings for ${user!.membershipTier}`,
+          data: {
+            tier: user!.membershipTier,
+            limits: {
+              swipe: tierSettings.daily_swipe_limit,
+              match: tierSettings.daily_match_limit,
+              message: tierSettings.message_sending_limit,
+              like: tierSettings.daily_like_limit
+            }
+          },
+          source: 'auth-store'
+        });
         
         return tierSettings;
       },
