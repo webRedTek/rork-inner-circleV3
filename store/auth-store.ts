@@ -355,6 +355,9 @@ export const useAuthStore = create<AuthState>()(
             });
 
             if (data.user?.id) {
+              // Load tier settings for new user
+              await get().fetchAllTierSettings();
+              await get().initializeTierSettings();
               await useUsageStore.getState().initializeUsage(data.user.id);
             }
           });
@@ -378,6 +381,7 @@ export const useAuthStore = create<AuthState>()(
             set({
               user: null,
               isAuthenticated: false,
+              allTierSettings: null,
               tierSettingsTimestamp: null
             });
             
@@ -641,10 +645,7 @@ export const useAuthStore = create<AuthState>()(
 
             const userProfile = supabaseToUserProfile(profileData || {});
             
-            // First load tier settings
-            await get().fetchAllTierSettings();
-            
-            // Then initialize usage tracking
+            // Initialize usage tracking first
             await useUsageStore.getState().initializeUsage(userProfile.id);
             startUsageSync();
 
