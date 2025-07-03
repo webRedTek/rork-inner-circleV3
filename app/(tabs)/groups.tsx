@@ -18,9 +18,10 @@ import { useAuthStore } from '@/store/auth-store';
 import { useGroupsStore } from '@/store/groups-store';
 import { Group } from '@/types/user';
 import { Button } from '@/components/Button';
-import { Users, Plus, X } from 'lucide-react-native';
+import { Users, Plus, X, Camera } from 'lucide-react-native';
 import { Platform } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 
 export default function GroupsScreen() {
   const router = useRouter();
@@ -41,6 +42,7 @@ export default function GroupsScreen() {
   const [groupDescription, setGroupDescription] = useState('');
   const [groupCategory, setGroupCategory] = useState('');
   const [groupIndustry, setGroupIndustry] = useState('');
+  const [groupImageUri, setGroupImageUri] = useState<string | null>(null);
   const [createLoading, setCreateLoading] = useState(false);
   const [joinLoading, setJoinLoading] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -99,6 +101,30 @@ export default function GroupsScreen() {
       ]
     );
   };
+
+  const handleSelectGroupImage = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (!permissionResult.granted) {
+        Alert.alert('Permission Required', 'You need to grant permission to access your photos.');
+        return;
+      }
+      
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [16, 9],
+        quality: 0.8,
+      });
+      
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setGroupImageUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'An error occurred while selecting an image');
+    }
+  };
   
   const handleCreateGroup = async () => {
     if (!groupName.trim()) {
@@ -119,7 +145,7 @@ export default function GroupsScreen() {
         description: groupDescription,
         category: groupCategory || 'Interest',
         industry: groupIndustry || undefined,
-        imageUrl: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=2942&auto=format&fit=crop'
+        imageUrl: groupImageUri || 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=2942&auto=format&fit=crop'
       });
       
       setShowCreateModal(false);
@@ -127,6 +153,7 @@ export default function GroupsScreen() {
       setGroupDescription('');
       setGroupCategory('');
       setGroupIndustry('');
+      setGroupImageUri(null);
       // Refresh the groups list after creating a new group
       await fetchGroups();
     } catch (error) {
@@ -304,7 +331,7 @@ export default function GroupsScreen() {
               </TouchableOpacity>
             </View>
             
-            <View style={styles.modalContent}>
+            <ScrollView style={styles.modalContent}>
               {createError && (
                 <Text style={styles.createErrorText}>{createError}</Text>
               )}
@@ -326,6 +353,23 @@ export default function GroupsScreen() {
                 multiline
                 numberOfLines={4}
               />
+              
+              <View style={styles.imageSection}>
+                <Text style={styles.imageLabel}>Group Image</Text>
+                <TouchableOpacity 
+                  style={styles.imagePickerContainer}
+                  onPress={handleSelectGroupImage}
+                >
+                  {groupImageUri ? (
+                    <Image source={{ uri: groupImageUri }} style={styles.selectedImage} />
+                  ) : (
+                    <View style={styles.imagePlaceholder}>
+                      <Camera size={40} color={Colors.dark.textSecondary} />
+                      <Text style={styles.imagePlaceholderText}>Tap to select image</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </View>
               
               <TextInput
                 style={styles.input}
@@ -352,7 +396,7 @@ export default function GroupsScreen() {
                 error={!!createError}
                 style={styles.createGroupButton}
               />
-            </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -562,6 +606,37 @@ const styles = StyleSheet.create({
   textArea: {
     height: 100,
     textAlignVertical: 'top',
+  },
+  imageSection: {
+    marginBottom: 16,
+  },
+  imageLabel: {
+    fontSize: 16,
+    color: Colors.dark.text,
+    marginBottom: 8,
+    fontWeight: '500',
+  },
+  imagePickerContainer: {
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    borderStyle: 'dashed',
+  },
+  selectedImage: {
+    width: '100%',
+    height: 120,
+  },
+  imagePlaceholder: {
+    height: 120,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.dark.card,
+  },
+  imagePlaceholderText: {
+    color: Colors.dark.textSecondary,
+    fontSize: 14,
+    marginTop: 8,
   },
   createGroupButton: {
     marginTop: 8,

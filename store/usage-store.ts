@@ -8,6 +8,53 @@ import { useAuthStore } from './auth-store';
 import { useNotificationStore } from './notification-store';
 import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
 
+/**
+ * FILE: store/usage-store.ts
+ * LAST UPDATED: 2025-07-03 10:30
+ * 
+ * CURRENT STATE:
+ * Central store for all usage tracking and batch processing. Features:
+ * - Tracks all user actions and enforces tier-based limits
+ * - Handles batch processing for all usage data
+ * - Manages periodic syncing with database
+ * - Uses cached tier settings from auth store
+ * - Provides usage stats and limit checking
+ * 
+ * RECENT CHANGES:
+ * - Centralized all batch processing here (moved from matches store)
+ * - Enhanced error handling with proper error stringification
+ * - Improved user feedback through notification system
+ * - Better error categorization and messages
+ * - Enhanced database operations with error recovery
+ * 
+ * FILE INTERACTIONS:
+ * - Imports from: auth-store (tier settings)
+ * - Exports to: All stores that need usage tracking
+ * - Used by: matches-store, groups-store, messages-store
+ * - Dependencies: AsyncStorage (persistence), Supabase (database)
+ * 
+ * KEY FUNCTIONS:
+ * - updateUsage: Track new usage with validation
+ * - queueBatchUpdate: Add updates to batch queue
+ * - syncUsageData: Sync batched updates with database
+ * - startUsageSync/stopUsageSync: Control sync intervals
+ * - getUsageStats: Get current usage with limits
+ * 
+ * BATCH PROCESSING:
+ * This store is the central point for all batch processing:
+ * 1. Other stores call updateUsage/trackUsage
+ * 2. Updates are queued via queueBatchUpdate
+ * 3. Periodic sync via syncUsageData (every 30s)
+ * 4. Manual sync available via force parameter
+ * 5. Handles all error cases and retries
+ * 
+ * INITIALIZATION ORDER:
+ * 1. Requires auth-store for tier settings
+ * 2. Initializes after user session
+ * 3. Sets up sync intervals
+ * 4. Starts background sync
+ */
+
 // Default usage cache
 const defaultUsageCache: UsageCache = {
   lastSyncTimestamp: 0,
@@ -60,6 +107,40 @@ const defaultRetryStrategy: RetryStrategy = {
   criticalActions: ['swipe', 'match', 'message'],
 };
 
+// Enhanced helper function to safely stringify errors
+const safeStringifyError = (error: any): string => {
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object') {
+    try {
+      // Handle structured error objects with priority order
+      if (error.userMessage) return error.userMessage;
+      if (error.message) return error.message;
+      if (error.error?.message) return error.error.message;
+      if (error.details) return String(error.details);
+      if (error.hint) return String(error.hint);
+      if (error.description) return String(error.description);
+      if (error.code) return `Error code: ${error.code}`;
+      
+      // Try to extract meaningful properties
+      const meaningfulProps = ['reason', 'cause', 'statusText', 'data'];
+      for (const prop of meaningfulProps) {
+        if (error[prop]) return String(error[prop]);
+      }
+      
+      // Last resort: try to stringify safely
+      return JSON.stringify(error, Object.getOwnPropertyNames(error));
+    } catch (e) {
+      try {
+        return JSON.stringify(error, Object.getOwnPropertyNames(error));
+      } catch (e2) {
+        return 'Error occurred but could not be parsed';
+      }
+    }
+  }
+  return String(error);
+};
+
 export const useUsageStore = create<UsageStore>()(
   persist(
     ((set: StoreApi<UsageStore>['setState'], get: StoreApi<UsageStore>['getState']) => ({
@@ -80,88 +161,163 @@ export const useUsageStore = create<UsageStore>()(
         }
 
         try {
+          // Get today's date in YYYY-MM-DD format
+          const today = new Date().toISOString().split('T')[0];
+          
           const { data, error } = await supabase
             .from('user_daily_usage')
             .select('swipe_count, match_count, message_count, like_count, daily_reset_at')
             .eq('user_id', userId)
-            .single();
+            .eq('date', today)
+            .maybeSingle();
 
           if (error) {
-            throw new Error(`Failed to fetch database totals: ${handleError(error).userMessage}`);
+            const errorMessage = safeStringifyError(error);
+            console.error('Failed to fetch database totals:', errorMessage);
+            
+            // Use error handler to show user-friendly error
+            const appError = handleError(error);
+            useNotificationStore.getState().addNotification({
+              type: 'error',
+              message: `Failed to fetch usage data: ${appError.userMessage}`,
+              displayStyle: 'toast',
+              duration: 5000
+            });
+            throw new Error(`Failed to fetch database totals: ${appError.userMessage}`);
+          }
+
+          // If no record exists for today, return default values
+          if (!data) {
+            const defaultTotals: DatabaseTotals = {
+              swipe_count: 0,
+              match_count: 0,
+              message_count: 0,
+              like_count: 0,
+              daily_reset_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+            };
+            set({ databaseTotals: defaultTotals });
+            return defaultTotals;
           }
 
           set({ databaseTotals: data });
           return data;
         } catch (error) {
-          console.error('Error fetching database totals:', error);
+          const appError = handleError(error);
+          const errorMessage = safeStringifyError(error);
+          console.error('Error fetching database totals:', errorMessage);
           set({ databaseTotals: null });
+          
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: `Database error: ${appError.userMessage}`,
+            displayStyle: 'toast',
+            duration: 5000
+          });
         }
       },
 
       initializeUsage: async (userId: string) => {
         if (!userId || !isSupabaseConfigured() || !supabase) {
-          console.log('Skipping usage initialization: Invalid user ID or Supabase not configured');
-          throw new Error('Cannot initialize usage: Invalid user ID or Supabase not configured');
+          const errorMessage = 'Cannot initialize usage: Invalid user ID or Supabase not configured';
+          console.log('Skipping usage initialization:', errorMessage);
+          
+          const appError = handleError(new Error(errorMessage));
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: appError.userMessage,
+            displayStyle: 'toast',
+            duration: 5000
+          });
+          throw new Error(errorMessage);
         }
 
         try {
           console.log('Initializing usage data for user:', userId);
           const now = Date.now();
           
-          // Get the user's single usage record
-          const { data: usageData, error: usageError } = await supabase
+          // Get today's date in YYYY-MM-DD format
+          const today = new Date().toISOString().split('T')[0];
+          
+          // First try to find any existing record for this user for today
+          const { data: existingData, error: findError } = await supabase
             .from('user_daily_usage')
             .select('*')
             .eq('user_id', userId)
-            .single();
+            .eq('date', today)
+            .maybeSingle();
 
-          // If no record exists, create one
-          if (usageError || !usageData) {
-            const { data: newData, error: createError } = await supabase
+          if (findError) {
+            const appError = handleError(findError);
+            const errorMessage = safeStringifyError(findError);
+            console.error('Error finding existing usage record:', errorMessage);
+            
+            useNotificationStore.getState().addNotification({
+              type: 'error',
+              message: `Failed to check usage record: ${appError.userMessage}`,
+              displayStyle: 'toast',
+              duration: 5000
+            });
+            throw new Error(`Failed to check for existing usage record: ${appError.userMessage}`);
+          }
+
+          // If record exists, update it (including resetting if expired)
+          if (existingData) {
+            const isExpired = existingData.daily_reset_at && new Date(existingData.daily_reset_at).getTime() < now;
+            
+            const { data: updatedData, error: updateError } = await supabase
               .from('user_daily_usage')
-              .insert({
-                user_id: userId,
-                swipe_count: 0,
-                match_count: 0,
-                message_count: 0,
-                like_count: 0,
+              .update({
+                swipe_count: isExpired ? 0 : existingData.swipe_count,
+                match_count: isExpired ? 0 : existingData.match_count,
+                message_count: isExpired ? 0 : existingData.message_count,
+                like_count: isExpired ? 0 : existingData.like_count,
                 daily_reset_at: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
-                created_at: new Date().toISOString(),
                 last_updated: new Date().toISOString()
               })
+              .eq('id', existingData.id)
               .select()
               .single();
 
-            if (createError) {
-              throw new Error(`Failed to create usage record: ${handleError(createError).userMessage}`);
+            if (updateError) {
+              const appError = handleError(updateError);
+              const errorMessage = safeStringifyError(updateError);
+              console.error('Failed to update usage record:', errorMessage);
+              
+              useNotificationStore.getState().addNotification({
+                type: 'error',
+                message: `Failed to update usage: ${appError.userMessage}`,
+                displayStyle: 'toast',
+                duration: 5000
+              });
+              throw new Error(`Failed to update usage record: ${appError.userMessage}`);
             }
 
             const usageCache: UsageCache = {
               lastSyncTimestamp: now,
               usageData: {
                 swipe: {
-                  currentCount: 0,
-                  firstActionTimestamp: now,
+                  currentCount: updatedData.swipe_count,
+                  firstActionTimestamp: new Date(updatedData.created_at).getTime(),
                   lastActionTimestamp: now,
-                  resetTimestamp: now + 24 * 60 * 60 * 1000,
+                  resetTimestamp: new Date(updatedData.daily_reset_at).getTime(),
                 },
                 match: {
-                  currentCount: 0,
-                  firstActionTimestamp: now,
+                  currentCount: updatedData.match_count,
+                  firstActionTimestamp: new Date(updatedData.created_at).getTime(),
                   lastActionTimestamp: now,
-                  resetTimestamp: now + 24 * 60 * 60 * 1000,
+                  resetTimestamp: new Date(updatedData.daily_reset_at).getTime(),
                 },
                 message: {
-                  currentCount: 0,
-                  firstActionTimestamp: now,
+                  currentCount: updatedData.message_count,
+                  firstActionTimestamp: new Date(updatedData.created_at).getTime(),
                   lastActionTimestamp: now,
-                  resetTimestamp: now + 24 * 60 * 60 * 1000,
+                  resetTimestamp: new Date(updatedData.daily_reset_at).getTime(),
                 },
                 like: {
-                  currentCount: 0,
-                  firstActionTimestamp: now,
+                  currentCount: updatedData.like_count,
+                  firstActionTimestamp: new Date(updatedData.created_at).getTime(),
                   lastActionTimestamp: now,
-                  resetTimestamp: now + 24 * 60 * 60 * 1000,
+                  resetTimestamp: new Date(updatedData.daily_reset_at).getTime(),
                 }
               },
               premiumFeatures: {
@@ -174,206 +330,116 @@ export const useUsageStore = create<UsageStore>()(
               },
             };
 
-            console.log('New usage record created:', usageCache);
+            console.log('Updated existing usage record:', usageCache);
             set({ usageCache });
-          } else {
-            // Check if we need to reset counts (24 hours passed)
-            const shouldReset = usageData.daily_reset_at && new Date(usageData.daily_reset_at).getTime() < now;
-            
-            if (shouldReset) {
-              // Reset counts and update reset timestamp
-              const { data: resetData, error: resetError } = await supabase
-                .from('user_daily_usage')
-                .update({
-                  swipe_count: 0,
-                  match_count: 0,
-                  message_count: 0,
-                  like_count: 0,
-                  daily_reset_at: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
-                  last_updated: new Date().toISOString()
-                })
-                .eq('user_id', userId)
-                .select()
-                .single();
-
-              if (resetError) {
-                throw new Error(`Failed to reset usage counts: ${handleError(resetError).userMessage}`);
-              }
-
-              const usageCache: UsageCache = {
-                lastSyncTimestamp: now,
-                usageData: {
-                  swipe: {
-                    currentCount: 0,
-                    firstActionTimestamp: now,
-                    lastActionTimestamp: now,
-                    resetTimestamp: now + 24 * 60 * 60 * 1000,
-                  },
-                  match: {
-                    currentCount: 0,
-                    firstActionTimestamp: now,
-                    lastActionTimestamp: now,
-                    resetTimestamp: now + 24 * 60 * 60 * 1000,
-                  },
-                  message: {
-                    currentCount: 0,
-                    firstActionTimestamp: now,
-                    lastActionTimestamp: now,
-                    resetTimestamp: now + 24 * 60 * 60 * 1000,
-                  },
-                  like: {
-                    currentCount: 0,
-                    firstActionTimestamp: now,
-                    lastActionTimestamp: now,
-                    resetTimestamp: now + 24 * 60 * 60 * 1000,
-                  }
-                },
-                premiumFeatures: {
-                  boostMinutesRemaining: 0,
-                  boostUsesRemaining: 0,
-                },
-                analytics: {
-                  profileViews: 0,
-                  searchAppearances: 0,
-                },
-              };
-
-              console.log('Usage counts reset after 24 hours:', usageCache);
-              set({ usageCache });
-            } else {
-              // Use existing counts
-              const usageCache: UsageCache = {
-                lastSyncTimestamp: now,
-                usageData: {
-                  swipe: {
-                    currentCount: usageData.swipe_count || 0,
-                    firstActionTimestamp: usageData.created_at ? new Date(usageData.created_at).getTime() : now,
-                    lastActionTimestamp: usageData.last_updated ? new Date(usageData.last_updated).getTime() : now,
-                    resetTimestamp: usageData.daily_reset_at ? new Date(usageData.daily_reset_at).getTime() : now + 24 * 60 * 60 * 1000,
-                  },
-                  match: {
-                    currentCount: usageData.match_count || 0,
-                    firstActionTimestamp: usageData.created_at ? new Date(usageData.created_at).getTime() : now,
-                    lastActionTimestamp: usageData.last_updated ? new Date(usageData.last_updated).getTime() : now,
-                    resetTimestamp: usageData.daily_reset_at ? new Date(usageData.daily_reset_at).getTime() : now + 24 * 60 * 60 * 1000,
-                  },
-                  message: {
-                    currentCount: usageData.message_count || 0,
-                    firstActionTimestamp: usageData.created_at ? new Date(usageData.created_at).getTime() : now,
-                    lastActionTimestamp: usageData.last_updated ? new Date(usageData.last_updated).getTime() : now,
-                    resetTimestamp: usageData.daily_reset_at ? new Date(usageData.daily_reset_at).getTime() : now + 24 * 60 * 60 * 1000,
-                  },
-                  like: {
-                    currentCount: usageData.like_count || 0,
-                    firstActionTimestamp: usageData.created_at ? new Date(usageData.created_at).getTime() : now,
-                    lastActionTimestamp: usageData.last_updated ? new Date(usageData.last_updated).getTime() : now,
-                    resetTimestamp: usageData.daily_reset_at ? new Date(usageData.daily_reset_at).getTime() : now + 24 * 60 * 60 * 1000,
-                  }
-                },
-                premiumFeatures: {
-                  boostMinutesRemaining: 0,
-                  boostUsesRemaining: 0,
-                },
-                analytics: {
-                  profileViews: 0,
-                  searchAppearances: 0,
-                },
-              };
-
-              console.log('Using existing usage record:', usageCache);
-              set({ usageCache });
-            }
+            return;
           }
+
+          // Only create new record if none exists
+          const { data: newData, error: createError } = await supabase
+            .from('user_daily_usage')
+            .insert({
+              user_id: userId,
+              date: today,
+              swipe_count: 0,
+              match_count: 0,
+              message_count: 0,
+              like_count: 0,
+              daily_reset_at: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
+              created_at: new Date().toISOString(),
+              last_updated: new Date().toISOString()
+            })
+            .select()
+            .single();
+
+          if (createError) {
+            const appError = handleError(createError);
+            const errorMessage = safeStringifyError(createError);
+            console.error('Failed to create usage record:', errorMessage);
+            
+            useNotificationStore.getState().addNotification({
+              type: 'error',
+              message: `Failed to create usage record: ${appError.userMessage}`,
+              displayStyle: 'toast',
+              duration: 5000
+            });
+            throw new Error(`Failed to create usage record: ${appError.userMessage}`);
+          }
+
+          const usageCache: UsageCache = {
+            lastSyncTimestamp: now,
+            usageData: {
+              swipe: {
+                currentCount: 0,
+                firstActionTimestamp: now,
+                lastActionTimestamp: now,
+                resetTimestamp: now + 24 * 60 * 60 * 1000,
+              },
+              match: {
+                currentCount: 0,
+                firstActionTimestamp: now,
+                lastActionTimestamp: now,
+                resetTimestamp: now + 24 * 60 * 60 * 1000,
+              },
+              message: {
+                currentCount: 0,
+                firstActionTimestamp: now,
+                lastActionTimestamp: now,
+                resetTimestamp: now + 24 * 60 * 60 * 1000,
+              },
+              like: {
+                currentCount: 0,
+                firstActionTimestamp: now,
+                lastActionTimestamp: now,
+                resetTimestamp: now + 24 * 60 * 60 * 1000,
+              }
+            },
+            premiumFeatures: {
+              boostMinutesRemaining: 0,
+              boostUsesRemaining: 0,
+            },
+            analytics: {
+              profileViews: 0,
+              searchAppearances: 0,
+            },
+          };
+
+          console.log('Created new usage record:', usageCache);
+          set({ usageCache });
         } catch (error) {
-          console.error('Error initializing usage:', handleError(error).userMessage);
-          set({ lastSyncError: handleError(error).userMessage });
+          const appError = handleError(error);
+          const errorMessage = safeStringifyError(error);
+          console.error('Error initializing usage:', errorMessage);
+          set({ lastSyncError: appError.userMessage });
+          
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: `Usage initialization failed: ${appError.userMessage}`,
+            displayStyle: 'toast',
+            duration: 5000
+          });
           throw error;
         }
       },
 
-      trackUsage: async (options: UsageTrackingOptions): Promise<UsageResult> => {
-        const { actionType, count = 1 } = options;
-        const { user } = useAuthStore.getState();
-        const { usageCache } = get();
-        
-        if (!user) {
-          throw {
-            category: 'AUTH',
-            code: 'AUTH_NOT_AUTHENTICATED',
-            message: 'User not authenticated for usage tracking'
-          };
-        }
-
-        if (!usageCache) {
-          throw {
-            category: 'BUSINESS',
-            code: 'BUSINESS_LIMIT_REACHED',
-            message: 'Usage cache not initialized for tracking'
-          };
-        }
-
-        const tierSettings = useAuthStore.getState().getTierSettings();
-        if (!tierSettings) {
-          throw {
-            category: 'BUSINESS',
-            code: 'BUSINESS_LIMIT_REACHED',
-            message: 'Tier settings not available for usage limits'
-          };
-        }
-
-        const limit = actionType === 'swipe' 
-          ? tierSettings.daily_swipe_limit
-          : actionType === 'match' 
-            ? tierSettings.daily_match_limit
-            : tierSettings.message_sending_limit;
-
-        const now = Date.now();
-        const usageData = usageCache.usageData[actionType];
-        const resetTimestamp = usageData?.resetTimestamp || now + 24 * 60 * 60 * 1000;
-        const currentCount = usageData ? usageData.currentCount : 0;
-        const isAllowed = currentCount < limit;
-
-        // Optimistic update if action is allowed
-        if (isAllowed && count > 0) {
-          const updatedCount = currentCount + count;
-          set({
-            usageCache: {
-              ...usageCache,
-              usageData: {
-                ...usageCache.usageData,
-                [actionType]: {
-                  currentCount: updatedCount,
-                  firstActionTimestamp: usageData?.firstActionTimestamp || now,
-                  lastActionTimestamp: now,
-                  resetTimestamp,
-                },
-              },
-            },
-          });
-
-          // Always queue for batch update
-          get().queueBatchUpdate(actionType, count);
-        }
-
-        return {
-          isAllowed,
-          actionType,
-          currentCount,
-          limit,
-          remaining: Math.max(0, limit - currentCount),
-          timestamp: now,
-        };
-      },
-
-      getUsageStats: (): UsageStats | null => {
+      getUsageStats: async (): Promise<UsageStats> => {
         const { usageCache } = get();
         const tierSettings = useAuthStore.getState().getTierSettings();
         
         if (!usageCache || !tierSettings) {
+          const errorMessage = 'Usage cache or tier settings not available for stats';
+          const appError = handleError(new Error(errorMessage));
+          
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: appError.userMessage,
+            displayStyle: 'toast',
+            duration: 5000
+          });
           throw {
-            category: 'BUSINESS',
-            code: 'BUSINESS_LIMIT_REACHED',
-            message: 'Usage cache or tier settings not available for stats'
+            category: ErrorCategory.BUSINESS,
+            code: ErrorCodes.BUSINESS_LIMIT_REACHED,
+            message: appError.userMessage
           };
         }
 
@@ -393,56 +459,135 @@ export const useUsageStore = create<UsageStore>()(
           messageLimit: tierSettings.message_sending_limit,
           messageRemaining: Math.max(0, tierSettings.message_sending_limit - messageData.currentCount),
           likeCount: likeData.currentCount,
-          likeLimit: tierSettings.like_sending_limit,
-          likeRemaining: Math.max(0, tierSettings.like_sending_limit - likeData.currentCount),
+          likeLimit: tierSettings.daily_like_limit,
+          likeRemaining: Math.max(0, tierSettings.daily_like_limit - likeData.currentCount),
           timestamp: Date.now(),
         };
       },
 
-      queueBatchUpdate: (actionType: string, countChange: number) => {
+      updateUsage: async (action: string): Promise<UsageResult> => {
+        const { usageCache } = get();
         const { user } = useAuthStore.getState();
-        if (!user) {
+        const tierSettings = useAuthStore.getState().getTierSettings();
+        
+        if (!usageCache || !tierSettings || !user) {
+          const errorMessage = 'Usage cache or tier settings not available';
+          const appError = handleError(new Error(errorMessage));
+          
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: appError.userMessage,
+            displayStyle: 'toast',
+            duration: 5000
+          });
           throw {
-            category: 'AUTH',
-            code: 'AUTH_NOT_AUTHENTICATED',
-            message: 'User not authenticated for batch update'
+            category: ErrorCategory.BUSINESS,
+            code: ErrorCodes.BUSINESS_LIMIT_REACHED,
+            message: appError.userMessage
           };
         }
 
+        const limit = action === 'swipe' 
+          ? tierSettings.daily_swipe_limit
+          : action === 'match' 
+            ? tierSettings.daily_match_limit
+            : action === 'like'
+              ? tierSettings.daily_like_limit
+              : tierSettings.message_sending_limit;
+
         const now = Date.now();
-        set(state => {
-          const existingBatch = state.batchUpdates.find(b => b.user_id === user.id);
-          if (existingBatch) {
-            const existingUpdate = existingBatch.updates.find(u => u.action_type === actionType);
-            if (existingUpdate) {
-              existingUpdate.count_change += countChange;
-              existingUpdate.timestamp = now;
-            } else {
-              existingBatch.updates.push({
-                action_type: actionType,
-                count_change: countChange,
-                timestamp: now,
-              });
-            }
-            return { batchUpdates: [...state.batchUpdates] };
-          } else {
-            return {
-              batchUpdates: [
-                ...state.batchUpdates,
-                {
-                  user_id: user.id,
-                  updates: [
-                    {
-                      action_type: actionType,
-                      count_change: countChange,
-                      timestamp: now,
-                    },
-                  ],
+        const usageData = usageCache.usageData[action];
+        const resetTimestamp = usageData?.resetTimestamp || now + 24 * 60 * 60 * 1000;
+        const currentCount = usageData ? usageData.currentCount : 0;
+        const isAllowed = currentCount < limit;
+
+        if (isAllowed) {
+          // Update usage count
+          set({
+            usageCache: {
+              ...usageCache,
+              usageData: {
+                ...usageCache.usageData,
+                [action]: {
+                  currentCount: currentCount + 1,
+                  firstActionTimestamp: usageData?.firstActionTimestamp || now,
+                  lastActionTimestamp: now,
+                  resetTimestamp,
                 },
-              ],
-            };
-          }
-        });
+              },
+            },
+          });
+
+          // Queue update for sync
+          get().queueBatchUpdate(action, 1);
+        }
+
+        return {
+          isAllowed,
+          actionType: action,
+          currentCount: currentCount + (isAllowed ? 1 : 0),
+          limit,
+          remaining: Math.max(0, limit - (currentCount + (isAllowed ? 1 : 0))),
+          timestamp: now,
+        };
+      },
+
+      trackUsage: async (options: UsageTrackingOptions): Promise<UsageResult> => {
+        const { user } = useAuthStore.getState();
+        if (!user) {
+          const errorMessage = 'User not authenticated for usage tracking';
+          const appError = handleError(new Error(errorMessage));
+          
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: appError.userMessage,
+            displayStyle: 'toast',
+            duration: 5000
+          });
+          throw {
+            category: 'AUTH',
+            code: 'AUTH_NOT_AUTHENTICATED',
+            message: appError.userMessage
+          };
+        }
+
+        // Map action types to the correct action string
+        let action: string;
+        switch (options.actionType) {
+          case 'message':
+            action = 'message';
+            break;
+          case 'join_group':
+          case 'leave_group':
+          case 'create_group':
+          case 'send_group_message':
+          case 'event_create':
+          case 'update_group_event':
+          case 'rsvp_event':
+          case 'update_group':
+            action = 'message'; // Group actions count as messages
+            break;
+          default:
+            action = options.actionType;
+        }
+
+        return await get().updateUsage(action);
+      },
+
+      queueBatchUpdate: (action: string, count: number) => {
+        const { user } = useAuthStore.getState();
+        if (!user) return;
+
+        const batchUpdate = {
+          userId: user.id,
+          action,
+          count,
+          timestamp: Date.now()
+        };
+
+        set(state => ({
+          batchUpdates: [...state.batchUpdates, batchUpdate]
+        }));
       },
 
       syncUsageData: async (force?: boolean) => {
@@ -450,7 +595,16 @@ export const useUsageStore = create<UsageStore>()(
         const { usageCache, batchUpdates } = get();
 
         if (!user || !isSupabaseConfigured() || !supabase) {
-          console.warn('Cannot save usage data: User not authenticated or Supabase not configured');
+          const errorMessage = 'Cannot save usage data: User not authenticated or Supabase not configured';
+          console.warn(errorMessage);
+          
+          const appError = handleError(new Error(errorMessage));
+          useNotificationStore.getState().addNotification({
+            type: 'warning',
+            message: appError.userMessage,
+            displayStyle: 'toast',
+            duration: 5000
+          });
           return;
         }
 
@@ -464,14 +618,28 @@ export const useUsageStore = create<UsageStore>()(
         try {
           // Only process batch updates if any exist
           if (batchUpdates.length > 0) {
-            // First check if user has a usage record
+            // Get today's date in YYYY-MM-DD format
+            const today = new Date().toISOString().split('T')[0];
+            
+            // First check if user has a usage record for today
             const { data: existingRecord, error: fetchError } = await supabase
               .from('user_daily_usage')
               .select('id')
               .eq('user_id', user.id)
+              .eq('date', today)
               .maybeSingle();
 
             if (fetchError) {
+              const appError = handleError(fetchError);
+              const errorMessage = safeStringifyError(fetchError);
+              console.error('Error fetching existing usage record:', errorMessage);
+              
+              useNotificationStore.getState().addNotification({
+                type: 'error',
+                message: `Failed to fetch usage record: ${appError.userMessage}`,
+                displayStyle: 'toast',
+                duration: 5000
+              });
               throw fetchError;
             }
 
@@ -514,6 +682,7 @@ export const useUsageStore = create<UsageStore>()(
               .from('user_daily_usage')
               .upsert({
                 user_id: user.id,
+                date: today,
                 swipe_count: counts.swipe_count,
                 match_count: counts.match_count,
                 message_count: counts.message_count,
@@ -525,7 +694,16 @@ export const useUsageStore = create<UsageStore>()(
               });
 
             if (updateError) {
-              console.error('Error updating usage record:', updateError);
+              const appError = handleError(updateError);
+              const errorMessage = safeStringifyError(updateError);
+              console.error('Error updating usage record:', errorMessage);
+              
+              useNotificationStore.getState().addNotification({
+                type: 'error',
+                message: `Failed to sync usage data: ${appError.userMessage}`,
+                displayStyle: 'toast',
+                duration: 5000
+              });
               throw updateError;
             }
 
@@ -535,14 +713,35 @@ export const useUsageStore = create<UsageStore>()(
             set(state => ({
               ...state,
               batchUpdates: [],
-              lastSyncTimestamp: Date.now()
+              lastSyncTimestamp: Date.now(),
+              lastSyncError: null // Clear any previous errors on success
             }));
+
+            // Show success notification for manual syncs
+            if (force) {
+              useNotificationStore.getState().addNotification({
+                type: 'success',
+                message: 'Usage data synced successfully',
+                displayStyle: 'toast',
+                duration: 3000
+              });
+            }
           }
         } catch (error) {
-          console.error('Error syncing usage data:', error);
           const appError = handleError(error);
+          const errorMessage = safeStringifyError(error);
+          console.error('Error syncing usage data:', errorMessage);
           set({ lastSyncError: appError.userMessage });
-          throw appError;
+          
+          // Show error notification to user with readable error message
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: `Usage sync failed: ${appError.userMessage}`,
+            displayStyle: 'toast',
+            duration: 8000
+          });
+          
+          throw new Error(appError.userMessage);
         } finally {
           set({ isSyncing: false });
         }
@@ -551,10 +750,19 @@ export const useUsageStore = create<UsageStore>()(
       checkLimit: (actionType: string, limit: number) => {
         const { usageCache } = get();
         if (!usageCache || !usageCache.usageData[actionType]) {
+          const errorMessage = `Usage data not available for action type: ${actionType}`;
+          const appError = handleError(new Error(errorMessage));
+          
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: appError.userMessage,
+            displayStyle: 'toast',
+            duration: 5000
+          });
           throw {
-            category: 'BUSINESS',
-            code: 'BUSINESS_LIMIT_REACHED',
-            message: `Usage data not available for action type: ${actionType}`
+            category: ErrorCategory.BUSINESS,
+            code: ErrorCodes.BUSINESS_LIMIT_REACHED,
+            message: appError.userMessage
           };
         }
 
@@ -584,10 +792,19 @@ export const useUsageStore = create<UsageStore>()(
       resetUsage: (actionType?: string) => {
         const { usageCache } = get();
         if (!usageCache) {
+          const errorMessage = 'Usage cache not available for reset';
+          const appError = handleError(new Error(errorMessage));
+          
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: appError.userMessage,
+            displayStyle: 'toast',
+            duration: 5000
+          });
           throw {
             category: 'BUSINESS',
             code: 'BUSINESS_LIMIT_REACHED',
-            message: 'Usage cache not available for reset'
+            message: appError.userMessage
           };
         }
 
@@ -643,10 +860,13 @@ export const useUsageStore = create<UsageStore>()(
             duration: 3000
           });
         } catch (error) {
-          console.error('Error resetting usage cache:', handleError(error).userMessage);
+          const appError = handleError(error);
+          const errorMessage = safeStringifyError(error);
+          console.error('Error resetting usage cache:', errorMessage);
+          
           useNotificationStore.getState().addNotification({
             type: 'error',
-            message: 'Failed to reset usage data',
+            message: `Failed to reset usage data: ${appError.userMessage}`,
             displayStyle: 'toast',
             duration: 5000
           });
@@ -654,7 +874,7 @@ export const useUsageStore = create<UsageStore>()(
       }
     })) as StateCreator<UsageStore>,
     {
-      name: 'usage-storage',
+      name: 'usage-store',
       storage: createJSONStorage(() => AsyncStorage),
     }
   )
@@ -674,7 +894,14 @@ export const startUsageSync = () => {
     const { user } = useAuthStore.getState();
     if (!user) return; // Silent fail if not authenticated
 
-    await useUsageStore.getState().syncUsageData();
+    try {
+      await useUsageStore.getState().syncUsageData();
+    } catch (error) {
+      const appError = handleError(error);
+      const errorMessage = safeStringifyError(error);
+      console.error('Periodic usage sync failed:', errorMessage);
+      // Don't show notification for periodic sync failures to avoid spam
+    }
   }, intervalMs) as unknown as number;
 
   console.log('Usage data save started');

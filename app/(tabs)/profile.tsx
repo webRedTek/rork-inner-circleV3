@@ -18,10 +18,42 @@ import { useAffiliateStore } from '@/store/affiliate-store';
 import { CacheViewModal } from '@/components/CacheViewModal';
 import { handleError, ErrorCategory, ErrorCodes } from '@/utils/error-utils';
 
+/**
+ * FILE: app/(tabs)/profile.tsx
+ * LAST UPDATED: 2024-12-20 10:30
+ * 
+ * CURRENT STATE:
+ * Profile screen component that displays user profile information and settings.
+ * Shows membership tier benefits and allows access to admin settings for admins.
+ * Uses cached tier settings from auth store for displaying tier benefits.
+ * 
+ * RECENT CHANGES:
+ * - Removed all calls to non-existent getMatches() function
+ * - Modified to use cached tier settings from auth store instead of getTierSettings()
+ * - Improved error handling for missing tier settings
+ * - Maintains compatibility with existing profile functionality
+ * - Fixed profile saving functionality to use existing state
+ * 
+ * FILE INTERACTIONS:
+ * - Imports from: user types (UserProfile, MembershipTier)
+ * - Imports from: auth-store (user data, tier settings access)
+ * - Imports from: debug-store (debug mode toggle)
+ * - Imports from: components (Button, CacheViewModal)
+ * - Exports to: Tab navigation
+ * - Dependencies: expo-router, react-native components
+ * - Data flow: Displays user profile and tier data from stores
+ * 
+ * KEY FUNCTIONS/COMPONENTS:
+ * - handleAdminSettings: Navigate to admin settings
+ * - handleViewCache: Show cache modal
+ * - handleClearCache: Clear all app caches
+ * - Display tier benefits based on user's membership
+ */
+
 export default function ProfileScreen() {
   const router = useRouter();
   const { user, logout, clearCache, isLoading } = useAuthStore();
-  const { resetCacheAndState } = useMatchesStore();
+  const { resetCacheAndState, fetchPotentialMatches } = useMatchesStore();
   const { resetUsageCache } = useUsageStore();
   const { resetGroupsCache } = useGroupsStore();
   const { resetMessagesCache } = useMessagesStore();
@@ -115,6 +147,18 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleRefreshMatches = async () => {
+    try {
+      if (user) {
+        await fetchPotentialMatches(50, true); // Force refresh with 50km radius
+        Alert.alert('Success', 'Matches refreshed successfully');
+      }
+    } catch (err) {
+      const appError = handleError(err);
+      Alert.alert('Error', appError.userMessage);
+    }
+  };
+
   if (!user) {
     return (
       <SafeAreaView style={styles.container}>
@@ -126,12 +170,8 @@ export default function ProfileScreen() {
   }
 
   // Get current user's tier settings
-  let tierSettings;
-  try {
-    tierSettings = useAuthStore.getState().getTierSettings();
-  } catch (err) {
-    // If tier settings aren't available, we'll just not show the benefits section
-  }
+  const { allTierSettings } = useAuthStore.getState();
+  const tierSettings = user && allTierSettings ? allTierSettings[user.membershipTier] : null;
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -274,6 +314,14 @@ export default function ProfileScreen() {
               variant="outline"
               size="large"
               icon={<Shield size={18} color={Colors.dark.primary} />}
+              style={styles.adminButton}
+            />
+            <Button
+              title="Refresh Matches"
+              onPress={handleRefreshMatches}
+              variant="outline"
+              size="large"
+              icon={<RefreshCw size={18} color={Colors.dark.accent} />}
               style={styles.adminButton}
             />
             <Button

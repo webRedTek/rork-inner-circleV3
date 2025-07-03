@@ -3,15 +3,25 @@ import { View, Text, StyleSheet, ScrollView, TextInput, Switch, Alert, ActivityI
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/auth-store';
+import { useDebugStore } from '@/store/debug-store';
 import Colors from '@/constants/colors';
 import { Button } from '@/components/Button';
 import { supabase } from '@/lib/supabase';
 import { Shield } from 'lucide-react-native';
 import { MembershipTier } from '@/types/user';
+import { handleError } from '@/utils/error-utils';
+import { useNotificationStore } from '@/store/notification-store';
 
+/**
+ * Admin Settings Screen
+ * @rork Please update this component to fix the settings saving functionality
+ * Last updated: 2025-07-01
+ */
 export default function AdminSettingsScreen() {
   const router = useRouter();
   const { user, invalidateTierSettingsCache } = useAuthStore();
+  const { isDebugMode, setDebugMode } = useDebugStore();
+  const { addNotification } = useNotificationStore();
   const [settingsByTier, setSettingsByTier] = useState<Record<MembershipTier, Record<string, any>>>({
     bronze: {},
     silver: {},
@@ -41,7 +51,8 @@ export default function AdminSettingsScreen() {
         .select('*');
 
       if (settingsError) {
-        throw new Error(`Failed to fetch settings: ${settingsError.message}`);
+        const appError = handleError(settingsError);
+        throw new Error(`Failed to fetch settings: ${appError.userMessage}`);
       }
 
       if (data && data.length > 0) {
@@ -60,7 +71,14 @@ export default function AdminSettingsScreen() {
         setError('No settings found.');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load settings. Please try again.');
+      const appError = handleError(err);
+      setError(appError.userMessage);
+      addNotification({
+        type: 'error',
+        message: `Failed to load settings: ${appError.userMessage}`,
+        displayStyle: 'toast',
+        duration: 5000
+      });
     } finally {
       setLoading(false);
     }
@@ -91,68 +109,115 @@ export default function AdminSettingsScreen() {
         const settings = settingsByTier[tierKey];
         console.log(`Processing tier: ${tier}`, settings);
         
-        // Ensure required fields have default values if missing
+        // Validate numeric fields
+        const numericFields = [
+          'daily_swipe_limit',
+          'daily_match_limit',
+          'daily_like_limit',
+          'message_sending_limit',
+          'boost_duration',
+          'boost_frequency',
+          'groups_limit',
+          'groups_creation_limit',
+          'featured_portfolio_limit',
+          'events_per_month',
+          'trial_duration'
+        ];
+        
+        for (const field of numericFields) {
+          const value = settings[field];
+          if (value !== undefined && (isNaN(value) || value < 0)) {
+            throw new Error(`Invalid value for ${field} in ${tier} tier. Must be a positive number.`);
+          }
+        }
+        
+        // Match schema exactly
         const settingsToSave = {
           tier: tierKey,
-          daily_swipe_limit: settings.daily_swipe_limit || 0,
-          daily_match_limit: settings.daily_match_limit || 0,
-          daily_like_limit: settings.daily_like_limit || 0,
-          message_sending_limit: settings.message_sending_limit || 0,
-          can_see_who_liked_you: settings.can_see_who_liked_you || false,
-          can_rewind_last_swipe: settings.can_rewind_last_swipe || false,
-          profile_visibility_control: settings.profile_visibility_control || false,
-          priority_listing: settings.priority_listing || false,
-          premium_filters_access: settings.premium_filters_access || false,
-          global_discovery: settings.global_discovery || false,
-          boost_duration: settings.boost_duration || 0,
-          boost_frequency: settings.boost_frequency || 0,
-          groups_limit: settings.groups_limit || 0,
-          groups_creation_limit: settings.groups_creation_limit || 0,
-          featured_portfolio_limit: settings.featured_portfolio_limit || 0,
-          events_per_month: settings.events_per_month || 0,
-          can_create_groups: settings.can_create_groups || false,
-          has_business_verification: settings.has_business_verification || false,
-          has_advanced_analytics: settings.has_advanced_analytics || false,
-          has_priority_inbox: settings.has_priority_inbox || false,
-          can_send_direct_intro: settings.can_send_direct_intro || false,
-          has_virtual_meeting_room: settings.has_virtual_meeting_room || false,
-          has_custom_branding: settings.has_custom_branding || false,
-          has_dedicated_support: settings.has_dedicated_support || false,
+          daily_swipe_limit: parseInt(settings.daily_swipe_limit) || 0,
+          daily_match_limit: parseInt(settings.daily_match_limit) || 0,
+          daily_like_limit: parseInt(settings.daily_like_limit) || 0,
+          message_sending_limit: parseInt(settings.message_sending_limit) || 0,
+          can_see_who_liked_you: Boolean(settings.can_see_who_liked_you),
+          can_rewind_last_swipe: Boolean(settings.can_rewind_last_swipe),
+          boost_duration: parseInt(settings.boost_duration) || 0,
+          boost_frequency: parseInt(settings.boost_frequency) || 0,
+          profile_visibility_control: Boolean(settings.profile_visibility_control),
+          priority_listing: Boolean(settings.priority_listing),
+          premium_filters_access: Boolean(settings.premium_filters_access),
+          global_discovery: Boolean(settings.global_discovery),
+          groups_limit: parseInt(settings.groups_limit) || 1,
+          groups_creation_limit: parseInt(settings.groups_creation_limit) || 0,
+          featured_portfolio_limit: parseInt(settings.featured_portfolio_limit) || 1,
+          events_per_month: parseInt(settings.events_per_month) || 0,
+          has_business_verification: Boolean(settings.has_business_verification),
+          has_advanced_analytics: Boolean(settings.has_advanced_analytics),
+          has_priority_inbox: Boolean(settings.has_priority_inbox),
+          can_send_direct_intro: Boolean(settings.can_send_direct_intro),
+          has_virtual_meeting_room: Boolean(settings.has_virtual_meeting_room),
+          has_custom_branding: Boolean(settings.has_custom_branding),
+          has_dedicated_support: Boolean(settings.has_dedicated_support),
+          can_create_groups: Boolean(settings.can_create_groups),
+          trial_duration: parseInt(settings.trial_duration) || 14,
+          updated_at: new Date().toISOString()
         };
         
-        if (settings.id) {
-          console.log(`Updating settings for tier ${tier} with ID: ${settings.id}`);
-          const { error: updateError } = await supabase
-            .from('app_settings')
-            .update(settingsToSave)
-            .eq('id', settings.id);
+        try {
+          if (settings.id) {
+            console.log(`Updating settings for tier ${tier} with ID: ${settings.id}`);
+            const { error: updateError } = await supabase
+              .from('app_settings')
+              .update(settingsToSave)
+              .eq('id', settings.id);
 
-          if (updateError) {
-            console.error(`Update error for tier ${tier}:`, updateError);
-            throw new Error(`Failed to update settings for ${tier}: ${updateError.message}`);
-          }
-        } else {
-          console.log(`Inserting new settings for tier ${tier}`);
-          const { error: insertError } = await supabase
-            .from('app_settings')
-            .insert(settingsToSave);
+            if (updateError) {
+              const appError = handleError(updateError);
+              throw new Error(`Failed to update settings for ${tier}: ${appError.userMessage}`);
+            }
+          } else {
+            console.log(`Inserting new settings for tier ${tier}`);
+            const { error: insertError } = await supabase
+              .from('app_settings')
+              .insert({
+                ...settingsToSave,
+                created_at: new Date().toISOString()
+              });
 
-          if (insertError) {
-            console.error(`Insert error for tier ${tier}:`, insertError);
-            throw new Error(`Failed to insert settings for ${tier}: ${insertError.message}`);
+            if (insertError) {
+              const appError = handleError(insertError);
+              throw new Error(`Failed to insert settings for ${tier}: ${appError.userMessage}`);
+            }
           }
+        } catch (dbError: any) {
+          console.error(`Database error for tier ${tier}:`, dbError);
+          const appError = handleError(dbError);
+          throw new Error(`Failed to save settings for ${tier}: ${appError.userMessage}`);
         }
       }
 
       // Invalidate tier settings cache after successful save
       await invalidateTierSettingsCache();
 
-      Alert.alert('Success', 'Settings updated successfully.', [{ text: 'OK' }]);
+      addNotification({
+        type: 'success',
+        message: 'Settings updated successfully',
+        displayStyle: 'toast',
+        duration: 3000
+      });
+
       console.log('Settings saved successfully, refreshing data...');
       await fetchSettings(); // Refresh settings after save
     } catch (err) {
       console.error('Error saving settings:', err);
-      setError(err instanceof Error ? err.message : 'Failed to save settings. Please try again.');
+      const appError = handleError(err);
+      setError(appError.userMessage);
+      
+      addNotification({
+        type: 'error',
+        message: `Failed to save settings: ${appError.userMessage}`,
+        displayStyle: 'toast',
+        duration: 8000
+      });
     } finally {
       setSaving(false);
     }
@@ -472,8 +537,42 @@ export default function AdminSettingsScreen() {
                 />
               </View>
             </View>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Trial Settings</Text>
+              
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Trial Duration (Days)</Text>
+                <TextInput
+                  style={styles.numberInput}
+                  value={settingsByTier[tier as MembershipTier]?.trial_duration?.toString() || '14'}
+                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'trial_duration', parseInt(text) || 14)}
+                  keyboardType="numeric"
+                  placeholder="Enter number"
+                />
+              </View>
+            </View>
           </View>
         ))}
+        
+        <View style={styles.tierSection}>
+          <Text style={styles.tierTitle}>Debug Settings</Text>
+          
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Development Tools</Text>
+            
+            <View style={styles.settingItem}>
+              <Text style={styles.settingLabel}>Debug Mode</Text>
+              <Text style={styles.settingDescription}>Enable debug logging and UI elements for troubleshooting</Text>
+              <Switch
+                value={isDebugMode}
+                onValueChange={setDebugMode}
+                trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
+                thumbColor={Colors.dark.background}
+              />
+            </View>
+          </View>
+        </View>
         
         <Button
           title="Save Changes"
@@ -555,6 +654,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.dark.text,
     flex: 1,
+  },
+  settingDescription: {
+    fontSize: 14,
+    color: Colors.dark.textSecondary,
+    flex: 2,
   },
   numberInput: {
     backgroundColor: Colors.dark.card,

@@ -279,8 +279,6 @@ export type SwipeAction = {
 export type PotentialMatchesResult = {
   matches: any[];
   count: number;
-  max_distance: number;
-  is_global: boolean;
 };
 
 // Define swipe batch result type
@@ -293,18 +291,115 @@ export type SwipeBatchResult = {
   match_count: number;
 };
 
+// Enhanced connection state tracking
+interface ConnectionState {
+  isOnline: boolean;
+  quality: 'excellent' | 'good' | 'poor' | 'offline';
+  lastCheck: number;
+  consecutiveFailures: number;
+  adaptiveTimeout: number;
+}
+
 // Initialize supabase client with proper typing
 let supabase: ReturnType<typeof createClient<Database>> | null = null;
 
-// Track connection status
-let lastConnectionCheck = 0;
-let isConnected = true;
-const CONNECTION_CHECK_INTERVAL = 60000; // 1 minute
+// Enhanced connection state
+let connectionState: ConnectionState = {
+  isOnline: true,
+  quality: 'good',
+  lastCheck: 0,
+  consecutiveFailures: 0,
+  adaptiveTimeout: 15000
+};
 
-// Retry configuration
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 1000; // 1 second
-const RETRY_BACKOFF_FACTOR = 1.5;
+const CONNECTION_CHECK_INTERVAL = 30000; // 30 seconds
+const MAX_CONSECUTIVE_FAILURES = 3;
+const MIN_TIMEOUT = 5000;
+const MAX_TIMEOUT = 30000;
+
+// Enhanced retry configuration with adaptive strategies
+interface EnhancedRetryOptions {
+  maxRetries?: number;
+  baseDelay?: number;
+  maxDelay?: number;
+  backoffFactor?: number;
+  shouldRetry?: (error: any) => boolean;
+  adaptiveTimeout?: boolean;
+}
+
+/**
+ * Enhanced network status checking with quality assessment
+ */
+export const checkNetworkStatus = async (): Promise<{
+  isConnected: boolean | null;
+  type?: string | null;
+  isInternetReachable?: boolean | null;
+  quality?: 'excellent' | 'good' | 'poor' | 'offline';
+}> => {
+  try {
+    const now = Date.now();
+    
+    // Only check network status periodically to avoid excessive checks
+    if (now - connectionState.lastCheck < CONNECTION_CHECK_INTERVAL) {
+      return { 
+        isConnected: connectionState.isOnline,
+        quality: connectionState.quality
+      };
+    }
+    
+    connectionState.lastCheck = now;
+    const netInfo = await NetInfo.fetch();
+    
+    // Assess connection quality
+    let quality: 'excellent' | 'good' | 'poor' | 'offline' = 'offline';
+    
+    if (netInfo.isConnected) {
+      if (netInfo.type === 'wifi') {
+        quality = 'excellent';
+      } else if (netInfo.type === 'cellular') {
+        // Could add more sophisticated cellular quality detection here
+        quality = 'good';
+      } else {
+        quality = 'poor';
+      }
+      
+      connectionState.consecutiveFailures = 0;
+      connectionState.adaptiveTimeout = Math.max(
+        connectionState.adaptiveTimeout * 0.9,
+        MIN_TIMEOUT
+      );
+    } else {
+      quality = 'offline';
+      connectionState.consecutiveFailures++;
+      connectionState.adaptiveTimeout = Math.min(
+        connectionState.adaptiveTimeout * 1.5,
+        MAX_TIMEOUT
+      );
+    }
+    
+    connectionState.isOnline = !!netInfo.isConnected;
+    connectionState.quality = quality;
+    
+    console.log('[Enhanced Supabase] Network status check:', {
+      isConnected: netInfo.isConnected,
+      type: netInfo.type,
+      quality,
+      consecutiveFailures: connectionState.consecutiveFailures,
+      adaptiveTimeout: connectionState.adaptiveTimeout
+    });
+    
+    return {
+      isConnected: netInfo.isConnected,
+      type: netInfo.type,
+      isInternetReachable: netInfo.isInternetReachable,
+      quality
+    };
+  } catch (error) {
+    console.error('[Enhanced Supabase] Error checking network status:', error);
+    connectionState.consecutiveFailures++;
+    return { isConnected: null, quality: 'offline' };
+  }
+};
 
 /**
  * Checks if Supabase is configured in the environment
@@ -318,163 +413,23 @@ export const isSupabaseConfigured = (): boolean => {
     process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 
     Constants.expoConfig?.extra?.supabaseAnonKey;
 
-  console.log('Supabase config check:', { 
+  console.log('[Enhanced Supabase] Config check:', { 
     hasUrl: !!supabaseUrl, 
-    hasKey: !!supabaseAnonKey
+    hasKey: !!supabaseAnonKey,
+    connectionQuality: connectionState.quality
   });
 
   return Boolean(supabaseUrl && supabaseAnonKey);
 };
 
 /**
- * Checks network connectivity
- * @returns Promise with network status
+ * Enhanced custom fetch implementation with adaptive timeout and intelligent retry
  */
-export const checkNetworkStatus = async (): Promise<{
-  isConnected: boolean | null;
-  type?: string | null;
-  isInternetReachable?: boolean | null;
-}> => {
-  try {
-    const now = Date.now();
-    // Only check network status every minute to avoid excessive checks
-    if (now - lastConnectionCheck < CONNECTION_CHECK_INTERVAL) {
-      return { isConnected };
-    }
-    
-    lastConnectionCheck = now;
-    const netInfo = await NetInfo.fetch();
-    isConnected = !!netInfo.isConnected;
-    
-    console.log('Network status check:', {
-      isConnected: netInfo.isConnected,
-      type: netInfo.type,
-      isInternetReachable: netInfo.isInternetReachable
-    });
-    
-    return {
-      isConnected: netInfo.isConnected,
-      type: netInfo.type,
-      isInternetReachable: netInfo.isInternetReachable
-    };
-  } catch (error) {
-    console.error('Error checking network status:', error);
-    return { isConnected: null };
-  }
-};
-
-/**
- * Initializes the Supabase client with retry logic
- * @returns boolean indicating if initialization was successful
- */
-export const initSupabase = async (): Promise<boolean> => {
-  try {
-    // Check network connectivity first
-    const networkStatus = await checkNetworkStatus();
-    if (networkStatus.isConnected === false) {
-      console.warn('Network appears to be offline. Supabase initialization may fail.');
-    }
-    
-    if (!isSupabaseConfigured()) {
-      console.warn('Supabase is not configured. Please set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in your environment.');
-      // Check AsyncStorage for saved values
-      const savedUrl = await AsyncStorage.getItem('SUPABASE_URL');
-      const savedKey = await AsyncStorage.getItem('SUPABASE_KEY');
-      if (savedUrl && savedKey) {
-        console.log('Using saved Supabase configuration from AsyncStorage');
-        return await initWithRetry(savedUrl, savedKey);
-      }
-      throw new Error('Supabase is not configured and no saved configuration found. Please check your setup.');
-    }
-
-    const supabaseUrl = 
-      process.env.EXPO_PUBLIC_SUPABASE_URL || 
-      Constants.expoConfig?.extra?.supabaseUrl;
-    
-    const supabaseAnonKey = 
-      process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 
-      Constants.expoConfig?.extra?.supabaseAnonKey;
-
-    if (!supabaseUrl || !supabaseAnonKey) {
-      throw new Error('Supabase URL or Anon Key is missing. Please check your environment variables.');
-    }
-
-    return await initWithRetry(supabaseUrl, supabaseAnonKey);
-  } catch (error) {
-    console.error('Error initializing Supabase:', error instanceof Error ? error.message : String(error));
-    console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');
-    
-    // Try to get more details about the error
-    const details = {
-      networkStatus: await checkNetworkStatus(),
-      hasUrl: Boolean(process.env.EXPO_PUBLIC_SUPABASE_URL || Constants.expoConfig?.extra?.supabaseUrl),
-      hasKey: Boolean(process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || Constants.expoConfig?.extra?.supabaseAnonKey),
-      hasSavedUrl: Boolean(await AsyncStorage.getItem('SUPABASE_URL')),
-      hasSavedKey: Boolean(await AsyncStorage.getItem('SUPABASE_KEY'))
-    };
-    console.error('Supabase initialization details:', details);
-    
-    throw error;
-  }
-};
-
-/**
- * Initialize Supabase with retry logic
- */
-const initWithRetry = async (url: string, key: string, retryCount = 0): Promise<boolean> => {
-  try {
-    console.log(`Initializing Supabase with URL: ${url.substring(0, 15)}... (Attempt ${retryCount + 1}/${MAX_RETRIES})`);
-    
-    supabase = createClient<Database>(url, key, {
-      auth: {
-        storage: AsyncStorage,
-        autoRefreshToken: true,
-        persistSession: true,
-        detectSessionInUrl: Platform.OS === 'web',
-      },
-      global: {
-        fetch: customFetch
-      }
-    });
-    
-    // Test the connection with a simple query
-    const { data, error } = await supabase.from('app_settings').select('id').limit(1).maybeSingle();
-    
-    if (error) {
-      console.error('Supabase connection test failed:', error);
-      if (retryCount < MAX_RETRIES - 1) {
-        console.warn(`Supabase initialization attempt ${retryCount + 1} failed: ${error.message}. Retrying...`);
-        const delay = RETRY_DELAY * Math.pow(RETRY_BACKOFF_FACTOR, retryCount);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        return initWithRetry(url, key, retryCount + 1);
-      } else {
-        throw error;
-      }
-    }
-    
-    console.log('Supabase client initialized successfully.');
-    return true;
-  } catch (error) {
-    if (retryCount < MAX_RETRIES - 1) {
-      console.warn(`Supabase initialization attempt ${retryCount + 1} failed. Retrying...`);
-      const delay = RETRY_DELAY * Math.pow(RETRY_BACKOFF_FACTOR, retryCount);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return initWithRetry(url, key, retryCount + 1);
-    }
-    
-    console.error('All Supabase initialization attempts failed:', error instanceof Error ? error.message : String(error));
-    throw error;
-  }
-};
-
-/**
- * Custom fetch implementation with timeout and retry logic
- */
-const customFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-  const timeout = 15000; // 15 seconds timeout
+const enhancedFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  const timeout = connectionState.adaptiveTimeout;
   
-  const fetchWithTimeout = async (attempt = 0): Promise<Response> => {
-    try {
+  const fetchWithAdaptiveTimeout = async (attempt = 0): Promise<Response> => {
+  try {
       // Check network status before making request
       const networkStatus = await checkNetworkStatus();
       if (networkStatus.isConnected === false) {
@@ -490,31 +445,157 @@ const customFetch = async (input: RequestInfo | URL, init?: RequestInit): Promis
       });
       
       clearTimeout(timeoutId);
+      
+      // Update connection state on success
+      if (response.ok) {
+        connectionState.consecutiveFailures = 0;
+      }
+      
       return response;
-    } catch (error) {
+  } catch (error) {
       const isTimeoutError = error instanceof Error && error.name === 'AbortError';
       const isNetworkError = error instanceof Error && 
         (error.message.includes('Network') || 
          error.message.includes('Failed to fetch') ||
          error.message.includes('offline'));
       
-      if ((isTimeoutError || isNetworkError) && attempt < MAX_RETRIES - 1) {
-        console.warn(`Fetch attempt ${attempt + 1} failed: ${error instanceof Error ? error.message : 'Unknown error'}. Retrying...`);
-        const delay = RETRY_DELAY * Math.pow(RETRY_BACKOFF_FACTOR, attempt);
+      connectionState.consecutiveFailures++;
+      
+      // Adaptive retry logic based on connection quality and failure count
+      const maxRetries = connectionState.quality === 'excellent' ? 2 : 
+                        connectionState.quality === 'good' ? 3 : 4;
+      
+      if ((isTimeoutError || isNetworkError) && attempt < maxRetries) {
+        const delay = Math.min(1000 * Math.pow(1.5, attempt), 5000);
+        
+        console.warn(`[Enhanced Supabase] Fetch attempt ${attempt + 1} failed: ${error instanceof Error ? error.message : 'Unknown error'}. Retrying in ${delay}ms...`);
+        
         await new Promise(resolve => setTimeout(resolve, delay));
-        return fetchWithTimeout(attempt + 1);
+        return fetchWithAdaptiveTimeout(attempt + 1);
       }
       
       throw error;
-    }
+  }
   };
   
-  return fetchWithTimeout();
+  return fetchWithAdaptiveTimeout();
 };
 
 /**
- * Tests the Supabase connection with a simple query to app_settings table
- * @returns Object with success status and optional error
+ * Enhanced Supabase initialization with adaptive configuration
+ */
+export const initSupabase = async (): Promise<boolean> => {
+  try {
+    // Check network connectivity first
+    const networkStatus = await checkNetworkStatus();
+    if (networkStatus.isConnected === false) {
+      console.warn('[Enhanced Supabase] Network appears to be offline. Initialization may fail.');
+    }
+    
+    if (!isSupabaseConfigured()) {
+      console.warn('[Enhanced Supabase] Not configured. Please set environment variables.');
+      
+      // Check AsyncStorage for saved values
+      const savedUrl = await AsyncStorage.getItem('SUPABASE_URL');
+      const savedKey = await AsyncStorage.getItem('SUPABASE_KEY');
+      if (savedUrl && savedKey) {
+        console.log('[Enhanced Supabase] Using saved configuration from AsyncStorage');
+        return await initWithEnhancedRetry(savedUrl, savedKey);
+      }
+      throw new Error('Supabase is not configured and no saved configuration found.');
+    }
+
+    const supabaseUrl = 
+      process.env.EXPO_PUBLIC_SUPABASE_URL || 
+      Constants.expoConfig?.extra?.supabaseUrl;
+    
+    const supabaseAnonKey = 
+      process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 
+      Constants.expoConfig?.extra?.supabaseAnonKey;
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      throw new Error('Supabase URL or Anon Key is missing.');
+    }
+
+    return await initWithEnhancedRetry(supabaseUrl, supabaseAnonKey);
+  } catch (error) {
+    console.error('[Enhanced Supabase] Initialization failed:', error instanceof Error ? error.message : String(error));
+    
+    // Enhanced error details
+    const details = {
+      networkStatus: await checkNetworkStatus(),
+      connectionState,
+      hasUrl: Boolean(process.env.EXPO_PUBLIC_SUPABASE_URL || Constants.expoConfig?.extra?.supabaseUrl),
+      hasKey: Boolean(process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || Constants.expoConfig?.extra?.supabaseAnonKey),
+      hasSavedUrl: Boolean(await AsyncStorage.getItem('SUPABASE_URL')),
+      hasSavedKey: Boolean(await AsyncStorage.getItem('SUPABASE_KEY'))
+    };
+    console.error('[Enhanced Supabase] Initialization details:', details);
+    
+    throw error;
+  }
+};
+
+/**
+ * Enhanced initialization with adaptive retry strategy
+ */
+const initWithEnhancedRetry = async (url: string, key: string, retryCount = 0): Promise<boolean> => {
+  const maxRetries = connectionState.quality === 'excellent' ? 2 : 
+                    connectionState.quality === 'good' ? 3 : 4;
+  
+  try {
+    console.log(`[Enhanced Supabase] Initializing with URL: ${url.substring(0, 15)}... (Attempt ${retryCount + 1}/${maxRetries + 1})`);
+    
+    supabase = createClient<Database>(url, key, {
+      auth: {
+        storage: AsyncStorage,
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: Platform.OS === 'web',
+      },
+      global: {
+        fetch: enhancedFetch
+      }
+    });
+    
+    // Enhanced connection test with timeout
+    const { data, error } = await Promise.race([
+      supabase.from('app_settings').select('id').limit(1).maybeSingle(),
+      new Promise<{ data: null; error: Error }>((_, reject) => 
+        setTimeout(() => reject(new Error('Connection test timeout')), connectionState.adaptiveTimeout)
+      )
+    ]);
+    
+    if (error) {
+      console.error('[Enhanced Supabase] Connection test failed:', error);
+      if (retryCount < maxRetries) {
+        const delay = Math.min(1000 * Math.pow(1.5, retryCount), 5000);
+        console.warn(`[Enhanced Supabase] Initialization attempt ${retryCount + 1} failed: ${error.message}. Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return initWithEnhancedRetry(url, key, retryCount + 1);
+      } else {
+        throw error;
+      }
+    }
+    
+    console.log('[Enhanced Supabase] Client initialized successfully.');
+    connectionState.consecutiveFailures = 0;
+    return true;
+  } catch (error) {
+    if (retryCount < maxRetries) {
+      const delay = Math.min(1000 * Math.pow(1.5, retryCount), 5000);
+      console.warn(`[Enhanced Supabase] Initialization attempt ${retryCount + 1} failed. Retrying in ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return initWithEnhancedRetry(url, key, retryCount + 1);
+    }
+    
+    console.error('[Enhanced Supabase] All initialization attempts failed:', error instanceof Error ? error.message : String(error));
+      throw error;
+    }
+};
+
+/**
+ * Enhanced connection test with comprehensive diagnostics
  */
 export const testSupabaseConnection = async (): Promise<ConnectionTestResult> => {
   try {
@@ -522,7 +603,7 @@ export const testSupabaseConnection = async (): Promise<ConnectionTestResult> =>
     const networkStatus = await checkNetworkStatus();
     
     if (networkStatus.isConnected === false) {
-      console.warn('Network appears to be offline. Connection test will likely fail.');
+      console.warn('[Enhanced Supabase] Network appears to be offline. Connection test will likely fail.');
       return { 
         success: false, 
         error: 'Network appears to be offline', 
@@ -531,7 +612,7 @@ export const testSupabaseConnection = async (): Promise<ConnectionTestResult> =>
     }
     
     if (!supabase) {
-      console.error('Supabase client not initialized during connection test.');
+      console.error('[Enhanced Supabase] Client not initialized during connection test.');
       return { 
         success: false, 
         error: 'Supabase client not initialized',
@@ -539,42 +620,54 @@ export const testSupabaseConnection = async (): Promise<ConnectionTestResult> =>
       };
     }
 
-    console.log('Testing Supabase connection with app_settings query...');
+    console.log('[Enhanced Supabase] Testing connection with app_settings query...');
     
-    // Use retry logic for the test
+    // Enhanced test with adaptive retry
+    const maxRetries = connectionState.quality === 'excellent' ? 2 : 3;
     let lastError = null;
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        const { data, error } = await supabase.from('app_settings').select('id').limit(1);
+        const { data, error } = await Promise.race([
+          supabase.from('app_settings').select('id').limit(1),
+          new Promise<{ data: null; error: Error }>((_, reject) => 
+            setTimeout(() => reject(new Error('Connection test timeout')), connectionState.adaptiveTimeout)
+          )
+        ]);
         
         if (error) {
           lastError = error;
-          console.warn(`Connection test attempt ${attempt + 1} failed: ${error.message}`);
-          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * Math.pow(RETRY_BACKOFF_FACTOR, attempt)));
+          console.warn(`[Enhanced Supabase] Connection test attempt ${attempt + 1} failed: ${error.message}`);
+          if (attempt < maxRetries - 1) {
+            const delay = Math.min(1000 * Math.pow(1.5, attempt), 3000);
+            await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
-        
-        console.log('Supabase connection test successful. app_settings query returned data:', data);
+        } else {
+          console.log('[Enhanced Supabase] Connection test successful. app_settings query returned data:', data);
+          connectionState.consecutiveFailures = 0;
         return { success: true, networkStatus };
+        }
       } catch (error) {
         lastError = error;
-        console.warn(`Connection test attempt ${attempt + 1} failed with exception: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        console.warn(`[Enhanced Supabase] Connection test attempt ${attempt + 1} failed with exception: ${error instanceof Error ? error.message : 'Unknown error'}`);
         
-        if (attempt < MAX_RETRIES - 1) {
-          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * Math.pow(RETRY_BACKOFF_FACTOR, attempt)));
+        if (attempt < maxRetries - 1) {
+          const delay = Math.min(1000 * Math.pow(1.5, attempt), 3000);
+          await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
     }
     
-    console.error('All connection test attempts failed:', lastError);
+    console.error('[Enhanced Supabase] All connection test attempts failed:', lastError);
+    connectionState.consecutiveFailures++;
     return { 
       success: false, 
       error: lastError instanceof Error ? lastError.message : String(lastError),
       networkStatus
     };
   } catch (error) {
-    console.error('Error testing Supabase connection:', error instanceof Error ? error.message : String(error));
-    console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');
+    console.error('[Enhanced Supabase] Error testing connection:', error instanceof Error ? error.message : String(error));
     
     const networkStatus = await checkNetworkStatus();
     return { 
@@ -583,6 +676,71 @@ export const testSupabaseConnection = async (): Promise<ConnectionTestResult> =>
       networkStatus
     };
   }
+};
+
+/**
+ * Enhanced operation wrapper with adaptive retry and circuit breaker
+ */
+export const retryOperation = async <T>(
+  operation: () => Promise<T>,
+  options: EnhancedRetryOptions = {}
+): Promise<T> => {
+  const { 
+    maxRetries = connectionState.quality === 'excellent' ? 2 : 3,
+    baseDelay = 1000,
+    maxDelay = 10000,
+    backoffFactor = 1.5,
+    shouldRetry = () => true,
+    adaptiveTimeout = true
+  } = options;
+  
+  let lastError: any;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Apply adaptive timeout if enabled
+      if (adaptiveTimeout) {
+        return await Promise.race([
+          operation(),
+          new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Operation timeout')), connectionState.adaptiveTimeout)
+          )
+        ]);
+      } else {
+        return await operation();
+      }
+    } catch (error) {
+      lastError = error;
+      
+      // Enhanced error logging
+      console.log(`[Enhanced Supabase] Retry attempt ${attempt}/${maxRetries} failed:`, {
+        error,
+        type: typeof error,
+        message: error && typeof error === 'object' && 'message' in error ? error.message : 'No message',
+        details: error && typeof error === 'object' && 'details' in error ? error.details : 'No details',
+        connectionQuality: connectionState.quality,
+        consecutiveFailures: connectionState.consecutiveFailures
+      });
+
+      if (attempt === maxRetries || !shouldRetry(error)) {
+        console.error('[Enhanced Supabase] All operation attempts failed:', {
+          error: lastError,
+          attempts: attempt,
+          connectionState
+        });
+        throw lastError;
+      }
+
+      // Adaptive delay based on connection quality and failure count
+      const baseDelayAdjusted = connectionState.quality === 'poor' ? baseDelay * 2 : baseDelay;
+      const waitTime = Math.min(baseDelayAdjusted * Math.pow(backoffFactor, attempt - 1), maxDelay);
+      
+      console.log(`[Enhanced Supabase] Waiting ${waitTime}ms before retry ${attempt + 1}`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+  }
+
+  throw lastError;
 };
 
 /**
@@ -596,13 +754,22 @@ export const clearSupabaseConfig = async (): Promise<void> => {
     
     supabase = null;
     
+    // Reset connection state
+    connectionState = {
+      isOnline: true,
+      quality: 'good',
+      lastCheck: 0,
+      consecutiveFailures: 0,
+      adaptiveTimeout: 15000
+    };
+    
     // Clear saved configuration
     await AsyncStorage.removeItem('SUPABASE_URL');
     await AsyncStorage.removeItem('SUPABASE_KEY');
     
-    console.log('Supabase configuration cleared');
+    console.log('[Enhanced Supabase] Configuration cleared and state reset');
   } catch (error) {
-    console.error('Error clearing Supabase configuration:', error);
+    console.error('[Enhanced Supabase] Error clearing configuration:', error);
     throw error;
   }
 };
@@ -648,7 +815,7 @@ export const convertToSnakeCase = (obj: Record<string, any>): Record<string, any
 };
 
 /**
- * Helper function to extract readable error message from Supabase error
+ * Enhanced error message extraction
  */
 export const getReadableError = (error: any): string => {
   if (!error) return 'Unknown error occurred';
@@ -669,51 +836,7 @@ export const getReadableError = (error: any): string => {
 };
 
 /**
- * Generic retry function for Supabase operations
- */
-export const retryOperation = async <T>(
-  operation: () => Promise<T>, 
-  maxRetries: number = MAX_RETRIES,
-  initialDelay: number = RETRY_DELAY,
-  backoffFactor: number = RETRY_BACKOFF_FACTOR
-): Promise<T> => {
-  let lastError: any = null;
-  
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      // Check network connectivity before operation
-      const networkStatus = await checkNetworkStatus();
-      if (networkStatus.isConnected === false) {
-        console.warn(`Network appears to be offline on attempt ${attempt + 1}. Operation may fail.`);
-      }
-      
-      return await operation();
-    } catch (error) {
-      lastError = error;
-      
-      const isNetworkError = error instanceof Error && 
-        (error.message.includes('Network') || 
-         error.message.includes('Failed to fetch') ||
-         error.message.includes('offline') ||
-         error.message.includes('AuthRetryableFetchError'));
-      
-      console.warn(`Operation attempt ${attempt + 1} failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      
-      if (attempt < maxRetries - 1) {
-        const delay = initialDelay * Math.pow(backoffFactor, attempt);
-        console.log(`Retrying in ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-  }
-  
-  console.error('All operation attempts failed:', lastError);
-  throw lastError;
-};
-
-/**
- * Fetches app settings from Supabase
- * @returns Promise with app settings data or error
+ * Enhanced app settings operations
  */
 export const getAppSettings = async () => {
   if (!supabase) {
@@ -732,38 +855,16 @@ export const getAppSettings = async () => {
     }
     
     return data?.[0] || null;
-  });
-};
-
-/**
- * Updates app settings in Supabase
- * @param settings - The settings object to update
- * @returns Promise with updated data or error
- */
-export const updateAppSettings = async (settings: Record<string, any>) => {
-  if (!supabase) {
-    throw new Error('Supabase client not initialized');
-  }
-  const client = supabase as SupabaseClient<Database>;
-  
-  return retryOperation(async () => {
-    const { data, error } = await client
-      .from('app_settings')
-      .update(settings)
-      .eq('id', settings.id);
-    
-    if (error) {
-      throw error;
+  }, {
+    shouldRetry: (error) => {
+      const errorMsg = String(error).toLowerCase();
+      return errorMsg.includes('network') || errorMsg.includes('timeout') || errorMsg.includes('connection');
     }
-    
-    return data;
   });
 };
 
 /**
- * Fetches tier settings for a specific membership tier
- * @param tier - The membership tier to fetch settings for
- * @returns Promise with tier settings data or error
+ * Enhanced tier settings operations
  */
 export const getUserTierSettings = async (tier: string) => {
   if (!supabase) {
@@ -791,10 +892,7 @@ export const getUserTierSettings = async (tier: string) => {
 };
 
 /**
- * Batch updates usage tracking data in Supabase
- * @param userId - The user ID for whom to update usage data
- * @param updates - Array of updates with action type, count change, and timestamp
- * @returns Promise with result or error
+ * Enhanced batch usage updates
  */
 export const batchUpdateUsage = async (userId: string, updates: Array<{ action_type: string; count_change: number; timestamp: number }>) => {
   if (!supabase) {
@@ -809,7 +907,7 @@ export const batchUpdateUsage = async (userId: string, updates: Array<{ action_t
     });
     
     if (error) {
-      console.error('Error in batchUpdateUsage:', error);
+      console.error('[Enhanced Supabase] Error in batchUpdateUsage:', error);
       throw error;
     }
     
@@ -818,9 +916,7 @@ export const batchUpdateUsage = async (userId: string, updates: Array<{ action_t
 };
 
 /**
- * Processes a batch of swipe actions in Supabase
- * @param swipeActions - Array of swipe actions to process
- * @returns Promise with batch processing results or error
+ * Enhanced swipe batch processing
  */
 export const processSwipeBatch = async (swipeActions: SwipeAction[]): Promise<SwipeBatchResult | null> => {
   if (!supabase) {
@@ -834,49 +930,97 @@ export const processSwipeBatch = async (swipeActions: SwipeAction[]): Promise<Sw
     });
     
     if (error) {
-      console.error('Error processing swipe batch:', error);
+      console.error('[Enhanced Supabase] Error processing swipe batch:', error);
       throw error;
     }
     
     return data as SwipeBatchResult;
+  }, {
+    maxRetries: connectionState.quality === 'poor' ? 4 : 3,
+    shouldRetry: (error) => {
+      const errorMsg = String(error).toLowerCase();
+      return errorMsg.includes('network') || 
+             errorMsg.includes('timeout') || 
+             errorMsg.includes('connection') ||
+             errorMsg.includes('rate limit');
+    }
   });
 };
 
 /**
- * Fetches potential matches for a user from Supabase
- * @param userId - The user ID to fetch matches for
- * @param maxDistance - Maximum distance for local discovery
- * @param isGlobalDiscovery - Whether to use global discovery
- * @param limit - Maximum number of matches to return
- * @returns Promise with potential matches or error
+ * Enhanced potential matches fetching with better debugging
  */
-export const fetchPotentialMatches = async (userId: string, maxDistance: number = 50, isGlobalDiscovery: boolean = false, limit: number = 25): Promise<PotentialMatchesResult | null> => {
+export const fetchPotentialMatches = async (
+  userId: string, 
+  limit: number = 10 // Fixed to 10 matches per request
+): Promise<PotentialMatchesResult | null> => {
+  console.log('🚨 [Enhanced Supabase] fetchPotentialMatches function called!');
+  
   if (!supabase) {
     throw new Error('Supabase client not initialized');
   }
   const client = supabase as SupabaseClient<Database>;
   
+  console.log('[Enhanced Supabase] fetchPotentialMatches called with:', {
+    userId,
+    limit,
+    connectionQuality: connectionState.quality
+  });
+  
   return retryOperation(async () => {
+    console.log('[Enhanced Supabase] Making RPC call to fetch_potential_matches');
+    
     const { data, error } = await client.rpc('fetch_potential_matches', {
       p_user_id: userId,
-      p_max_distance: maxDistance,
-      p_is_global_discovery: isGlobalDiscovery,
-      p_limit: limit,
+      p_limit: limit
+    });
+    
+    console.log('[Enhanced Supabase] RPC response:', {
+      hasData: !!data,
+      dataType: typeof data,
+      dataKeys: data ? Object.keys(data) : [],
+      matchesCount: data?.matches?.length || 0,
+      hasError: !!error,
+      connectionState
     });
     
     if (error) {
-      console.error('Error fetching potential matches:', error);
+      console.error('[Enhanced Supabase] RPC error details:', {
+        error,
+        connectionQuality: connectionState.quality,
+        consecutiveFailures: connectionState.consecutiveFailures
+      });
       throw error;
     }
     
+    // Enhanced debugging for the matches
+    if (data?.matches) {
+      console.log('[Enhanced Supabase] Matches details:', {
+        totalMatches: data.matches.length,
+        firstMatch: data.matches[0] ? {
+          id: data.matches[0].id,
+          name: data.matches[0].name,
+          hasRequiredFields: !!(data.matches[0].id && data.matches[0].name)
+        } : null,
+        allMatchesValid: data.matches.every((match: any) => match && match.id && match.name)
+      });
+    }
+    
+    console.log('[Enhanced Supabase] RPC successful, returning data');
     return data as PotentialMatchesResult;
+  }, {
+    maxRetries: connectionState.quality === 'poor' ? 4 : 3,
+    shouldRetry: (error) => {
+      const errorMsg = String(error).toLowerCase();
+      return errorMsg.includes('network') || 
+             errorMsg.includes('timeout') || 
+             errorMsg.includes('connection');
+    }
   });
 };
 
 /**
- * Fetches user matches with profiles from Supabase
- * @param userId - The user ID to fetch matches for
- * @returns Promise with matches including matched user profiles or error
+ * Enhanced user matches fetching
  */
 export const fetchUserMatches = async (userId: string): Promise<MatchWithProfile[] | null> => {
   if (!supabase) {
@@ -890,12 +1034,23 @@ export const fetchUserMatches = async (userId: string): Promise<MatchWithProfile
     });
     
     if (error) {
-      console.error('Error fetching user matches:', error);
+      console.error('[Enhanced Supabase] Error fetching user matches:', error);
       throw error;
     }
     
     return data as MatchWithProfile[];
   });
+};
+
+/**
+ * Get enhanced connection statistics
+ */
+export const getConnectionStats = () => {
+  return {
+    ...connectionState,
+    isConfigured: isSupabaseConfigured(),
+    hasClient: !!supabase
+  };
 };
 
 // Export the supabase client
