@@ -3,18 +3,22 @@ import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  RefreshControl,
-  Image
+  Image,
+  Dimensions,
+  Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth-store';
 import Colors from '@/constants/colors';
 import { Button } from '@/components/Button';
-import { RefreshCw } from 'lucide-react-native';
+import { RefreshCw, X, Heart } from 'lucide-react-native';
+
+const { width: screenWidth } = Dimensions.get('window');
+const CARD_WIDTH = screenWidth - 40;
+const CARD_HEIGHT = CARD_WIDTH * 1.2;
 
 interface User {
   id: string;
@@ -28,10 +32,12 @@ interface User {
   entrepreneur_status: string;
   membership_tier: string;
   business_verified: boolean;
+  age?: number;
 }
 
 export default function DiscoveryScreen() {
   const [users, setUsers] = useState<User[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [noMoreProfiles, setNoMoreProfiles] = useState(false);
@@ -67,6 +73,7 @@ export default function DiscoveryScreen() {
       
       if (data && data.matches && data.matches.length > 0) {
         setUsers(data.matches);
+        setCurrentIndex(0);
         setNoMoreProfiles(false);
       } else {
         setUsers([]);
@@ -90,35 +97,25 @@ export default function DiscoveryScreen() {
     fetchUsers();
   };
 
-  const renderUser = ({ item }: { item: User }) => (
-    <TouchableOpacity style={styles.userCard}>
-      <Image
-        source={{ 
-          uri: item.photo_url || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop&crop=face'
-        }}
-        style={styles.profileImage}
-      />
-      <View style={styles.userInfo}>
-        <Text style={styles.userName}>{item.name}</Text>
-        <Text style={styles.userBio} numberOfLines={2}>
-          {item.bio || 'No bio available'}
-        </Text>
-        <View style={styles.userDetails}>
-          <Text style={styles.userDetail}>
-            {item.business_stage || 'Not specified'}
-          </Text>
-          <Text style={styles.userDetail}>
-            {item.industry_focus || item.business_field || 'Not specified'}
-          </Text>
-          {item.business_verified && (
-            <Text style={[styles.userDetail, styles.verified]}>
-              ✓ Verified
-            </Text>
-          )}
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
+  const handlePass = () => {
+    if (currentIndex < users.length - 1) {
+      setCurrentIndex(currentIndex + 1);
+    } else {
+      setNoMoreProfiles(true);
+    }
+  };
+
+  const handleConnect = () => {
+    // TODO: Implement connect logic
+    console.log('Connect with user:', users[currentIndex]?.name);
+    if (currentIndex < users.length - 1) {
+      setCurrentIndex(currentIndex + 1);
+    } else {
+      setNoMoreProfiles(true);
+    }
+  };
+
+  const currentUser = users[currentIndex];
 
   if (loading) {
     return (
@@ -149,7 +146,7 @@ export default function DiscoveryScreen() {
     );
   }
 
-  if (noMoreProfiles && users.length === 0) {
+  if (noMoreProfiles || !currentUser) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.noMoreContainer}>
@@ -188,30 +185,73 @@ export default function DiscoveryScreen() {
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        data={users}
-        renderItem={renderUser}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContainer}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor={Colors.dark.primary}
+      <View style={styles.cardContainer}>
+        <View style={styles.card}>
+          <Image
+            source={{ 
+              uri: currentUser.photo_url || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop&crop=face'
+            }}
+            style={styles.cardImage}
           />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No profiles found</Text>
-            <Button
-              title="Refresh"
-              onPress={handleRefresh}
-              loading={refreshing}
-              variant="primary"
-            />
+          
+          <View style={styles.cardInfo}>
+            <View style={styles.nameRow}>
+              <Text style={styles.userName}>
+                {currentUser.name}
+                {currentUser.age && `, ${currentUser.age}`}
+              </Text>
+              {currentUser.business_verified && (
+                <View style={styles.verifiedBadge}>
+                  <Text style={styles.verifiedText}>✓</Text>
+                </View>
+              )}
+            </View>
+            
+            <Text style={styles.userLocation}>
+              {currentUser.location || 'Location not specified'}
+            </Text>
+            
+            <Text style={styles.userBio} numberOfLines={3}>
+              {currentUser.bio || 'No bio available'}
+            </Text>
+            
+            <View style={styles.userTags}>
+              {currentUser.business_stage && (
+                <View style={styles.tag}>
+                  <Text style={styles.tagText}>{currentUser.business_stage}</Text>
+                </View>
+              )}
+              {currentUser.industry_focus && (
+                <View style={styles.tag}>
+                  <Text style={styles.tagText}>{currentUser.industry_focus}</Text>
+                </View>
+              )}
+            </View>
           </View>
-        }
-      />
+        </View>
+      </View>
+
+      <View style={styles.actionButtons}>
+        <TouchableOpacity
+          style={[styles.actionButton, styles.passButton]}
+          onPress={handlePass}
+        >
+          <X size={32} color={Colors.dark.text} />
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={[styles.actionButton, styles.connectButton]}
+          onPress={handleConnect}
+        >
+          <Heart size={32} color="white" />
+        </TouchableOpacity>
+      </View>
+      
+      <View style={styles.progressContainer}>
+        <Text style={styles.progressText}>
+          {currentIndex + 1} of {users.length}
+        </Text>
+      </View>
     </SafeAreaView>
   );
 }
@@ -272,61 +312,135 @@ const styles = StyleSheet.create({
     marginTop: 24,
     paddingHorizontal: 32,
   },
-  listContainer: {
-    padding: 16,
+  cardContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
   },
-  userCard: {
+  card: {
+    width: CARD_WIDTH,
+    height: CARD_HEIGHT,
     backgroundColor: Colors.dark.card,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    borderRadius: 16,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+  cardImage: {
+    width: '100%',
+    height: '60%',
+    resizeMode: 'cover',
+  },
+  cardInfo: {
+    flex: 1,
+    padding: 20,
+    justifyContent: 'space-between',
+  },
+  nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  profileImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    marginRight: 16,
-  },
-  userInfo: {
-    flex: 1,
+    marginBottom: 4,
   },
   userName: {
-    fontSize: 18,
+    fontSize: 24,
     fontWeight: 'bold',
     color: Colors.dark.text,
-    marginBottom: 4,
+    flex: 1,
+  },
+  verifiedBadge: {
+    backgroundColor: Colors.dark.primary,
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  verifiedText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  userLocation: {
+    fontSize: 16,
+    color: Colors.dark.textSecondary,
+    marginBottom: 8,
   },
   userBio: {
     fontSize: 14,
-    color: Colors.dark.textSecondary,
-    marginBottom: 8,
-    lineHeight: 18,
+    color: Colors.dark.text,
+    lineHeight: 20,
+    marginBottom: 12,
   },
-  userDetails: {
+  userTags: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
-  userDetail: {
+  tag: {
+    backgroundColor: Colors.dark.background,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  tagText: {
     fontSize: 12,
     color: Colors.dark.primary,
-    backgroundColor: Colors.dark.background,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    fontWeight: '500',
   },
-  emptyContainer: {
-    flex: 1,
+  actionButtons: {
+    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 100,
+    paddingHorizontal: 40,
+    paddingVertical: 30,
+    gap: 40,
   },
-  emptyText: {
+  actionButton: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  passButton: {
+    backgroundColor: Colors.dark.card,
+    borderWidth: 2,
+    borderColor: Colors.dark.border,
+  },
+  connectButton: {
+    backgroundColor: Colors.dark.primary,
+  },
+  progressContainer: {
+    alignItems: 'center',
+    paddingBottom: 20,
+  },
+  progressText: {
+    fontSize: 14,
     color: Colors.dark.textSecondary,
-    fontSize: 16,
-    marginBottom: 20,
   },
   errorContainer: {
     flex: 1,
@@ -347,9 +461,5 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     textAlign: 'center',
     lineHeight: 22,
-  },
-  verified: {
-    backgroundColor: Colors.dark.success || '#10B981',
-    color: Colors.dark.background,
   },
 });
