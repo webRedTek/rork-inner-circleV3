@@ -496,7 +496,7 @@ export const useAuthStore = create<AuthState>()(
             }
 
             const { data, error } = await supabase
-              .from('tier_settings')
+              .from('app_settings')
               .select('*');
 
             if (error) throw error;
