@@ -214,30 +214,30 @@ export interface AppSettings {
 export interface TierSettings {
   id?: string;
   tier: MembershipTier;
-  dailySwipeLimit: number;
-  dailyMatchLimit: number;
-  dailyLikeLimit: number;
-  messageSendingLimit: number;
-  canSeeWhoLikedYou: boolean;
-  canRewindLastSwipe: boolean;
-  profileVisibilityControl: boolean;
-  priorityListing: boolean;
-  premiumFiltersAccess: boolean;
-  globalDiscovery: boolean;
-  boostDuration: number;
-  boostFrequency: number;
-  groupsLimit: number;
-  groupsCreationLimit: number;
-  featuredPortfolioLimit: number;
-  eventsPerMonth: number;
-  canCreateGroups: boolean;
-  hasBusinessVerification: boolean;
-  hasAdvancedAnalytics: boolean;
-  hasPriorityInbox: boolean;
-  canSendDirectIntro: boolean;
-  hasVirtualMeetingRoom: boolean;
-  hasCustomBranding: boolean;
-  hasDedicatedSupport: boolean;
+  daily_swipe_limit: number;
+  daily_match_limit: number;
+  daily_like_limit: number;
+  message_sending_limit: number;
+  can_see_who_liked_you: boolean;
+  can_rewind_last_swipe: boolean;
+  profile_visibility_control: boolean;
+  priority_listing: boolean;
+  premium_filters_access: boolean;
+  global_discovery: boolean;
+  boost_duration: number;
+  boost_frequency: number;
+  groups_limit: number;
+  groups_creation_limit: number;
+  featured_portfolio_limit: number;
+  events_per_month: number;
+  can_create_groups: boolean;
+  has_business_verification: boolean;
+  has_advanced_analytics: boolean;
+  has_priority_inbox: boolean;
+  can_send_direct_intro: boolean;
+  has_virtual_meeting_room: boolean;
+  has_custom_branding: boolean;
+  has_dedicated_support: boolean;
 }
 
 export interface AuditLogEntry {

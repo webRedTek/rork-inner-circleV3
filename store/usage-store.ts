@@ -450,17 +450,17 @@ export const useUsageStore = create<UsageStore>()(
 
         return {
           swipeCount: swipeData.currentCount,
-          swipeLimit: tierSettings.dailySwipeLimit,
-          swipeRemaining: Math.max(0, tierSettings.dailySwipeLimit - swipeData.currentCount),
+          swipeLimit: tierSettings.daily_swipe_limit,
+          swipeRemaining: Math.max(0, tierSettings.daily_swipe_limit - swipeData.currentCount),
           matchCount: matchData.currentCount,
-          matchLimit: tierSettings.dailyMatchLimit,
-          matchRemaining: Math.max(0, tierSettings.dailyMatchLimit - matchData.currentCount),
+          matchLimit: tierSettings.daily_match_limit,
+          matchRemaining: Math.max(0, tierSettings.daily_match_limit - matchData.currentCount),
           messageCount: messageData.currentCount,
-          messageLimit: tierSettings.messageSendingLimit,
-          messageRemaining: Math.max(0, tierSettings.messageSendingLimit - messageData.currentCount),
+          messageLimit: tierSettings.message_sending_limit,
+          messageRemaining: Math.max(0, tierSettings.message_sending_limit - messageData.currentCount),
           likeCount: likeData.currentCount,
-          likeLimit: tierSettings.dailyLikeLimit,
-          likeRemaining: Math.max(0, tierSettings.dailyLikeLimit - likeData.currentCount),
+          likeLimit: tierSettings.daily_like_limit,
+          likeRemaining: Math.max(0, tierSettings.daily_like_limit - likeData.currentCount),
           timestamp: Date.now(),
         };
       },
@@ -488,12 +488,12 @@ export const useUsageStore = create<UsageStore>()(
         }
 
         const limit = action === 'swipe' 
-          ? tierSettings.dailySwipeLimit
+          ? tierSettings.daily_swipe_limit
           : action === 'match' 
-            ? tierSettings.dailyMatchLimit
+            ? tierSettings.daily_match_limit
             : action === 'like'
-              ? tierSettings.dailyLikeLimit
-              : tierSettings.messageSendingLimit;
+              ? tierSettings.daily_like_limit
+              : tierSettings.message_sending_limit;
 
         const now = Date.now();
         const usageData = usageCache.usageData[action];

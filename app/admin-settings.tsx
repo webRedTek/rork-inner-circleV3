@@ -111,17 +111,17 @@ export default function AdminSettingsScreen() {
         
         // Validate numeric fields
         const numericFields = [
-          'dailySwipeLimit',
-          'dailyMatchLimit',
-          'dailyLikeLimit',
-          'messageSendingLimit',
-          'boostDuration',
-          'boostFrequency',
-          'groupsLimit',
-          'groupsCreationLimit',
-          'featuredPortfolioLimit',
-          'eventsPerMonth',
-          'trialDuration'
+          'daily_swipe_limit',
+          'daily_match_limit',
+          'daily_like_limit',
+          'message_sending_limit',
+          'boost_duration',
+          'boost_frequency',
+          'groups_limit',
+          'groups_creation_limit',
+          'featured_portfolio_limit',
+          'events_per_month',
+          'trial_duration'
         ];
         
         for (const field of numericFields) {
@@ -134,32 +134,32 @@ export default function AdminSettingsScreen() {
         // Match schema exactly
         const settingsToSave = {
           tier: tierKey,
-          dailySwipeLimit: parseInt(settings.dailySwipeLimit) || 0,
-          dailyMatchLimit: parseInt(settings.dailyMatchLimit) || 0,
-          dailyLikeLimit: parseInt(settings.dailyLikeLimit) || 0,
-          messageSendingLimit: parseInt(settings.messageSendingLimit) || 0,
-          canSeeWhoLikedYou: Boolean(settings.canSeeWhoLikedYou),
-          canRewindLastSwipe: Boolean(settings.canRewindLastSwipe),
-          boostDuration: parseInt(settings.boostDuration) || 0,
-          boostFrequency: parseInt(settings.boostFrequency) || 0,
-          profileVisibilityControl: Boolean(settings.profileVisibilityControl),
-          priorityListing: Boolean(settings.priorityListing),
-          premiumFiltersAccess: Boolean(settings.premiumFiltersAccess),
-          globalDiscovery: Boolean(settings.globalDiscovery),
-          groupsLimit: parseInt(settings.groupsLimit) || 1,
-          groupsCreationLimit: parseInt(settings.groupsCreationLimit) || 0,
-          featuredPortfolioLimit: parseInt(settings.featuredPortfolioLimit) || 1,
-          eventsPerMonth: parseInt(settings.eventsPerMonth) || 0,
-          hasBusinessVerification: Boolean(settings.hasBusinessVerification),
-          hasAdvancedAnalytics: Boolean(settings.hasAdvancedAnalytics),
-          hasPriorityInbox: Boolean(settings.hasPriorityInbox),
-          canSendDirectIntro: Boolean(settings.canSendDirectIntro),
-          hasVirtualMeetingRoom: Boolean(settings.hasVirtualMeetingRoom),
-          hasCustomBranding: Boolean(settings.hasCustomBranding),
-          hasDedicatedSupport: Boolean(settings.hasDedicatedSupport),
-          canCreateGroups: Boolean(settings.canCreateGroups),
-          trialDuration: parseInt(settings.trialDuration) || 14,
-          updatedAt: new Date().toISOString()
+          daily_swipe_limit: parseInt(settings.daily_swipe_limit) || 0,
+          daily_match_limit: parseInt(settings.daily_match_limit) || 0,
+          daily_like_limit: parseInt(settings.daily_like_limit) || 0,
+          message_sending_limit: parseInt(settings.message_sending_limit) || 0,
+          can_see_who_liked_you: Boolean(settings.can_see_who_liked_you),
+          can_rewind_last_swipe: Boolean(settings.can_rewind_last_swipe),
+          boost_duration: parseInt(settings.boost_duration) || 0,
+          boost_frequency: parseInt(settings.boost_frequency) || 0,
+          profile_visibility_control: Boolean(settings.profile_visibility_control),
+          priority_listing: Boolean(settings.priority_listing),
+          premium_filters_access: Boolean(settings.premium_filters_access),
+          global_discovery: Boolean(settings.global_discovery),
+          groups_limit: parseInt(settings.groups_limit) || 1,
+          groups_creation_limit: parseInt(settings.groups_creation_limit) || 0,
+          featured_portfolio_limit: parseInt(settings.featured_portfolio_limit) || 1,
+          events_per_month: parseInt(settings.events_per_month) || 0,
+          has_business_verification: Boolean(settings.has_business_verification),
+          has_advanced_analytics: Boolean(settings.has_advanced_analytics),
+          has_priority_inbox: Boolean(settings.has_priority_inbox),
+          can_send_direct_intro: Boolean(settings.can_send_direct_intro),
+          has_virtual_meeting_room: Boolean(settings.has_virtual_meeting_room),
+          has_custom_branding: Boolean(settings.has_custom_branding),
+          has_dedicated_support: Boolean(settings.has_dedicated_support),
+          can_create_groups: Boolean(settings.can_create_groups),
+          trial_duration: parseInt(settings.trial_duration) || 14,
+          updated_at: new Date().toISOString()
         };
         
         try {
@@ -267,8 +267,8 @@ export default function AdminSettingsScreen() {
                 <Text style={styles.settingLabel}>Daily Swipe Limit</Text>
                 <TextInput
                   style={styles.numberInput}
-                  value={settingsByTier[tier as MembershipTier]?.dailySwipeLimit?.toString() || '0'}
-                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'dailySwipeLimit', parseInt(text) || 0)}
+                  value={settingsByTier[tier as MembershipTier]?.daily_swipe_limit?.toString() || '0'}
+                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'daily_swipe_limit', parseInt(text) || 0)}
                   keyboardType="numeric"
                   placeholder="Enter number"
                 />
@@ -278,8 +278,8 @@ export default function AdminSettingsScreen() {
                 <Text style={styles.settingLabel}>Daily Match Limit</Text>
                 <TextInput
                   style={styles.numberInput}
-                  value={settingsByTier[tier as MembershipTier]?.dailyMatchLimit?.toString() || '0'}
-                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'dailyMatchLimit', parseInt(text) || 0)}
+                  value={settingsByTier[tier as MembershipTier]?.daily_match_limit?.toString() || '0'}
+                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'daily_match_limit', parseInt(text) || 0)}
                   keyboardType="numeric"
                   placeholder="Enter number"
                 />
@@ -289,8 +289,8 @@ export default function AdminSettingsScreen() {
                 <Text style={styles.settingLabel}>Daily Like Limit</Text>
                 <TextInput
                   style={styles.numberInput}
-                  value={settingsByTier[tier as MembershipTier]?.dailyLikeLimit?.toString() || '0'}
-                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'dailyLikeLimit', parseInt(text) || 0)}
+                  value={settingsByTier[tier as MembershipTier]?.daily_like_limit?.toString() || '0'}
+                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'daily_like_limit', parseInt(text) || 0)}
                   keyboardType="numeric"
                   placeholder="Enter number"
                 />
@@ -300,8 +300,8 @@ export default function AdminSettingsScreen() {
                 <Text style={styles.settingLabel}>Message Sending Limit</Text>
                 <TextInput
                   style={styles.numberInput}
-                  value={settingsByTier[tier as MembershipTier]?.messageSendingLimit?.toString() || '0'}
-                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'messageSendingLimit', parseInt(text) || 0)}
+                  value={settingsByTier[tier as MembershipTier]?.message_sending_limit?.toString() || '0'}
+                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'message_sending_limit', parseInt(text) || 0)}
                   keyboardType="numeric"
                   placeholder="Enter number"
                 />
@@ -314,8 +314,8 @@ export default function AdminSettingsScreen() {
               <View style={styles.settingItem}>
                 <Text style={styles.settingLabel}>Can See Who Liked You</Text>
                 <Switch
-                  value={settingsByTier[tier as MembershipTier]?.canSeeWhoLikedYou || false}
-                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'canSeeWhoLikedYou', value)}
+                  value={settingsByTier[tier as MembershipTier]?.can_see_who_liked_you || false}
+                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'can_see_who_liked_you', value)}
                   trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
                   thumbColor={Colors.dark.background}
                 />
@@ -324,8 +324,8 @@ export default function AdminSettingsScreen() {
               <View style={styles.settingItem}>
                 <Text style={styles.settingLabel}>Can Rewind Last Swipe</Text>
                 <Switch
-                  value={settingsByTier[tier as MembershipTier]?.canRewindLastSwipe || false}
-                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'canRewindLastSwipe', value)}
+                  value={settingsByTier[tier as MembershipTier]?.can_rewind_last_swipe || false}
+                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'can_rewind_last_swipe', value)}
                   trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
                   thumbColor={Colors.dark.background}
                 />
@@ -334,8 +334,8 @@ export default function AdminSettingsScreen() {
               <View style={styles.settingItem}>
                 <Text style={styles.settingLabel}>Profile Visibility Control</Text>
                 <Switch
-                  value={settingsByTier[tier as MembershipTier]?.profileVisibilityControl || false}
-                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'profileVisibilityControl', value)}
+                  value={settingsByTier[tier as MembershipTier]?.profile_visibility_control || false}
+                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'profile_visibility_control', value)}
                   trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
                   thumbColor={Colors.dark.background}
                 />
@@ -344,8 +344,8 @@ export default function AdminSettingsScreen() {
               <View style={styles.settingItem}>
                 <Text style={styles.settingLabel}>Priority Listing</Text>
                 <Switch
-                  value={settingsByTier[tier as MembershipTier]?.priorityListing || false}
-                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'priorityListing', value)}
+                  value={settingsByTier[tier as MembershipTier]?.priority_listing || false}
+                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'priority_listing', value)}
                   trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
                   thumbColor={Colors.dark.background}
                 />
@@ -354,8 +354,8 @@ export default function AdminSettingsScreen() {
               <View style={styles.settingItem}>
                 <Text style={styles.settingLabel}>Premium Filters Access</Text>
                 <Switch
-                  value={settingsByTier[tier as MembershipTier]?.premiumFiltersAccess || false}
-                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'premiumFiltersAccess', value)}
+                  value={settingsByTier[tier as MembershipTier]?.premium_filters_access || false}
+                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'premium_filters_access', value)}
                   trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
                   thumbColor={Colors.dark.background}
                 />
@@ -364,8 +364,8 @@ export default function AdminSettingsScreen() {
               <View style={styles.settingItem}>
                 <Text style={styles.settingLabel}>Global Discovery</Text>
                 <Switch
-                  value={settingsByTier[tier as MembershipTier]?.globalDiscovery || false}
-                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'globalDiscovery', value)}
+                  value={settingsByTier[tier as MembershipTier]?.global_discovery || false}
+                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'global_discovery', value)}
                   trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
                   thumbColor={Colors.dark.background}
                 />
@@ -379,8 +379,8 @@ export default function AdminSettingsScreen() {
                 <Text style={styles.settingLabel}>Boost Duration (minutes)</Text>
                 <TextInput
                   style={styles.numberInput}
-                  value={settingsByTier[tier as MembershipTier]?.boostDuration?.toString() || '0'}
-                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'boostDuration', parseInt(text) || 0)}
+                  value={settingsByTier[tier as MembershipTier]?.boost_duration?.toString() || '0'}
+                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'boost_duration', parseInt(text) || 0)}
                   keyboardType="numeric"
                   placeholder="Enter number"
                 />
@@ -390,8 +390,8 @@ export default function AdminSettingsScreen() {
                 <Text style={styles.settingLabel}>Boost Frequency (hours)</Text>
                 <TextInput
                   style={styles.numberInput}
-                  value={settingsByTier[tier as MembershipTier]?.boostFrequency?.toString() || '0'}
-                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'boostFrequency', parseInt(text) || 0)}
+                  value={settingsByTier[tier as MembershipTier]?.boost_frequency?.toString() || '0'}
+                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'boost_frequency', parseInt(text) || 0)}
                   keyboardType="numeric"
                   placeholder="Enter number"
                 />
@@ -405,8 +405,8 @@ export default function AdminSettingsScreen() {
                 <Text style={styles.settingLabel}>Groups Limit</Text>
                 <TextInput
                   style={styles.numberInput}
-                  value={settingsByTier[tier as MembershipTier]?.groupsLimit?.toString() || '0'}
-                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'groupsLimit', parseInt(text) || 0)}
+                  value={settingsByTier[tier as MembershipTier]?.groups_limit?.toString() || '0'}
+                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'groups_limit', parseInt(text) || 0)}
                   keyboardType="numeric"
                   placeholder="Enter number"
                 />
@@ -416,8 +416,8 @@ export default function AdminSettingsScreen() {
                 <Text style={styles.settingLabel}>Groups Creation Limit</Text>
                 <TextInput
                   style={styles.numberInput}
-                  value={settingsByTier[tier as MembershipTier]?.groupsCreationLimit?.toString() || '0'}
-                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'groupsCreationLimit', parseInt(text) || 0)}
+                  value={settingsByTier[tier as MembershipTier]?.groups_creation_limit?.toString() || '0'}
+                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'groups_creation_limit', parseInt(text) || 0)}
                   keyboardType="numeric"
                   placeholder="Enter number"
                 />
@@ -431,8 +431,8 @@ export default function AdminSettingsScreen() {
                 <Text style={styles.settingLabel}>Featured Portfolio Limit</Text>
                 <TextInput
                   style={styles.numberInput}
-                  value={settingsByTier[tier as MembershipTier]?.featuredPortfolioLimit?.toString() || '0'}
-                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'featuredPortfolioLimit', parseInt(text) || 0)}
+                  value={settingsByTier[tier as MembershipTier]?.featured_portfolio_limit?.toString() || '0'}
+                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'featured_portfolio_limit', parseInt(text) || 0)}
                   keyboardType="numeric"
                   placeholder="Enter number"
                 />
@@ -446,8 +446,8 @@ export default function AdminSettingsScreen() {
                 <Text style={styles.settingLabel}>Events Per Month</Text>
                 <TextInput
                   style={styles.numberInput}
-                  value={settingsByTier[tier as MembershipTier]?.eventsPerMonth?.toString() || '0'}
-                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'eventsPerMonth', parseInt(text) || 0)}
+                  value={settingsByTier[tier as MembershipTier]?.events_per_month?.toString() || '0'}
+                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'events_per_month', parseInt(text) || 0)}
                   keyboardType="numeric"
                   placeholder="Enter number"
                 />
@@ -460,8 +460,8 @@ export default function AdminSettingsScreen() {
               <View style={styles.settingItem}>
                 <Text style={styles.settingLabel}>Can Create Groups</Text>
                 <Switch
-                  value={settingsByTier[tier as MembershipTier]?.canCreateGroups || false}
-                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'canCreateGroups', value)}
+                  value={settingsByTier[tier as MembershipTier]?.can_create_groups || false}
+                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'can_create_groups', value)}
                   trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
                   thumbColor={Colors.dark.background}
                 />
@@ -470,8 +470,8 @@ export default function AdminSettingsScreen() {
               <View style={styles.settingItem}>
                 <Text style={styles.settingLabel}>Has Business Verification</Text>
                 <Switch
-                  value={settingsByTier[tier as MembershipTier]?.hasBusinessVerification || false}
-                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'hasBusinessVerification', value)}
+                  value={settingsByTier[tier as MembershipTier]?.has_business_verification || false}
+                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'has_business_verification', value)}
                   trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
                   thumbColor={Colors.dark.background}
                 />
@@ -480,8 +480,8 @@ export default function AdminSettingsScreen() {
               <View style={styles.settingItem}>
                 <Text style={styles.settingLabel}>Has Advanced Analytics</Text>
                 <Switch
-                  value={settingsByTier[tier as MembershipTier]?.hasAdvancedAnalytics || false}
-                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'hasAdvancedAnalytics', value)}
+                  value={settingsByTier[tier as MembershipTier]?.has_advanced_analytics || false}
+                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'has_advanced_analytics', value)}
                   trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
                   thumbColor={Colors.dark.background}
                 />
@@ -490,8 +490,8 @@ export default function AdminSettingsScreen() {
               <View style={styles.settingItem}>
                 <Text style={styles.settingLabel}>Has Priority Inbox</Text>
                 <Switch
-                  value={settingsByTier[tier as MembershipTier]?.hasPriorityInbox || false}
-                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'hasPriorityInbox', value)}
+                  value={settingsByTier[tier as MembershipTier]?.has_priority_inbox || false}
+                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'has_priority_inbox', value)}
                   trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
                   thumbColor={Colors.dark.background}
                 />
@@ -500,8 +500,8 @@ export default function AdminSettingsScreen() {
               <View style={styles.settingItem}>
                 <Text style={styles.settingLabel}>Can Send Direct Intro</Text>
                 <Switch
-                  value={settingsByTier[tier as MembershipTier]?.canSendDirectIntro || false}
-                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'canSendDirectIntro', value)}
+                  value={settingsByTier[tier as MembershipTier]?.can_send_direct_intro || false}
+                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'can_send_direct_intro', value)}
                   trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
                   thumbColor={Colors.dark.background}
                 />
@@ -510,8 +510,8 @@ export default function AdminSettingsScreen() {
               <View style={styles.settingItem}>
                 <Text style={styles.settingLabel}>Has Virtual Meeting Room</Text>
                 <Switch
-                  value={settingsByTier[tier as MembershipTier]?.hasVirtualMeetingRoom || false}
-                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'hasVirtualMeetingRoom', value)}
+                  value={settingsByTier[tier as MembershipTier]?.has_virtual_meeting_room || false}
+                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'has_virtual_meeting_room', value)}
                   trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
                   thumbColor={Colors.dark.background}
                 />
@@ -520,8 +520,8 @@ export default function AdminSettingsScreen() {
               <View style={styles.settingItem}>
                 <Text style={styles.settingLabel}>Has Custom Branding</Text>
                 <Switch
-                  value={settingsByTier[tier as MembershipTier]?.hasCustomBranding || false}
-                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'hasCustomBranding', value)}
+                  value={settingsByTier[tier as MembershipTier]?.has_custom_branding || false}
+                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'has_custom_branding', value)}
                   trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
                   thumbColor={Colors.dark.background}
                 />
@@ -530,8 +530,8 @@ export default function AdminSettingsScreen() {
               <View style={styles.settingItem}>
                 <Text style={styles.settingLabel}>Has Dedicated Support</Text>
                 <Switch
-                  value={settingsByTier[tier as MembershipTier]?.hasDedicatedSupport || false}
-                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'hasDedicatedSupport', value)}
+                  value={settingsByTier[tier as MembershipTier]?.has_dedicated_support || false}
+                  onValueChange={value => handleSettingChange(tier as MembershipTier, 'has_dedicated_support', value)}
                   trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
                   thumbColor={Colors.dark.background}
                 />
@@ -545,8 +545,8 @@ export default function AdminSettingsScreen() {
                 <Text style={styles.settingLabel}>Trial Duration (Days)</Text>
                 <TextInput
                   style={styles.numberInput}
-                  value={settingsByTier[tier as MembershipTier]?.trialDuration?.toString() || '14'}
-                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'trialDuration', parseInt(text) || 14)}
+                  value={settingsByTier[tier as MembershipTier]?.trial_duration?.toString() || '14'}
+                  onChangeText={text => handleSettingChange(tier as MembershipTier, 'trial_duration', parseInt(text) || 14)}
                   keyboardType="numeric"
                   placeholder="Enter number"
                 />

@@ -530,7 +530,7 @@ export const useAuthStore = create<AuthState>()(
               event: 'fetchAllTierSettings Data Received',
               status: 'success',
               details: `Received ${data.length} tier settings from database`,
-              data: data.map(tier => ({ tier: tier.tier, limits: { swipe: tier.dailySwipeLimit, match: tier.dailyMatchLimit, message: tier.messageSendingLimit, like: tier.dailyLikeLimit } })),
+              data: data.map(tier => ({ tier: tier.tier, limits: { swipe: tier.daily_swipe_limit, match: tier.daily_match_limit, message: tier.message_sending_limit, like: tier.daily_like_limit } })),
               source: 'auth-store'
             });
 
@@ -643,10 +643,10 @@ export const useAuthStore = create<AuthState>()(
           data: {
             tier: user!.membershipTier,
             limits: {
-              swipe: tierSettings.dailySwipeLimit,
-              match: tierSettings.dailyMatchLimit,
-              message: tierSettings.messageSendingLimit,
-              like: tierSettings.dailyLikeLimit
+              swipe: tierSettings.daily_swipe_limit,
+              match: tierSettings.daily_match_limit,
+              message: tierSettings.message_sending_limit,
+              like: tierSettings.daily_like_limit
             }
           },
           source: 'auth-store'
