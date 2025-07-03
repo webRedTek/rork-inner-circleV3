@@ -53,7 +53,9 @@ import {
   Text,
   TouchableOpacity,
   ActivityIndicator,
-  Platform
+  Platform,
+  ScrollView,
+  RefreshControl
 } from 'react-native';
 import { UserProfile } from '@/types/user';
 import { EntrepreneurCard } from './EntrepreneurCard';
@@ -76,6 +78,8 @@ interface SwipeCardsProps {
   isLoading?: boolean;
   error?: string | null;
   onRetry?: () => Promise<void>;
+  onRefresh?: () => Promise<void>;
+  refreshing?: boolean;
 }
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -155,7 +159,9 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   onProfilePress,
   isLoading = false,
   error: propError = null,
-  onRetry
+  onRetry,
+  onRefresh,
+  refreshing = false
 }) => {
   const { isDebugMode } = useDebugStore();
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -645,53 +651,47 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   }, [currentIndex, profiles, onProfilePress, triggerHapticFeedback]);
   
   const renderCards = () => {
-    if (isDebugMode) {
-      console.log('[SimplifiedSwipeCards] Rendering cards', { currentIndex, profilesCount: profiles.length });
-    }
-    
-    if (currentIndex >= profiles.length) {
-      if (isDebugMode) {
-        console.log('[SimplifiedSwipeCards] Showing empty state');
-      }
+    if (profiles.length === 0) {
       return (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No more entrepreneurs to show</Text>
-          <Text style={styles.emptySubtext}>Press refresh to load more profiles</Text>
-          {onRetry && (
+          <Text style={styles.emptyTitle}>No More Profiles</Text>
+          <Text style={styles.emptySubtitle}>Pull down to refresh or check back later</Text>
+          {onRefresh && (
             <Button
               title="Refresh"
-              onPress={onRetry}
+              onPress={onRefresh}
               variant="primary"
-              style={styles.retryButton}
+              size="medium"
+              style={styles.refreshButton}
             />
           )}
         </View>
       );
     }
-    
-    return profiles.map((item, index) => {
+
+    return profiles.map((profile, index) => {
       if (index < currentIndex) {
         if (isDebugMode) {
-          console.log('[SimplifiedSwipeCards] Skipping rendered profile', { index, id: item.id });
+          console.log('[SimplifiedSwipeCards] Skipping rendered profile', { index, id: profile.id });
         }
         return null;
       }
       
       // Check if this profile has an optimistic update
-      const hasOptimisticUpdate = optimisticUpdates.has(item.id);
+      const hasOptimisticUpdate = optimisticUpdates.has(profile.id);
       
       if (index === currentIndex) {
         if (isDebugMode) {
           console.log('[SimplifiedSwipeCards] Rendering current card', { 
             index, 
-            id: item.id, 
-            name: item.name,
+            id: profile.id, 
+            name: profile.name,
             hasOptimisticUpdate 
           });
         }
         return (
           <Animated.View
-            key={item.id}
+            key={profile.id}
             style={[
               styles.cardStyle,
               {
@@ -740,7 +740,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
             </Animated.View>
             
             <EntrepreneurCard 
-              profile={item} 
+              profile={profile} 
               onProfilePress={handleProfilePress}
             />
           </Animated.View>
@@ -750,11 +750,11 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       // Next card in stack with enhanced animation
       if (index === currentIndex + 1) {
         if (isDebugMode) {
-          console.log('[SimplifiedSwipeCards] Rendering next card', { index, id: item.id, name: item.name });
+          console.log('[SimplifiedSwipeCards] Rendering next card', { index, id: profile.id, name: profile.name });
         }
         return (
           <Animated.View
-            key={item.id}
+            key={profile.id}
             style={[
               styles.cardStyle,
               styles.nextCard,
@@ -766,7 +766,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
               }
             ]}
           >
-            <EntrepreneurCard profile={item} />
+            <EntrepreneurCard profile={profile} />
           </Animated.View>
         );
       }
@@ -774,7 +774,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       // Background cards with improved stacking and depth
       if (index < currentIndex + 4) { // Show more background cards
         if (isDebugMode) {
-          console.log('[SimplifiedSwipeCards] Rendering background card', { index, id: item.id, name: item.name });
+          console.log('[SimplifiedSwipeCards] Rendering background card', { index, id: profile.id, name: profile.name });
         }
         const cardDepth = index - currentIndex - 1;
         const scaleValue = 0.90 - cardDepth * 0.03; // Better scaling progression
@@ -783,7 +783,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
         
         return (
           <View
-            key={item.id}
+            key={profile.id}
             style={[
               styles.cardStyle,
               styles.backgroundCard,
@@ -797,13 +797,13 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
               }
             ]}
           >
-            <EntrepreneurCard profile={item} />
+            <EntrepreneurCard profile={profile} />
           </View>
         );
       }
       
       if (isDebugMode) {
-        console.log('[SimplifiedSwipeCards] Skipping non-visible card', { index, id: item.id });
+        console.log('[SimplifiedSwipeCards] Skipping non-visible card', { index, id: profile.id });
       }
       return null;
     }).reverse();
@@ -811,18 +811,54 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   
   return (
     <View style={styles.container}>
-      {error && (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity 
-            style={styles.retryButton}
-            onPress={() => setError(null)}
-          >
-            <Text style={styles.retryText}>Dismiss</Text>
-          </TouchableOpacity>
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.dark.primary} />
+          <Text style={styles.loadingText}>Loading profiles...</Text>
         </View>
+      ) : error ? (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{getErrorMessage(error)}</Text>
+          {onRetry && (
+            <Button
+              title="Try Again"
+              onPress={onRetry}
+              variant="primary"
+              size="medium"
+            />
+          )}
+        </View>
+      ) : profiles.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyTitle}>No More Profiles</Text>
+          <Text style={styles.emptySubtitle}>Pull down to refresh or check back later</Text>
+          {onRefresh && (
+            <Button
+              title="Refresh"
+              onPress={onRefresh}
+              variant="primary"
+              size="medium"
+              style={styles.refreshButton}
+            />
+          )}
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            onRefresh ? (
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={Colors.dark.primary}
+              />
+            ) : undefined
+          }
+        >
+          {renderCards()}
+        </ScrollView>
       )}
-      {renderCards()}
     </View>
   );
 };
@@ -908,21 +944,25 @@ const styles = StyleSheet.create({
     textShadowRadius: 3,
   },
   emptyContainer: {
-    alignItems: 'center',
+    flex: 1,
     justifyContent: 'center',
-    padding: 20,
+    alignItems: 'center',
+    padding: 20
   },
-  emptyText: {
-    fontSize: 20,
+  emptyTitle: {
+    fontSize: 24,
     fontWeight: 'bold',
     color: Colors.dark.text,
-    marginBottom: 10,
+    marginBottom: 10
   },
-  emptySubtext: {
+  emptySubtitle: {
     fontSize: 16,
     color: Colors.dark.textSecondary,
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 20
+  },
+  refreshButton: {
+    marginTop: 10
   },
   errorContainer: {
     position: 'absolute',
@@ -948,9 +988,24 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     marginTop: 8,
   },
-  retryText: {
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
     color: Colors.dark.text,
-    fontSize: 12,
+    fontSize: 16,
     fontWeight: 'bold',
+    marginTop: 10,
+  },
+  scrollView: {
+    flex: 1,
+    width: '100%'
+  },
+  scrollContent: {
+    flexGrow: 1,
+    alignItems: 'center',
+    justifyContent: 'center'
   }
 });

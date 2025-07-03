@@ -314,7 +314,7 @@ export default function DiscoverScreen() {
     }
   }, [passUser, swipeLimitReached, triggerHapticFeedback, addNotification, isDebugMode, addDebugInfo]);
   
-  const handleModalAction = useCallback((action: 'message' | 'close' | 'upgrade' | 'applyFilters' | 'cancel') => {
+  const handleModalAction = useCallback((action: 'message' | 'close' | 'upgrade') => {
     triggerHapticFeedback('light');
     
     switch (action) {
@@ -348,42 +348,11 @@ export default function DiscoverScreen() {
           duration: 2000
         });
         break;
-      case 'applyFilters':
-        // Skip distance validation if global search is enabled
-        if (!globalSearch || !isGlobalSearchAllowed) {
-          const distanceNum = parseInt(preferredDistance);
-          if (isNaN(distanceNum) || distanceNum < 1 || distanceNum > 500) {
-            setDistanceError('Distance must be between 1 and 500 miles');
-            triggerHapticFeedback('error');
-            return;
-          }
-        }
-        setDistanceError('');
-        
-        // Handle global search vs local search
-        const distance = isGlobalSearchAllowed && globalSearch 
-          ? undefined 
-          : parseInt(preferredDistance);
-        
-        addDebugInfo(`Applying filters - distance: ${distance}, global: ${globalSearch}`);
-        fetchPotentialMatches(distance, true);
-        setShowFilterModal(false);
-        
-        addNotification({
-          type: 'success',
-          message: globalSearch ? 'Applied global search' : `Applied ${distance} mile filter`,
-          displayStyle: 'toast',
-          duration: 3000
-        });
-        break;
-      case 'cancel':
-        setShowFilterModal(false);
-        break;
     }
-  }, [matchedUser, router, preferredDistance, isGlobalSearchAllowed, globalSearch, fetchPotentialMatches, triggerHapticFeedback, addNotification, addDebugInfo]);
+  }, [matchedUser, router, triggerHapticFeedback, addNotification]);
   
   const handleProfilePress = useCallback((profile: UserProfile) => {
-    triggerHapticFeedback('selection');
+    triggerHapticFeedback('light');
     setSelectedProfile(profile);
     setShowProfileDetail(true);
   }, [triggerHapticFeedback]);
@@ -397,79 +366,29 @@ export default function DiscoverScreen() {
     triggerHapticFeedback('light');
     
     try {
-      // Always use fetchPotentialMatches for consistency
-      const distance = isGlobalSearchAllowed && globalSearch 
-        ? undefined 
-        : parseInt(preferredDistance);
-      
-      addDebugInfo(`Manual refresh - distance: ${distance}, global: ${globalSearch}`);
-      await fetchPotentialMatches(distance, true); // Force refresh
+      await fetchPotentialMatches();
       
       addNotification({
         type: 'success',
-        message: 'Refreshed matches successfully',
+        message: 'Profiles refreshed',
         displayStyle: 'toast',
         duration: 2000
       });
     } catch (error) {
-      console.error('[Discover] Error refreshing matches:', error);
-      addDebugInfo(`Refresh error: ${error}`);
-      triggerHapticFeedback('error');
+      console.error('[Discover] Error during manual refresh:', error);
+      addDebugInfo(`Manual refresh error: ${error}`);
       
       addNotification({
         type: 'error',
-        message: 'Failed to refresh matches. Please try again.',
+        message: 'Failed to refresh profiles',
         displayStyle: 'toast',
         duration: 4000
       });
     } finally {
       setRefreshing(false);
     }
-  }, [isLoading, refreshing, addDebugInfo, isGlobalSearchAllowed, globalSearch, preferredDistance, fetchPotentialMatches, triggerHapticFeedback, addNotification]);
+  }, [isLoading, refreshing, addDebugInfo, fetchPotentialMatches, triggerHapticFeedback, addNotification]);
   
-  const handleToggleGlobalSearch = useCallback(() => {
-    triggerHapticFeedback('medium');
-    
-    if (!isGlobalSearchAllowed) {
-      setDistanceError('Global search not available for your tier');
-      setGlobalSearch(false);
-      triggerHapticFeedback('error');
-      
-      addNotification({
-        type: 'warning',
-        message: 'Global search requires premium membership',
-        displayStyle: 'toast',
-        duration: 4000
-      });
-      return;
-    }
-
-    setGlobalSearch(!globalSearch);
-    if (!globalSearch) {
-      // Switching to global search - clear distance error and set to infinity symbol
-      setDistanceError('');
-      setPreferredDistance('∞');
-      
-      addNotification({
-        type: 'info',
-        message: 'Global search enabled - distance filter disabled',
-        displayStyle: 'toast',
-        duration: 3000
-      });
-    } else {
-      // Switching back to local search
-      const distance = user?.preferredDistance || 50;
-      setPreferredDistance(distance.toString());
-      
-      addNotification({
-        type: 'info',
-        message: `Local search enabled - ${distance} mile radius`,
-        displayStyle: 'toast',
-        duration: 3000
-      });
-    }
-  }, [isGlobalSearchAllowed, globalSearch, user, triggerHapticFeedback, addNotification]);
-
   // Memoized SwipeCards props to prevent unnecessary re-renders
   const swipeCardsProps = useMemo(() => ({
     profiles: potentialMatches,
@@ -513,13 +432,13 @@ export default function DiscoverScreen() {
   if (noMoreProfiles && potentialMatches.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['bottom']}>
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyTitle}>No More Profiles</Text>
-          <Text style={styles.emptySubtitle}>
+        <View style={styles.noMoreContainer}>
+          <Text style={styles.noMoreText}>No More Profiles</Text>
+          <Text style={styles.noMoreSubtext}>
             We've shown you all available entrepreneurs in your area.
           </Text>
-          <Text style={styles.emptySubtitle}>
-            Try expanding your search distance or enabling global search.
+          <Text style={styles.noMoreSubtext}>
+            Check back later for new matches.
           </Text>
           <Button 
             title="Refresh" 
@@ -534,306 +453,166 @@ export default function DiscoverScreen() {
   }
   
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      {showMatchModal ? (
-        <View style={styles.matchModalContainer}>
-          <View style={styles.matchModal}>
-            <Text style={styles.matchTitle}>It's a Match!</Text>
-            <Text style={styles.matchSubtitle}>
-              You and {matchedUser?.name} have liked each other
-            </Text>
-            
-            <Button
-              title="Send Message"
-              onPress={() => handleModalAction('message')}
-              variant="primary"
-              size="large"
-              style={styles.messageButton}
-            />
-            
-            <Button
-              title="Keep Browsing"
-              onPress={() => handleModalAction('close')}
-              variant="outline"
-              size="large"
-              style={styles.keepBrowsingButton}
-            />
-          </View>
-        </View>
-      ) : showLimitModal ? (
-        <View style={styles.matchModalContainer}>
-          <View style={styles.matchModal}>
-            <Text style={styles.matchTitle}>
-              {swipeLimitReached ? 'Swipe Limit Reached' : 'Match Limit Reached'}
-            </Text>
-            <Text style={styles.matchSubtitle}>
-              {swipeLimitReached 
-                ? "You've reached your daily swipe limit. Upgrade your plan for more swipes." 
-                : "You've reached your daily match limit. Upgrade your plan for more matches."
-              }
-            </Text>
-            
-            <Button
-              title="Upgrade Plan"
-              onPress={() => handleModalAction('upgrade')}
-              variant="primary"
-              size="large"
-              style={styles.messageButton}
-            />
-            
-            <Button
-              title="Continue Browsing"
-              onPress={() => handleModalAction('close')}
-              variant="outline"
-              size="large"
-              style={styles.keepBrowsingButton}
-            />
-          </View>
-        </View>
-      ) : showFilterModal ? (
-        <View style={styles.matchModalContainer}>
-          <View style={styles.matchModal}>
-            <Text style={styles.matchTitle}>Distance Filters</Text>
-            
-            {isGlobalSearchAllowed && (
-              <View style={styles.globalSearchContainer}>
-                <Text style={styles.globalSearchLabel}>Global Search</Text>
-                <Switch
-                  value={globalSearch}
-                  onValueChange={handleToggleGlobalSearch}
-                  trackColor={{ false: Colors.dark.border, true: Colors.dark.accent }}
-                  thumbColor={globalSearch ? Colors.dark.primary : Colors.dark.textSecondary}
-                />
-              </View>
-            )}
-            
-            {/* Only show distance input if global search is disabled */}
-            {(!globalSearch || !isGlobalSearchAllowed) && (
-              <Input
-                label="Max Distance (miles)"
-                value={preferredDistance}
-                onChangeText={setPreferredDistance}
-                placeholder="Enter max distance"
-                keyboardType="numeric"
-                error={distanceError}
-                style={styles.distanceInput}
-              />
-            )}
-            
-            {globalSearch && isGlobalSearchAllowed && (
-              <Text style={styles.globalSearchNote}>
-                Global search enabled - distance filter disabled
-              </Text>
-            )}
-            
-            {!isGlobalSearchAllowed && (
-              <Text style={styles.globalSearchNote}>
-                Global search available for premium members
-              </Text>
-            )}
-            
-            <Button
-              title="Apply Filters"
-              onPress={() => handleModalAction('applyFilters')}
-              variant="primary"
-              size="large"
-              style={styles.messageButton}
-            />
-            
-            <Button
-              title="Cancel"
-              onPress={() => handleModalAction('cancel')}
-              variant="outline"
-              size="large"
-              style={styles.keepBrowsingButton}
-            />
-          </View>
-        </View>
-      ) : (
-        <View style={styles.cardsContainer}>
-          <SwipeCards {...swipeCardsProps} />
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity 
-              style={[
-                styles.actionButton,
-                styles.refreshButton,
-                (refreshing || isLoading) && styles.buttonDisabled
-              ]}
-              onPress={handleManualRefresh}
-              disabled={refreshing || isLoading}
-            >
-              <RefreshCw 
-                size={24} 
-                color={refreshing || isLoading ? Colors.dark.disabled : Colors.dark.accent} 
-                style={refreshing ? styles.spinningIcon : undefined}
-              />
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[
-                styles.actionButton,
-                styles.filterButton,
-                (refreshing || isLoading) && styles.buttonDisabled
-              ]}
-              onPress={() => setShowFilterModal(true)}
-              disabled={refreshing || isLoading}
-            >
-              <MapPin 
-                size={24} 
-                color={refreshing || isLoading ? Colors.dark.disabled : Colors.dark.text} 
-              />
-              <Text style={[
-                styles.filterButtonText,
-                (refreshing || isLoading) && styles.textDisabled
-              ]}>
-                {globalSearch && isGlobalSearchAllowed ? 'Global' : `${preferredDistance} miles`}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-      
-      {/* Debug information */}
+    <SafeAreaView style={styles.container}>
+      {/* Debug Info */}
       {isDebugMode && (
         <View style={styles.debugContainer}>
-          <Text style={styles.debugTitle}>DEBUG INFO:</Text>
-          <Text style={styles.debugText}>User: {user?.id || 'none'}</Text>
-          <Text style={styles.debugText}>Tier: {user?.membershipTier || 'none'}</Text>
-          <Text style={styles.debugText}>Global Search: {isGlobalSearchAllowed ? 'enabled' : 'disabled'}</Text>
-          <Text style={styles.debugText}>Matches: {potentialMatches.length}</Text>
-          <Text style={styles.debugText}>Loading: {isLoading ? 'true' : 'false'}</Text>
-          <Text style={styles.debugText}>No More: {noMoreProfiles ? 'true' : 'false'}</Text>
-          <Text style={styles.debugText}>Error: {error || 'none'}</Text>
-          <Text style={styles.debugText}>Ready: {isReady ? 'true' : 'false'}</Text>
-          <Text style={styles.debugText}>Initialized: {hasInitialized ? 'true' : 'false'}</Text>
-          <Text style={styles.debugTitle}>RECENT ACTIONS:</Text>
-          {debugInfo.slice(-5).map((info, index) => (
+          {debugInfo.map((info, index) => (
             <Text key={index} style={styles.debugText}>{info}</Text>
           ))}
         </View>
       )}
-      
-      <Modal
-        visible={showProfileDetail}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowProfileDetail(false)}
-      >
-        <View style={styles.profileModalContainer}>
-          <View style={styles.profileModalContent}>
-            <View style={styles.profileModalHeader}>
-              <TouchableOpacity 
-                onPress={() => setShowProfileDetail(false)}
-                style={styles.backButton}
-              >
-                <ArrowLeft size={24} color={Colors.dark.text} />
-                <Text style={styles.backButtonText}>Back to Swiping</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                onPress={() => setShowProfileDetail(false)}
-                style={styles.closeButton}
-              >
-                <X size={24} color={Colors.dark.text} />
-              </TouchableOpacity>
+
+      {/* Main Content */}
+      {!isReady || !user ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.dark.primary} />
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+      ) : (
+        <View style={styles.mainContainer}>
+          {/* Modals */}
+          {showMatchModal && matchedUser ? (
+            <View style={styles.matchModalContainer}>
+              <View style={styles.matchModal}>
+                <Text style={styles.matchTitle}>It's a Match!</Text>
+                <Text style={styles.matchSubtitle}>
+                  You and {matchedUser.name} have liked each other
+                </Text>
+                
+                <Button
+                  title="Send Message"
+                  onPress={() => handleModalAction('message')}
+                  variant="primary"
+                  size="large"
+                  style={styles.messageButton}
+                />
+                
+                <Button
+                  title="Keep Browsing"
+                  onPress={() => handleModalAction('close')}
+                  variant="outline"
+                  size="large"
+                  style={styles.keepBrowsingButton}
+                />
+              </View>
             </View>
-            
-            {selectedProfile && (
-              <View style={styles.profileDetailContainer}>
-                <ProfileDetailCard 
-                  title="Bio"
-                  content={selectedProfile.bio || "No bio available"}
-                  profile={selectedProfile} 
+          ) : showLimitModal ? (
+            <View style={styles.matchModalContainer}>
+              <View style={styles.matchModal}>
+                <Text style={styles.matchTitle}>
+                  {swipeLimitReached ? 'Daily Swipe Limit Reached' : 'Daily Match Limit Reached'}
+                </Text>
+                <Text style={styles.matchSubtitle}>
+                  Upgrade to premium for unlimited swipes and matches
+                </Text>
+                
+                <Button
+                  title="Upgrade Now"
+                  onPress={() => handleModalAction('upgrade')}
+                  variant="primary"
+                  size="large"
+                  style={styles.messageButton}
                 />
                 
-                <ProfileDetailCard 
-                  title="Location"
-                  content={`${selectedProfile.location || 'Not specified'}${selectedProfile.zipCode ? ` (${selectedProfile.zipCode})` : ''}`} 
+                <Button
+                  title="Maybe Later"
+                  onPress={() => handleModalAction('close')}
+                  variant="outline"
+                  size="large"
+                  style={styles.keepBrowsingButton}
                 />
-                
-                <ProfileDetailCard 
-                  title="Industry"
-                  content={selectedProfile.industryFocus || selectedProfile.businessField || 'Not specified'} 
-                />
-                
-                <ProfileDetailCard 
-                  title="Business Stage"
-                  content={selectedProfile.businessStage || 'Not specified'} 
-                />
-                
-                <ProfileDetailCard 
-                  title="Skills Offered"
-                  content={
-                    selectedProfile.skillsOffered && selectedProfile.skillsOffered.length > 0 
-                      ? selectedProfile.skillsOffered 
-                      : 'No skills added yet'
-                  } 
-                />
-                
-                {selectedProfile.skillsSeeking && selectedProfile.skillsSeeking.length > 0 && (
-                  <ProfileDetailCard 
-                    title="Skills Seeking"
-                    content={selectedProfile.skillsSeeking} 
-                  />
-                )}
-                
-                {selectedProfile.lookingFor && selectedProfile.lookingFor.length > 0 && (
-                  <ProfileDetailCard 
-                    title="Looking For"
-                    content={selectedProfile.lookingFor} 
-                  />
-                )}
-                
-                {selectedProfile.availabilityLevel && selectedProfile.availabilityLevel.length > 0 && (
-                  <ProfileDetailCard 
-                    title="Availability"
-                    content={selectedProfile.availabilityLevel} 
-                  />
-                )}
-                
-                {selectedProfile.keyChallenge && (
-                  <ProfileDetailCard 
-                    title="Current Challenge"
-                    content={selectedProfile.keyChallenge} 
-                  />
-                )}
-                
-                {selectedProfile.successHighlight && (
-                  <ProfileDetailCard 
-                    title="Success Highlight"
-                    content={selectedProfile.successHighlight} 
-                  />
-                )}
-                
-                <View style={styles.actionButtons}>
-                  <TouchableOpacity 
-                    style={StyleSheet.compose(
-                      styles.actionButton,
-                      styles.passButton
-                    )}
-                    onPress={() => handleSwipeLeft(selectedProfile)}
-                    disabled={isLoading}
+              </View>
+            </View>
+          ) : (
+            <View style={styles.cardsContainer}>
+              {/* Profile Detail Modal */}
+              <Modal
+                visible={showProfileDetail}
+                animationType="slide"
+                transparent={true}
+                onRequestClose={() => setShowProfileDetail(false)}
+              >
+                <View style={styles.profileDetailContainer}>
+                  <TouchableOpacity
+                    style={styles.closeButton}
+                    onPress={() => setShowProfileDetail(false)}
                   >
-                    <X size={24} color={isLoading ? Colors.dark.disabled : Colors.dark.error} />
+                    <ArrowLeft color={Colors.dark.text} size={24} />
                   </TouchableOpacity>
                   
+                  {selectedProfile && (
+                    <View style={styles.profileContent}>
+                      <ProfileDetailCard
+                        title="Bio"
+                        content={selectedProfile.bio || "No bio available"}
+                        profile={selectedProfile}
+                      />
+                      <ProfileDetailCard
+                        title="Industry"
+                        content={selectedProfile.industryFocus || selectedProfile.businessField || "Not specified"}
+                        profile={selectedProfile}
+                      />
+                      <ProfileDetailCard
+                        title="Business Stage"
+                        content={selectedProfile.businessStage || "Not specified"}
+                        profile={selectedProfile}
+                      />
+                      {selectedProfile.skillsOffered && (
+                        <ProfileDetailCard
+                          title="Skills Offered"
+                          content={selectedProfile.skillsOffered}
+                          profile={selectedProfile}
+                        />
+                      )}
+                    </View>
+                  )}
+                </View>
+              </Modal>
+
+              {/* Swipe Cards */}
+              {isLoading && potentialMatches.length === 0 ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color={Colors.dark.primary} />
+                  <Text style={styles.loadingText}>Loading profiles...</Text>
+                </View>
+              ) : error ? (
+                <View style={styles.errorContainer}>
+                  <Text style={styles.errorText}>{error}</Text>
                   <Button
-                    title="Connect"
-                    onPress={() => {
-                      handleSwipeRight(selectedProfile);
-                      setShowProfileDetail(false);
-                    }}
+                    title="Try Again"
+                    onPress={() => fetchPotentialMatches()}
                     variant="primary"
                     size="medium"
-                    style={styles.actionButton}
-                    disabled={swipeLimitReached}
                   />
                 </View>
-              </View>
-            )}
-          </View>
+              ) : noMoreProfiles ? (
+                <View style={styles.noMoreContainer}>
+                  <Text style={styles.noMoreText}>No more profiles available</Text>
+                  <Text style={styles.noMoreSubtext}>Check back later for new matches</Text>
+                  <Button
+                    title="Refresh"
+                    onPress={() => fetchPotentialMatches()}
+                    variant="primary"
+                    size="medium"
+                    style={styles.refreshButton}
+                  />
+                </View>
+              ) : (
+                <SwipeCards
+                  profiles={potentialMatches}
+                  onSwipeRight={handleSwipeRight}
+                  onSwipeLeft={handleSwipeLeft}
+                  onProfilePress={handleProfilePress}
+                  onRefresh={handleManualRefresh}
+                  refreshing={refreshing}
+                  isLoading={isLoading}
+                />
+              )}
+            </View>
+          )}
         </View>
-      </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -841,217 +620,113 @@ export default function DiscoverScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.dark.background,
+    backgroundColor: Colors.dark.background
+  },
+  mainContainer: {
+    flex: 1
+  },
+  cardsContainer: {
+    flex: 1
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'center'
   },
   loadingText: {
-    marginTop: 16,
-    fontSize: 18,
     color: Colors.dark.text,
+    marginTop: 10
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-    backgroundColor: Colors.dark.background,
+    padding: 20
   },
   errorText: {
-    marginBottom: 16,
-    fontSize: 18,
     color: Colors.dark.error,
-    textAlign: 'center',
+    marginBottom: 20,
+    textAlign: 'center'
   },
-  cardsContainer: {
+  noMoreContainer: {
     flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20
   },
-  buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 16,
-    marginTop: 16,
-    marginBottom: 16,
+  noMoreText: {
+    color: Colors.dark.text,
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10
   },
-  actionButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: Colors.dark.card,
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexDirection: 'row',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+  noMoreSubtext: {
+    color: Colors.dark.textSecondary,
+    marginBottom: 20,
+    textAlign: 'center'
   },
   refreshButton: {
-    backgroundColor: Colors.dark.card,
-    marginTop: 16,
-  },
-  filterButton: {
-    width: 'auto',
-    paddingHorizontal: 16,
-    gap: 8,
-    backgroundColor: Colors.dark.card,
-  },
-  filterButtonText: {
-    color: Colors.dark.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  textDisabled: {
-    color: Colors.dark.disabled,
-  },
-  spinningIcon: {
-    transform: [{ rotate: '45deg' }],
-  },
-  debugContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    padding: 16,
-  },
-  debugTitle: {
-    color: Colors.dark.accent,
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  debugText: {
-    color: Colors.dark.text,
-    fontSize: 12,
-    marginBottom: 4,
+    marginTop: 10
   },
   matchModalContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0,0,0,0.8)'
   },
   matchModal: {
     backgroundColor: Colors.dark.card,
-    borderRadius: 16,
-    padding: 24,
+    borderRadius: 20,
+    padding: 20,
     width: '80%',
-    alignItems: 'center',
+    alignItems: 'center'
   },
   matchTitle: {
+    color: Colors.dark.text,
     fontSize: 24,
     fontWeight: 'bold',
-    color: Colors.dark.accent,
-    marginBottom: 16,
+    marginBottom: 10
   },
   matchSubtitle: {
-    fontSize: 16,
     color: Colors.dark.textSecondary,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 20
   },
   messageButton: {
-    width: '100%',
-    marginBottom: 12,
+    marginBottom: 10,
+    width: '100%'
   },
   keepBrowsingButton: {
-    width: '100%',
-  },
-  distanceInput: {
-    marginBottom: 16,
-    width: '100%',
-  },
-  globalSearchContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    width: '100%',
-    marginBottom: 16,
-  },
-  globalSearchLabel: {
-    fontSize: 16,
-    color: Colors.dark.text,
-    fontWeight: '500',
-  },
-  globalSearchNote: {
-    fontSize: 14,
-    color: Colors.dark.textSecondary,
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  profileModalContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'flex-end',
-  },
-  profileModalContent: {
-    backgroundColor: Colors.dark.background,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '90%',
-  },
-  profileModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.dark.border,
-  },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  backButtonText: {
-    marginLeft: 8,
-    fontSize: 16,
-    fontWeight: '500',
-    color: Colors.dark.text,
-  },
-  closeButton: {
-    padding: 4,
+    width: '100%'
   },
   profileDetailContainer: {
-    padding: 16,
-    gap: 16,
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
-  },
-  passButton: {
-    backgroundColor: Colors.dark.card,
-    borderColor: Colors.dark.error,
-    borderWidth: 1,
-  },
-  emptyContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+    backgroundColor: Colors.dark.background
   },
-  emptyTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: Colors.dark.text,
-    marginBottom: 16,
+  closeButton: {
+    position: 'absolute',
+    top: 40,
+    left: 20,
+    zIndex: 1,
+    padding: 10
   },
-  emptySubtitle: {
-    fontSize: 16,
-    color: Colors.dark.textSecondary,
-    textAlign: 'center',
-    marginBottom: 16,
+  debugContainer: {
+    position: 'absolute',
+    top: 40,
+    left: 10,
+    right: 10,
+    zIndex: 1000,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    padding: 10,
+    borderRadius: 5
   },
+  debugText: {
+    color: '#fff',
+    fontSize: 10
+  },
+  profileContent: {
+    flex: 1,
+    paddingTop: 60,
+    paddingBottom: 20
+  }
 });
