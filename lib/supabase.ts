@@ -279,8 +279,6 @@ export type SwipeAction = {
 export type PotentialMatchesResult = {
   matches: any[];
   count: number;
-  max_distance: number;
-  is_global: boolean;
 };
 
 // Define swipe batch result type
@@ -954,9 +952,7 @@ export const processSwipeBatch = async (swipeActions: SwipeAction[]): Promise<Sw
  */
 export const fetchPotentialMatches = async (
   userId: string, 
-  maxDistance: number = 50, 
-  isGlobalDiscovery: boolean = false, 
-  limit: number = 10 // Changed default to 10
+  limit: number = 10 // Fixed to 10 matches per request
 ): Promise<PotentialMatchesResult | null> => {
   console.log('🚨 [Enhanced Supabase] fetchPotentialMatches function called!');
   
@@ -967,8 +963,6 @@ export const fetchPotentialMatches = async (
   
   console.log('[Enhanced Supabase] fetchPotentialMatches called with:', {
     userId,
-    maxDistance,
-    isGlobalDiscovery,
     limit,
     connectionQuality: connectionState.quality
   });
@@ -978,8 +972,6 @@ export const fetchPotentialMatches = async (
     
     const { data, error } = await client.rpc('fetch_potential_matches', {
       p_user_id: userId,
-      p_max_distance: maxDistance,
-      p_is_global_discovery: isGlobalDiscovery,
       p_limit: limit
     });
     

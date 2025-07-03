@@ -134,8 +134,8 @@ class EnhancedProfileCache {
   private cache: Map<string, EnhancedCacheEntry<UserProfile>>;
   private config: EnhancedCacheConfig;
   private stats: CacheStats;
-  private cleanupTimer: NodeJS.Timeout | null = null;
-  private persistenceTimer: NodeJS.Timeout | null = null;
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+  private persistenceTimer: ReturnType<typeof setInterval> | null = null;
   private isInitialized = false;
 
   constructor() {
@@ -658,8 +658,25 @@ const withRateLimitAndRetry = async <T>(operation: () => Promise<T>): Promise<T>
   });
 };
 
-interface SerializedMatchesState extends Omit<MatchesStateData, 'pendingLikes'> {
+interface SerializedMatchesState {
+  potentialMatches: UserProfile[];
+  cachedMatches: UserProfile[];
+  matches: MatchWithProfile[];
+  batchSize: number;
+  isLoading: boolean;
+  error: string | null;
+  newMatch: MatchWithProfile | null;
+  swipeLimitReached: boolean;
+  matchLimitReached: boolean;
+  noMoreProfiles: boolean;
+  passedUsers: PassedUser[];
   pendingLikes: string[];
+  matchesLoading: boolean;
+  pendingMatches: MatchWithProfile[];
+  networkState: NetworkState;
+  cacheStats: CacheStats;
+  optimisticUpdates: Array<[string, 'like' | 'pass']>;
+  lastSwipeTime: number;
 }
 
 interface MatchesStateData {
@@ -685,7 +702,7 @@ interface MatchesStateData {
 }
 
 interface MatchesStateMethods {
-  fetchPotentialMatches: (maxDistance?: number, forceRefresh?: boolean) => Promise<void>;
+  fetchPotentialMatches: () => Promise<void>;
   fetchMatches: () => Promise<void>;
   likeUser: (userId: string) => Promise<MatchWithProfile | null>;
   passUser: (userId: string) => Promise<void>;
@@ -731,39 +748,25 @@ const initialState: MatchesStateData & { version: number } = {
   lastSwipeTime: 0
 };
 
-// Define the store creator with simplified functionality
-const matchesStoreCreator: StateCreator<
-  MatchesState,
-  [['zustand/persist', SerializedMatchesState]]
-> = (set, get) => ({
-  potentialMatches: [],
-  cachedMatches: [],
-  matches: [],
-  batchSize: 10, // Fixed to 10 matches
-  isLoading: false,
-  error: null,
-  newMatch: null,
-  swipeLimitReached: false,
-  matchLimitReached: false,
-  noMoreProfiles: false,
-  passedUsers: [],
-  pendingLikes: new Set(),
-  matchesLoading: false,
-  pendingMatches: [],
-  networkState,
-  cacheStats: enhancedProfileCache.getStats(),
-  optimisticUpdates: new Map(),
-  lastSwipeTime: 0,
+type SetState = (
+  partial: MatchesState | Partial<MatchesState> | ((state: MatchesState) => MatchesState | Partial<MatchesState>),
+  replace?: boolean
+) => void;
 
-  fetchPotentialMatches: async (maxDistance = 50, forceRefresh = false) => {
+type GetState = () => MatchesState;
+
+const createMatchesStore = (set: SetState, get: GetState) => ({
+  // Initial state
+  ...initialState,
+
+  // Methods
+  fetchPotentialMatches: async () => {
     const debugStore = useDebugStore.getState();
     const notificationStore = useNotificationStore.getState();
     const callId = `fetch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     if (debugStore.isDebugMode) {
       console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] fetchPotentialMatches CALLED`, {
-        maxDistance,
-        forceRefresh,
         networkState: get().networkState,
         cacheStats: get().cacheStats,
         timestamp: new Date().toISOString()
@@ -829,7 +832,6 @@ const matchesStoreCreator: StateCreator<
         if (debugStore.isDebugMode) {
           console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] Calling Supabase fetchPotentialMatches`, {
             userId: user.id,
-            maxDistance,
             limit: batchSize,
             networkQuality: currentNetworkState.connectionQuality
           });
@@ -839,7 +841,7 @@ const matchesStoreCreator: StateCreator<
         const result = await withCircuitBreaker(
           () => fetchPotentialMatchesFromSupabase(
             user.id,
-            maxDistance,
+            undefined,
             undefined,
             batchSize // Always 10
           ),
@@ -850,9 +852,7 @@ const matchesStoreCreator: StateCreator<
           console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] Supabase response`, {
             hasResult: !!result,
             matchesLength: result?.matches?.length || 0,
-            count: result?.count,
-            maxDistance: result?.max_distance,
-            isGlobal: result?.is_global
+            count: result?.count
           });
         }
 
@@ -870,7 +870,7 @@ const matchesStoreCreator: StateCreator<
           
           notificationStore.addNotification({
             type: 'info',
-            message: 'No more profiles found. Try expanding your search.',
+            message: 'No more profiles available at this time.',
             displayStyle: 'toast',
             duration: 4000
           });
@@ -884,8 +884,7 @@ const matchesStoreCreator: StateCreator<
             const isValid = match && 
               typeof match === 'object' && 
               match.id &&
-              match.name &&
-              typeof match.distance !== 'undefined';
+              match.name;
 
             const isNotSeen = !seenIds.has(match.id);
             
@@ -905,7 +904,7 @@ const matchesStoreCreator: StateCreator<
         enhancedProfileCache.warmup(validMatches);
 
         // Update state with new matches (replace on refresh, append otherwise)
-        const newPotentialMatches = forceRefresh ? validMatches : [...potentialMatches, ...validMatches];
+        const newPotentialMatches = validMatches;
         
         set(state => ({
           potentialMatches: newPotentialMatches,
@@ -924,7 +923,7 @@ const matchesStoreCreator: StateCreator<
         }
         
         // Show success notification for manual refreshes
-        if (forceRefresh && validMatches.length > 0) {
+        if (validMatches.length > 0) {
           notificationStore.addNotification({
             type: 'success',
             message: `Found ${validMatches.length} new profiles`,
@@ -1499,53 +1498,10 @@ const matchesStoreCreator: StateCreator<
 });
 
 export const useMatchesStore = create<MatchesState>()(
-  persist(
-    matchesStoreCreator as any,
-    {
-      name: 'simplified-matches-store',
-      storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state: MatchesState): SerializedMatchesState => ({
-        passedUsers: state.passedUsers,
-        pendingLikes: Array.from(state.pendingLikes),
-        matches: state.matches,
-        error: state.error,
-        swipeLimitReached: state.swipeLimitReached,
-        matchLimitReached: state.matchLimitReached,
-        noMoreProfiles: state.noMoreProfiles,
-        potentialMatches: state.potentialMatches,
-        cachedMatches: state.cachedMatches,
-        batchSize: state.batchSize,
-        isLoading: state.isLoading,
-        newMatch: state.newMatch,
-        matchesLoading: state.matchesLoading,
-        pendingMatches: state.pendingMatches,
-        networkState: state.networkState,
-        cacheStats: state.cacheStats,
-        lastSwipeTime: state.lastSwipeTime
-      }),
-      onRehydrateStorage: () => (state: SerializedMatchesState | undefined, error: unknown) => {
-        if (error) {
-          console.error('Error rehydrating simplified matches store:', error);
-          useMatchesStore.setState(initialState);
-          return;
-        }
-
-        if (!state) {
-          useMatchesStore.setState(initialState);
-          return;
-        }
-
-        useMatchesStore.setState({
-          ...state,
-          pendingLikes: new Set(state.pendingLikes),
-          isLoading: false,
-          matchesLoading: false,
-          optimisticUpdates: new Map(),
-          cacheStats: enhancedProfileCache.getStats()
-        });
-      }
-    } as unknown as PersistOptions<MatchesState, SerializedMatchesState>
-  )
+  persist(createMatchesStore, {
+    name: 'matches-store',
+    storage: createJSONStorage(() => AsyncStorage)
+  })
 );
 
 // Simplified batch processing - only manual processing

@@ -7,12 +7,10 @@
  * 2. Requires matches-store to be initialized for profile fetching
  * 3. Requires notification-store for match alerts
  * 4. Requires usage-store for swipe/match limits
- * 5. Race condition: Must wait for user location before fetching matches
  * 
  * CURRENT STATE:
  * Simplified discover screen for entrepreneur matching. Handles:
  * - Manual-only profile fetching (initial load + refresh button)
- * - Enhanced distance filtering and global search with better UX
  * - Improved match notifications and modals with better animations
  * - Enhanced usage limit enforcement with better user feedback
  * - Better error handling and user feedback throughout
@@ -55,7 +53,6 @@ import {
   Text,
   TouchableOpacity,
   Modal,
-  Switch,
   Alert,
   RefreshControl,
   Platform
@@ -70,8 +67,7 @@ import { UserProfile, MatchWithProfile } from '@/types/user';
 import { Button } from '@/components/Button';
 import * as Haptics from 'expo-haptics';
 import { ProfileDetailCard } from '@/components/ProfileDetailCard';
-import { X, ArrowLeft, RefreshCw, MapPin } from 'lucide-react-native';
-import { Input } from '@/components/Input';
+import { X, ArrowLeft, RefreshCw } from 'lucide-react-native';
 import { useDebugStore } from '@/store/debug-store';
 import { withErrorHandling, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
 import { useNotificationStore } from '@/store/notification-store';
@@ -101,16 +97,9 @@ export default function DiscoverScreen() {
   const [selectedProfile, setSelectedProfile] = useState<UserProfile | null>(null);
   const [showProfileDetail, setShowProfileDetail] = useState(false);
   const [showLimitModal, setShowLimitModal] = useState(false);
-  const [showFilterModal, setShowFilterModal] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
-  const [preferredDistance, setPreferredDistance] = useState('50');
-  const [globalSearch, setGlobalSearch] = useState(false);
-  const [distanceError, setDistanceError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [hasInitialized, setHasInitialized] = useState(false);
-  
-  // Simplified global search - allow for all users (can be restricted later if needed)
-  const isGlobalSearchAllowed = true;
 
   // Enhanced haptic feedback function
   const triggerHapticFeedback = useCallback((type: 'light' | 'medium' | 'heavy' | 'success' | 'error') => {
@@ -158,15 +147,8 @@ export default function DiscoverScreen() {
       setHasInitialized(true);
 
       try {
-        // Initial fetch with proper distance
-        const distance = isGlobalSearchAllowed && globalSearch 
-          ? undefined 
-          : (user.preferredDistance || parseInt(preferredDistance) || 50);
-
-        addDebugInfo(`Fetching initial matches - distance: ${distance}, global: ${globalSearch}`);
-        
         if (isMounted) {
-          await fetchPotentialMatches(distance);
+          await fetchPotentialMatches();
           startBatchProcessing();
           setInitialLoad(false);
           addDebugInfo('Initial fetch completed successfully');
@@ -175,7 +157,6 @@ export default function DiscoverScreen() {
         if (isMounted) {
           console.error('[Discover] Error during initialization:', error);
           addDebugInfo(`Initialization error: ${error}`);
-          setDistanceError('Error loading matches');
           addNotification({
             type: 'error',
             message: 'Failed to load matches. Please try again.',
@@ -194,30 +175,6 @@ export default function DiscoverScreen() {
     };
   }, [isReady, user]); // Only depend on isReady and user, not other state
 
-  // Add validation for distance changes - skip validation when global search is enabled
-  useEffect(() => {
-    if (!user) {
-      addDebugInfo('Missing user for distance validation');
-      return;
-    }
-
-    // Skip distance validation if global search is enabled
-    if (globalSearch && isGlobalSearchAllowed) {
-      setDistanceError('');
-      return;
-    }
-
-    const distance = parseInt(preferredDistance) || 50;
-    addDebugInfo(`Distance validation - distance: ${distance}, global: ${globalSearch}`);
-
-    if (distance < 1 || distance > 500) {
-      setDistanceError(`Distance must be between 1 and 500 miles`);
-      setPreferredDistance('50');
-    } else {
-      setDistanceError('');
-    }
-  }, [preferredDistance, user, isGlobalSearchAllowed, globalSearch]);
-  
   useEffect(() => {
     // Check for new matches and display modal
     const checkNewMatch = async () => {
