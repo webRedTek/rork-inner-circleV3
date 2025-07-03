@@ -952,10 +952,7 @@ export const processSwipeBatch = async (swipeActions: SwipeAction[]): Promise<Sw
  */
 export const fetchPotentialMatches = async (
   userId: string, 
-  maxDistance: number = 50, // Default 50km radius
-  isGlobalDiscovery: boolean = false, // Default to local discovery
-  limit: number = 10, // Fixed to 10 matches per request
-  offset: number = 0 // Default no offset
+  limit: number = 10 // Fixed to 10 matches per request
 ): Promise<PotentialMatchesResult | null> => {
   console.log('🚨 [Enhanced Supabase] fetchPotentialMatches function called!');
   
@@ -966,10 +963,7 @@ export const fetchPotentialMatches = async (
   
   console.log('[Enhanced Supabase] fetchPotentialMatches called with:', {
     userId,
-    maxDistance,
-    isGlobalDiscovery,
     limit,
-    offset,
     connectionQuality: connectionState.quality
   });
   
@@ -978,10 +972,7 @@ export const fetchPotentialMatches = async (
     
     const { data, error } = await client.rpc('fetch_potential_matches', {
       p_user_id: userId,
-      p_max_distance: maxDistance,
-      p_is_global_discovery: isGlobalDiscovery,
-      p_limit: limit,
-      p_offset: offset
+      p_limit: limit
     });
     
     console.log('[Enhanced Supabase] RPC response:', {

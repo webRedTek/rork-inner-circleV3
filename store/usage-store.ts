@@ -6,7 +6,6 @@ import { UsageCache, BatchUpdate, SyncStrategy, RateLimits, CacheConfig, RetrySt
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
 import { useNotificationStore } from './notification-store';
-import { useDebugStore } from './debug-store';
 import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
 
 /**
@@ -218,25 +217,9 @@ export const useUsageStore = create<UsageStore>()(
       },
 
       initializeUsage: async (userId: string) => {
-        const debugStore = useDebugStore.getState();
-        
-        debugStore.addDebugLog({
-          event: 'initializeUsage Started',
-          status: 'info',
-          details: `Starting usage initialization for user: ${userId}`,
-          source: 'usage-store'
-        });
-
         if (!userId || !isSupabaseConfigured() || !supabase) {
           const errorMessage = 'Cannot initialize usage: Invalid user ID or Supabase not configured';
           console.log('Skipping usage initialization:', errorMessage);
-          
-          debugStore.addDebugLog({
-            event: 'initializeUsage Failed',
-            status: 'error',
-            details: errorMessage,
-            source: 'usage-store'
-          });
           
           const appError = handleError(new Error(errorMessage));
           useNotificationStore.getState().addNotification({
@@ -348,18 +331,6 @@ export const useUsageStore = create<UsageStore>()(
             };
 
             console.log('Updated existing usage record:', usageCache);
-            
-            debugStore.addDebugLog({
-              event: 'initializeUsage Success',
-              status: 'success',
-              details: 'Successfully updated existing usage record',
-              data: {
-                lastSyncTimestamp: usageCache.lastSyncTimestamp,
-                usageDataKeys: Object.keys(usageCache.usageData)
-              },
-              source: 'usage-store'
-            });
-            
             set({ usageCache });
             return;
           }
@@ -434,18 +405,6 @@ export const useUsageStore = create<UsageStore>()(
           };
 
           console.log('Created new usage record:', usageCache);
-          
-          debugStore.addDebugLog({
-            event: 'initializeUsage Success',
-            status: 'success',
-            details: 'Successfully created new usage record',
-            data: {
-              lastSyncTimestamp: usageCache.lastSyncTimestamp,
-              usageDataKeys: Object.keys(usageCache.usageData)
-            },
-            source: 'usage-store'
-          });
-          
           set({ usageCache });
         } catch (error) {
           const appError = handleError(error);
@@ -491,17 +450,17 @@ export const useUsageStore = create<UsageStore>()(
 
         return {
           swipeCount: swipeData.currentCount,
-          swipeLimit: tierSettings.daily_swipe_limit,
-          swipeRemaining: Math.max(0, tierSettings.daily_swipe_limit - swipeData.currentCount),
+          swipeLimit: tierSettings.dailySwipeLimit,
+          swipeRemaining: Math.max(0, tierSettings.dailySwipeLimit - swipeData.currentCount),
           matchCount: matchData.currentCount,
-          matchLimit: tierSettings.daily_match_limit,
-          matchRemaining: Math.max(0, tierSettings.daily_match_limit - matchData.currentCount),
+          matchLimit: tierSettings.dailyMatchLimit,
+          matchRemaining: Math.max(0, tierSettings.dailyMatchLimit - matchData.currentCount),
           messageCount: messageData.currentCount,
-          messageLimit: tierSettings.message_sending_limit,
-          messageRemaining: Math.max(0, tierSettings.message_sending_limit - messageData.currentCount),
+          messageLimit: tierSettings.messageSendingLimit,
+          messageRemaining: Math.max(0, tierSettings.messageSendingLimit - messageData.currentCount),
           likeCount: likeData.currentCount,
-          likeLimit: tierSettings.daily_like_limit,
-          likeRemaining: Math.max(0, tierSettings.daily_like_limit - likeData.currentCount),
+          likeLimit: tierSettings.dailyLikeLimit,
+          likeRemaining: Math.max(0, tierSettings.dailyLikeLimit - likeData.currentCount),
           timestamp: Date.now(),
         };
       },
@@ -529,12 +488,12 @@ export const useUsageStore = create<UsageStore>()(
         }
 
         const limit = action === 'swipe' 
-          ? tierSettings.daily_swipe_limit
+          ? tierSettings.dailySwipeLimit
           : action === 'match' 
-            ? tierSettings.daily_match_limit
+            ? tierSettings.dailyMatchLimit
             : action === 'like'
-              ? tierSettings.daily_like_limit
-              : tierSettings.message_sending_limit;
+              ? tierSettings.dailyLikeLimit
+              : tierSettings.messageSendingLimit;
 
         const now = Date.now();
         const usageData = usageCache.usageData[action];

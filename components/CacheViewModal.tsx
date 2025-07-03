@@ -104,12 +104,12 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
       if (!data) return null;
 
       const limit = type === 'swipe' 
-        ? tierSettings?.daily_swipe_limit || 'N/A'
+        ? tierSettings?.dailySwipeLimit || 'N/A'
         : type === 'match'
-        ? tierSettings?.daily_match_limit || 'N/A'
+        ? tierSettings?.dailyMatchLimit || 'N/A'
         : type === 'like'
-        ? tierSettings?.daily_like_limit || 'N/A'
-        : tierSettings?.message_sending_limit || 'N/A';
+        ? tierSettings?.dailyLikeLimit || 'N/A'
+        : tierSettings?.messageSendingLimit || 'N/A';
       const isCloseToLimit = typeof limit === 'number' && data.currentCount >= limit * 0.8;
 
       return (
@@ -133,27 +133,27 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
     if (!databaseTotals) return <Text style={styles.noDataText}>No database totals available</Text>;
 
     const usageTypes = [
-      { key: 'swipe', count: databaseTotals.swipe_count },
-      { key: 'match', count: databaseTotals.match_count },
-      { key: 'message', count: databaseTotals.message_count },
-      { key: 'like', count: databaseTotals.like_count },
+      { key: 'swipe', count: databaseTotals.swipeCount },
+      { key: 'match', count: databaseTotals.matchCount },
+      { key: 'message', count: databaseTotals.messageCount },
+      { key: 'like', count: databaseTotals.likeCount },
     ];
 
     return usageTypes.map(({ key, count }) => {
       const limit = key === 'swipe' 
-        ? tierSettings?.daily_swipe_limit || 'N/A'
+        ? tierSettings?.dailySwipeLimit || 'N/A'
         : key === 'match'
-        ? tierSettings?.daily_match_limit || 'N/A'
+        ? tierSettings?.dailyMatchLimit || 'N/A'
         : key === 'like'
-        ? tierSettings?.daily_like_limit || 'N/A'
-        : tierSettings?.message_sending_limit || 'N/A';
+        ? tierSettings?.dailyLikeLimit || 'N/A'
+        : tierSettings?.messageSendingLimit || 'N/A';
 
       return (
         <View key={key} style={styles.row}>
           <Text style={styles.cell}>{key.charAt(0).toUpperCase() + key.slice(1)}</Text>
           <Text style={styles.cell}>{count} / {limit}</Text>
           <Text style={styles.cell}>
-            {databaseTotals.daily_reset_at ? formatTimeRemaining(new Date(databaseTotals.daily_reset_at).getTime() - Date.now()) : 'N/A'}
+            {databaseTotals.dailyResetAt ? formatTimeRemaining(new Date(databaseTotals.dailyResetAt).getTime() - Date.now()) : 'N/A'}
           </Text>
           <Text style={styles.cell}>N/A</Text>
         </View>
@@ -204,25 +204,33 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
       <>
         <View style={styles.row}>
           <Text style={styles.cell}>Daily Swipe Limit</Text>
-          <Text style={styles.cell}>{tierSettings.daily_swipe_limit}</Text>
-          <Text style={styles.cell}>N/A</Text>
-          <Text style={styles.cell}>{formatTimestamp(tierSettingsTimestamp)}</Text>
-        </View>
-				 <View style={styles.row}>
-          <Text style={styles.cell}>Daily Like Limit</Text>
-          <Text style={styles.cell}>{tierSettings.daily_like_limit}</Text>
+          <Text style={styles.cell}>
+            {tierSettings?.dailySwipeLimit || 'N/A'}
+          </Text>
           <Text style={styles.cell}>N/A</Text>
           <Text style={styles.cell}>{formatTimestamp(tierSettingsTimestamp)}</Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.cell}>Daily Match Limit</Text>
-          <Text style={styles.cell}>{tierSettings.daily_match_limit}</Text>
+          <Text style={styles.cell}>
+            {tierSettings?.dailyMatchLimit || 'N/A'}
+          </Text>
+          <Text style={styles.cell}>N/A</Text>
+          <Text style={styles.cell}>{formatTimestamp(tierSettingsTimestamp)}</Text>
+        </View>
+        <View style={styles.row}>
+          <Text style={styles.cell}>Daily Like Limit</Text>
+          <Text style={styles.cell}>
+            {tierSettings?.dailyLikeLimit || 'N/A'}
+          </Text>
           <Text style={styles.cell}>N/A</Text>
           <Text style={styles.cell}>{formatTimestamp(tierSettingsTimestamp)}</Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.cell}>Message Sending Limit</Text>
-          <Text style={styles.cell}>{tierSettings.message_sending_limit}</Text>
+          <Text style={styles.cell}>
+            {tierSettings?.messageSendingLimit || 'N/A'}
+          </Text>
           <Text style={styles.cell}>N/A</Text>
           <Text style={styles.cell}>{formatTimestamp(tierSettingsTimestamp)}</Text>
         </View>
