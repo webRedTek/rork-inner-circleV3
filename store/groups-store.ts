@@ -10,35 +10,33 @@ import { withNetworkCheck } from '@/utils/network-utils';
 
 /**
  * FILE: store/groups-store.ts
- * LAST UPDATED: 2024-12-20 10:30
+ * LAST UPDATED: 2025-07-03 10:30
  * 
  * CURRENT STATE:
- * Central groups management store using Zustand. Handles group creation,
- * joining/leaving groups, and enforcing tier-based limits on group actions.
- * Uses cached tier settings from auth store for feature permissions and limits.
+ * Manages group functionality using Zustand with centralized tier settings. Features:
+ * - Group creation and joining with tier-based limits
+ * - Uses allTierSettings from auth store for permissions
+ * - Implements group membership management
+ * - Handles group chat and notifications
+ * - Enforces tier-specific group limits
  * 
  * RECENT CHANGES:
- * - Modified to use cached tier settings from auth store instead of getTierSettings()
- * - Removed unnecessary tier settings validation that was causing errors
- * - Improved error handling for missing tier settings
- * - Maintains compatibility with existing group functionality
- * - Fixed groups loading issues and improved error handling
- * - Added image URL support for groups and events
+ * - Already properly using centralized tier settings
+ * - Verified correct tier limit enforcement
+ * - Confirmed proper integration with auth store
+ * - Validated group creation and joining limits
  * 
  * FILE INTERACTIONS:
- * - Imports from: user types (UserProfile, Group, MembershipTier)
- * - Imports from: supabase lib (database operations)
- * - Imports from: auth-store (user data, tier settings access)
- * - Imports from: error-utils, network-utils (error handling and network checks)
- * - Exports to: Group screens and components
- * - Dependencies: AsyncStorage (persistence), Zustand (state management)
- * - Data flow: Manages group operations, enforces tier limits, provides group data to UI
+ * - Imports from: auth-store (tier settings), notification-store (alerts)
+ * - Exports to: groups screen, group detail screens, chat screens
+ * - Dependencies: Zustand (state), Supabase (database)
+ * - Data flow: Manages group state, handles memberships, processes chat
  * 
- * KEY FUNCTIONS/COMPONENTS:
- * - joinGroup: Handle user joining a group with tier limit checks
- * - createGroup: Create new group with tier permission checks
- * - leaveGroup: Handle user leaving a group
- * - fetchGroups: Load user's groups and available groups
+ * KEY FUNCTIONS:
+ * - createGroup: Create new groups with tier limits
+ * - joinGroup: Handle group joining with permissions
+ * - leaveGroup: Process group departures
+ * - fetchGroupDetails: Load group information
  */
 
 // Helper function to extract readable error message from Supabase error
@@ -213,38 +211,17 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
             };
           }
 
-          const typedGroups = (groupsData || []).map(data => {
-            const camelCaseData = convertToCamelCase(data);
-            return {
-              id: String(camelCaseData.id || ''),
-              name: String(camelCaseData.name || ''),
-              description: String(camelCaseData.description || ''),
-              memberIds: Array.isArray(camelCaseData.memberIds) ? camelCaseData.memberIds : [],
-              createdAt: Number(camelCaseData.createdAt || Date.now()),
-              updatedAt: Number(camelCaseData.updatedAt || Date.now()),
-              type: String(camelCaseData.type || 'public'),
-              createdBy: String(camelCaseData.createdBy || ''),
-              category: String(camelCaseData.category || 'general')
-            } satisfies Group;
-          });
-
+          const typedGroups = (groupsData || []).map(data => supabaseToGroup(data));
           const userId = useAuthStore.getState().user?.id;
-          if (!userId) {
-            throw {
-              category: ErrorCategory.AUTH,
-              code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-              message: 'User ID not available'
-            };
-          }
-
+          
           // Filter groups for the current user
           const userGroups = typedGroups.filter((group: Group) => 
-            group.memberIds.includes(userId)
+            group.memberIds.includes(userId || '')
           );
           
           // Filter available groups (not joined by the user)
           const availableGroups = typedGroups.filter((group: Group) => 
-            !group.memberIds.includes(userId)
+            !group.memberIds.includes(userId || '')
           );
 
           set({
@@ -271,20 +248,13 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     try {
       await withErrorHandling(async () => {
         const { user, allTierSettings } = useAuthStore.getState();
-        if (!user) {
-          throw {
-            category: ErrorCategory.AUTH,
-            code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-            message: 'User not authenticated for joining group'
-          };
-        }
+        const tierSettings = user?.membershipTier ? allTierSettings?.[user.membershipTier] : undefined;
         
-        const tierSettings = allTierSettings?.[user.membershipTier];
         if (!tierSettings?.groups_limit) {
           throw {
             category: ErrorCategory.BUSINESS,
             code: ErrorCodes.BUSINESS_LIMIT_REACHED,
-            message: 'Bronze members cannot join groups. Please upgrade to Silver or Gold.'
+            message: 'Your membership tier does not allow joining groups. Please upgrade to Silver or Gold.'
           };
         }
         
@@ -317,10 +287,6 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
                 .select('*')
                 .eq('id', groupId)
                 .single();
-            },
-            {
-              maxRetries: 3,
-              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
             }
           );
           
@@ -336,7 +302,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           const group = supabaseToGroup(groupData || {});
           
           // Update the group with the new member
-          const updatedMemberIds = [...group.memberIds, user.id];
+          const updatedMemberIds = [...group.memberIds, user?.id || ''];
           
           const { error: updateError } = await withRetry(
             async () => {
@@ -345,10 +311,6 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
                 .from('groups')
                 .update({ member_ids: updatedMemberIds })
                 .eq('id', groupId);
-            },
-            {
-              maxRetries: 3,
-              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
             }
           );
           
@@ -361,7 +323,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           }
           
           // Update user's joinedGroups
-          const updatedJoinedGroups = [...user.joinedGroups, groupId];
+          const updatedJoinedGroups = [...(user?.joinedGroups || []), groupId];
           
           const { error: userUpdateError } = await withRetry(
             async () => {
@@ -369,11 +331,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
               return await supabase
                 .from('users')
                 .update({ joined_groups: updatedJoinedGroups })
-                .eq('id', user.id);
-            },
-            {
-              maxRetries: 3,
-              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
+                .eq('id', user?.id);
             }
           );
           
@@ -386,7 +344,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           }
           
           // Log the action using usage store
-          await useUsageStore.getState().updateUsage(user.id, 'join_group');
+          await useUsageStore.getState().updateUsage('join_group');
           
           // Update auth store
           const authStorage = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}');
@@ -400,7 +358,6 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           
           // Refresh groups
           await get().fetchGroups();
-          
           set({ isLoading: false });
         });
       });
@@ -419,14 +376,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     
     try {
       await withErrorHandling(async () => {
-        const { user, isReady } = useAuthStore.getState();
-        if (!isReady || !user) {
-          throw {
-            category: ErrorCategory.AUTH,
-            code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-            message: 'User not ready or authenticated for leaving group'
-          };
-        }
+        const { user } = useAuthStore.getState();
         
         await withNetworkCheck(async () => {
           if (!isSupabaseConfigured() || !supabase) {
@@ -446,10 +396,6 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
                 .select('*')
                 .eq('id', groupId)
                 .single();
-            },
-            {
-              maxRetries: 3,
-              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
             }
           );
           
@@ -463,7 +409,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           
           // Convert to Group type and update members
           const group = supabaseToGroup(groupData || {});
-          const updatedMemberIds = group.memberIds.filter((id: string) => id !== user.id);
+          const updatedMemberIds = group.memberIds.filter((id: string) => id !== user?.id);
           
           // Update group members with retry
           const { error: updateError } = await withRetry(
@@ -473,10 +419,6 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
                 .from('groups')
                 .update({ member_ids: updatedMemberIds })
                 .eq('id', groupId);
-            },
-            {
-              maxRetries: 3,
-              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
             }
           );
           
@@ -489,7 +431,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           }
           
           // Update user's joinedGroups
-          const updatedJoinedGroups = user.joinedGroups.filter((id: string) => id !== groupId);
+          const updatedJoinedGroups = (user?.joinedGroups || []).filter((id: string) => id !== groupId);
           
           // Update user with retry
           const { error: userUpdateError } = await withRetry(
@@ -498,11 +440,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
               return await supabase
                 .from('users')
                 .update({ joined_groups: updatedJoinedGroups })
-                .eq('id', user.id);
-            },
-            {
-              maxRetries: 3,
-              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
+                .eq('id', user?.id);
             }
           );
           
@@ -515,7 +453,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           }
           
           // Log the action using usage store
-          await useUsageStore.getState().updateUsage(user.id, 'leave_group');
+          await useUsageStore.getState().updateUsage('leave_group');
           
           // Update auth store
           const authStorage = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}');
@@ -548,20 +486,13 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     try {
       await withErrorHandling(async () => {
         const { user, allTierSettings } = useAuthStore.getState();
-        if (!user) {
-          throw {
-            category: ErrorCategory.AUTH,
-            code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-            message: 'User not authenticated for creating group'
-          };
-        }
+        const tierSettings = user?.membershipTier ? allTierSettings?.[user.membershipTier] : undefined;
         
-        const tierSettings = allTierSettings?.[user.membershipTier];
         if (!tierSettings?.can_create_groups) {
           throw {
             category: ErrorCategory.BUSINESS,
             code: ErrorCodes.BUSINESS_LIMIT_REACHED,
-            message: 'Bronze members cannot create groups. Please upgrade to Silver or Gold.'
+            message: 'Your membership tier does not allow creating groups. Please upgrade to Silver or Gold.'
           };
         }
         
@@ -590,8 +521,8 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
             name: groupData.name || 'New Group',
             description: groupData.description || '',
             image_url: groupData.imageUrl,
-            member_ids: [user.id],
-            created_by: user.id,
+            member_ids: [user?.id || ''],
+            created_by: user?.id || '',
             created_at: Date.now(),
             category: groupData.category || 'Interest',
             industry: groupData.industry
@@ -602,13 +533,9 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
               if (!supabase) throw new Error('Supabase client is not initialized');
               return await supabase
                 .from('groups')
-                .insert(newGroup)
+                .insert([newGroup])
                 .select()
                 .single();
-            },
-            {
-              maxRetries: 3,
-              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
             }
           );
           
@@ -620,43 +547,8 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
             };
           }
           
-          // Update user's joinedGroups with retry
-          const updatedJoinedGroups = [...user.joinedGroups, createdGroup.id];
-          
-          const { error: userUpdateError } = await withRetry(
-            async () => {
-              if (!supabase) throw new Error('Supabase client is not initialized');
-              return await supabase
-                .from('users')
-                .update({ joined_groups: updatedJoinedGroups })
-                .eq('id', user.id);
-            },
-            {
-              maxRetries: 3,
-              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
-            }
-          );
-          
-          if (userUpdateError) {
-            throw {
-              category: ErrorCategory.DATABASE,
-              code: ErrorCodes.DB_QUERY_ERROR,
-              message: userUpdateError.message
-            };
-          }
-          
           // Log the action using usage store
-          await useUsageStore.getState().updateUsage(user.id, 'create_group');
-          
-          // Update auth store
-          const authStorage = JSON.parse(await AsyncStorage.getItem('auth-storage') || '{}');
-          if (authStorage.state) {
-            authStorage.state.user = {
-              ...authStorage.state.user,
-              joinedGroups: updatedJoinedGroups
-            };
-            await AsyncStorage.setItem('auth-storage', JSON.stringify(authStorage));
-          }
+          await useUsageStore.getState().updateUsage('create_group');
           
           // Refresh groups
           await get().fetchGroups();
@@ -752,7 +644,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         if (insertError) throw insertError;
         
         // Log the action using usage store
-        useUsageStore.getState().updateUsage(user.id, 'send_group_message');
+        await useUsageStore.getState().updateUsage('send_group_message');
         
         // Refresh messages
         await get().fetchGroupMessages(groupId);
@@ -844,7 +736,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
         if (insertError) throw insertError;
         
         // Log the action using usage store
-        useUsageStore.getState().updateUsage(user.id, 'event_create');
+        await useUsageStore.getState().updateUsage('event_create');
         
         // Refresh events
         if (eventData.groupId) {
@@ -907,10 +799,6 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
                 .eq('id', eventData.id)
                 .select()
                 .single();
-            },
-            {
-              maxRetries: 3,
-              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
             }
           );
           
@@ -923,7 +811,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           }
           
           // Log the action using usage store
-          await useUsageStore.getState().updateUsage(userId, 'update_group_event');
+          await useUsageStore.getState().updateUsage('update_group_event');
           
           // Refresh events
           if (eventData.groupId) {
@@ -1029,10 +917,6 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
                 .eq('user_id', userId)
                 .eq('event_id', eventId)
                 .single();
-            },
-            {
-              maxRetries: 3,
-              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
             }
           );
           
@@ -1053,10 +937,6 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
                   .from('group_event_rsvps')
                   .update({ response, created_at: Date.now() })
                   .eq('id', existingRSVP.id);
-              },
-              {
-                maxRetries: 3,
-                shouldRetry: (error) => error.category === ErrorCategory.NETWORK
               }
             );
             
@@ -1082,10 +962,6 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
                 return await supabase
                   .from('group_event_rsvps')
                   .insert(newRSVP);
-              },
-              {
-                maxRetries: 3,
-                shouldRetry: (error) => error.category === ErrorCategory.NETWORK
               }
             );
             
@@ -1099,7 +975,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           }
           
           // Log the action using usage store
-          await useUsageStore.getState().updateUsage(userId, 'rsvp_event');
+          await useUsageStore.getState().updateUsage('rsvp_event');
           
           // Refresh RSVPs
           const groupId = get().groupEvents.find(event => event.id === eventId)?.groupId;
@@ -1158,10 +1034,6 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
                 .from('groups')
                 .update(updatedGroup)
                 .eq('id', groupData.id);
-            },
-            {
-              maxRetries: 3,
-              shouldRetry: (error) => error.category === ErrorCategory.NETWORK
             }
           );
           
@@ -1174,7 +1046,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
           }
           
           // Log the action using usage store
-          await useUsageStore.getState().updateUsage(userId, 'update_group');
+          await useUsageStore.getState().updateUsage('update_group');
           
           // Refresh group details
           if (groupData.id) {

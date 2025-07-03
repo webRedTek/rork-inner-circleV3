@@ -429,7 +429,7 @@ const enhancedFetch = async (input: RequestInfo | URL, init?: RequestInit): Prom
   const timeout = connectionState.adaptiveTimeout;
   
   const fetchWithAdaptiveTimeout = async (attempt = 0): Promise<Response> => {
-    try {
+  try {
       // Check network status before making request
       const networkStatus = await checkNetworkStatus();
       if (networkStatus.isConnected === false) {
@@ -452,7 +452,7 @@ const enhancedFetch = async (input: RequestInfo | URL, init?: RequestInit): Prom
       }
       
       return response;
-    } catch (error) {
+  } catch (error) {
       const isTimeoutError = error instanceof Error && error.name === 'AbortError';
       const isNetworkError = error instanceof Error && 
         (error.message.includes('Network') || 
@@ -475,7 +475,7 @@ const enhancedFetch = async (input: RequestInfo | URL, init?: RequestInit): Prom
       }
       
       throw error;
-    }
+  }
   };
   
   return fetchWithAdaptiveTimeout();
@@ -590,8 +590,8 @@ const initWithEnhancedRetry = async (url: string, key: string, retryCount = 0): 
     }
     
     console.error('[Enhanced Supabase] All initialization attempts failed:', error instanceof Error ? error.message : String(error));
-    throw error;
-  }
+      throw error;
+    }
 };
 
 /**
@@ -641,12 +641,12 @@ export const testSupabaseConnection = async (): Promise<ConnectionTestResult> =>
           if (attempt < maxRetries - 1) {
             const delay = Math.min(1000 * Math.pow(1.5, attempt), 3000);
             await new Promise(resolve => setTimeout(resolve, delay));
-            continue;
-          }
+          continue;
+        }
         } else {
           console.log('[Enhanced Supabase] Connection test successful. app_settings query returned data:', data);
           connectionState.consecutiveFailures = 0;
-          return { success: true, networkStatus };
+        return { success: true, networkStatus };
         }
       } catch (error) {
         lastError = error;

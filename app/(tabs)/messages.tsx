@@ -1,3 +1,33 @@
+/**
+ * FILE: app/(tabs)/messages.tsx
+ * LAST UPDATED: 2025-07-03 11:20
+ * 
+ * CURRENT STATE:
+ * Messages tab screen that displays chat previews and handles navigation. Features:
+ * - Displays list of chat conversations with previews
+ * - Shows unread message counts and timestamps
+ * - Handles navigation to individual chat screens
+ * - Lazy loads messages when conversation opened
+ * 
+ * RECENT CHANGES:
+ * - Improved chat preview UI with better spacing
+ * - Added proper timestamp formatting
+ * - Enhanced error handling and loading states
+ * - Implemented lazy message loading
+ * 
+ * FILE INTERACTIONS:
+ * - Imports from: messages-store (chat data), auth-store (user)
+ * - Exports to: Used by app router for messages tab
+ * - Dependencies: expo-router (navigation), react-native
+ * - Data flow: Displays messages from store, navigates to chat
+ * 
+ * KEY FUNCTIONS/COMPONENTS:
+ * - MessagesScreen: Main component for messages list
+ * - renderChatPreview: Renders individual chat previews
+ * - handleChatPress: Handles chat selection and navigation
+ * - formatTime: Formats message timestamps
+ */
+
 import React, { useEffect, useState, useCallback } from 'react';
 import { 
   View, 

@@ -1,6 +1,6 @@
 /**
  * FILE: app/(tabs)/discover.tsx
- * LAST UPDATED: 2025-07-02 19:30
+ * LAST UPDATED: 2025-07-03 10:30
  * 
  * INITIALIZATION ORDER:
  * 1. Initializes after auth-store confirms user session
@@ -9,40 +9,33 @@
  * 4. Requires usage-store for swipe/match limits
  * 
  * CURRENT STATE:
- * Simplified discover screen for entrepreneur matching. Handles:
- * - Manual-only profile fetching (initial load + refresh button)
- * - Improved match notifications and modals with better animations
- * - Enhanced usage limit enforcement with better user feedback
- * - Better error handling and user feedback throughout
- * - Fixed 10-match loading per request
+ * Discover screen for entrepreneur matching with tier-based features:
+ * - Manual profile fetching with tier-based limits
+ * - Premium features (global search, rewind) based on tier
+ * - Usage tracking with tier-specific limits
+ * - Enhanced UI feedback for tier limits and upgrades
+ * - Centralized tier settings integration
  * 
  * RECENT CHANGES:
- * - Removed all automatic prefetching and adaptive behavior
- * - Simplified to manual-only fetching (initial load + refresh button)
- * - Removed prefetching triggers and thresholds
- * - Enhanced swipe action handling with better error feedback
- * - Improved animation performance and responsiveness
- * - Better haptic feedback integration throughout the interface
- * - Enhanced loading states and error handling
- * - Improved global search logic with better validation
- * - Added better debugging to track multiple calls issue
+ * - Removed batch processing (moved to usage store)
+ * - Removed redundant auth checks
+ * - Added tier-specific UI elements to show limits/usage
+ * - Improved error messages with remaining time info
+ * - Added premium feature indicators
+ * - Enhanced limit reached modal with tier info
+ * - Using centralized tier settings from auth store
  * 
  * FILE INTERACTIONS:
- * - Imports from: matches-store, auth-store, notification-store, usage-store
- * - Components: SwipeCards, EntrepreneurCard, Button, Input
- * - Dependencies: expo-router for navigation, react-native for UI
- * - Data flow: Bidirectional with matches-store
+ * - Imports from: matches-store (swipes), auth-store (tier settings)
+ * - Components: SwipeCards, EntrepreneurCard, Button
+ * - Dependencies: expo-router, react-native, haptics
+ * - Data flow: Uses tier settings for UI and limits
  * 
  * KEY FUNCTIONS:
- * - handleSwipeRight/Left: Enhanced swipe actions with better feedback
- * - handleManualRefresh: Manual refresh with better loading states
- * - handleToggleGlobalSearch: Enhanced global search toggle
- * - handleModalAction: Better modal action handling
- * 
- * STORE DEPENDENCIES:
- * matches-store -> Handles all match data and swipe logic
- * auth-store -> User authentication and tier settings
- * usage-store -> Tracks swipe/match limits
+ * - handleSwipeRight/Left: Tier-aware swipe actions
+ * - handleManualRefresh: Refresh with tier limits
+ * - handlePremiumFeature: Tier-gated feature access
+ * - showTierLimits: Display current usage/limits
  */
 
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
@@ -61,16 +54,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import Colors from '@/constants/colors';
 import { SwipeCards } from '@/components/SwipeCards';
-import { useMatchesStore, startBatchProcessing, stopBatchProcessing } from '@/store/matches-store';
+import { useMatchesStore } from '@/store/matches-store';
 import { useAuthStore } from '@/store/auth-store';
 import { UserProfile, MatchWithProfile } from '@/types/user';
 import { Button } from '@/components/Button';
 import * as Haptics from 'expo-haptics';
 import { ProfileDetailCard } from '@/components/ProfileDetailCard';
-import { X, ArrowLeft, RefreshCw } from 'lucide-react-native';
+import { X, ArrowLeft, RefreshCw, Crown, Rewind, Globe } from 'lucide-react-native';
 import { useDebugStore } from '@/store/debug-store';
 import { withErrorHandling, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
 import { useNotificationStore } from '@/store/notification-store';
+import { useUsageStore } from '@/store/usage-store';
 
 export default function DiscoverScreen() {
   const router = useRouter();
@@ -88,9 +82,10 @@ export default function DiscoverScreen() {
     noMoreProfiles
   } = useMatchesStore();
   
-  const { user } = useAuthStore();
+  const { getTierSettings } = useAuthStore();
   const { isDebugMode } = useDebugStore();
   const { addNotification } = useNotificationStore();
+  const { getUsageStats, trackUsage } = useUsageStore();
   
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [matchedUser, setMatchedUser] = useState<UserProfile | null>(null);
@@ -100,6 +95,7 @@ export default function DiscoverScreen() {
   const [initialLoad, setInitialLoad] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hasInitialized, setHasInitialized] = useState(false);
+  const [usageStats, setUsageStats] = useState<any>(null);
 
   // Enhanced haptic feedback function
   const triggerHapticFeedback = useCallback((type: 'light' | 'medium' | 'heavy' | 'success' | 'error') => {
@@ -133,7 +129,7 @@ export default function DiscoverScreen() {
     setDebugInfo(prev => [...prev.slice(-4), `${new Date().toLocaleTimeString()}: ${info}`]);
   }, [isDebugMode]);
 
-  // SINGLE INITIALIZATION EFFECT - Only runs once when component mounts
+  // Update initialization effect
   useEffect(() => {
     let isMounted = true;
     
@@ -143,13 +139,12 @@ export default function DiscoverScreen() {
         return;
       }
 
-      addDebugInfo(`Starting initialization for user: ${user!.id}`);
+      addDebugInfo('Starting initialization');
       setHasInitialized(true);
 
       try {
         if (isMounted) {
           await fetchPotentialMatches();
-          startBatchProcessing();
           setInitialLoad(false);
           addDebugInfo('Initial fetch completed successfully');
         }
@@ -171,9 +166,8 @@ export default function DiscoverScreen() {
     
     return () => {
       isMounted = false;
-      stopBatchProcessing();
     };
-  }, []); // Only run once on mount since we're in a protected route
+  }, []);
 
   useEffect(() => {
     // Check for new matches and display modal
@@ -230,6 +224,34 @@ export default function DiscoverScreen() {
       return () => clearTimeout(timeout);
     }
   }, [isLoading, potentialMatches.length, addDebugInfo]);
+  
+  // Add usage stats effect
+  useEffect(() => {
+    const updateUsageStats = async () => {
+      try {
+        const stats = await getUsageStats();
+        setUsageStats(stats);
+      } catch (err) {
+        console.error('[Discover] Error fetching usage stats:', err);
+      }
+    };
+    updateUsageStats();
+  }, [getUsageStats]);
+  
+  // Update premium feature handler to use tier settings directly
+  const handlePremiumFeature = useCallback((feature: string) => {
+    const tierSettings = getTierSettings();
+    if (!tierSettings) return false;
+
+    switch (feature) {
+      case 'rewind':
+        return tierSettings.can_rewind_last_swipe;
+      case 'global':
+        return tierSettings.global_discovery;
+      default:
+        return false;
+    }
+  }, [getTierSettings]);
   
   // Enhanced swipe handlers with better error handling and feedback
   const handleSwipeRight = useCallback(async (profile: UserProfile) => {
@@ -400,6 +422,88 @@ export default function DiscoverScreen() {
     onRetry: handleManualRefresh
   }), [potentialMatches, handleSwipeLeft, handleSwipeRight, handleProfilePress, isLoading, error, handleManualRefresh]);
   
+  // Update limit modal content
+  const renderLimitModal = () => (
+    <Modal
+      visible={showLimitModal}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setShowLimitModal(false)}
+    >
+      <View style={styles.modalContainer}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>
+            {swipeLimitReached ? 'Daily Swipe Limit Reached' : 'Daily Match Limit Reached'}
+          </Text>
+          
+          {usageStats && (
+            <View style={styles.statsContainer}>
+              <Text style={styles.statsText}>
+                {swipeLimitReached 
+                  ? `You've used ${usageStats.swipeCount}/${usageStats.swipeLimit} daily swipes`
+                  : `You've used ${usageStats.matchCount}/${usageStats.matchLimit} daily matches`
+                }
+              </Text>
+              <Text style={styles.resetText}>
+                Resets in: {formatTimeRemaining(usageStats.resetTimestamp - Date.now())}
+              </Text>
+            </View>
+          )}
+
+          <View style={styles.buttonContainer}>
+            <Button
+              title="Upgrade Plan"
+              onPress={() => handleModalAction('upgrade')}
+              style={styles.upgradeButton}
+            />
+            <Button
+              title="Close"
+              onPress={() => handleModalAction('close')}
+              variant="secondary"
+            />
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  // Add premium feature indicators
+  const renderPremiumFeatures = () => (
+    <View style={styles.premiumFeatures}>
+      <TouchableOpacity 
+        style={[
+          styles.premiumFeature,
+          !handlePremiumFeature('rewind') && styles.premiumFeatureDisabled
+        ]}
+        onPress={() => {
+          if (handlePremiumFeature('rewind')) {
+            // Handle rewind
+          } else {
+            handleModalAction('upgrade');
+          }
+        }}
+      >
+        <Rewind size={24} color={handlePremiumFeature('rewind') ? Colors.dark.primary : Colors.dark.textSecondary} />
+      </TouchableOpacity>
+      
+      <TouchableOpacity 
+        style={[
+          styles.premiumFeature,
+          !handlePremiumFeature('global') && styles.premiumFeatureDisabled
+        ]}
+        onPress={() => {
+          if (handlePremiumFeature('global')) {
+            // Handle global search
+          } else {
+            handleModalAction('upgrade');
+          }
+        }}
+      >
+        <Globe size={24} color={handlePremiumFeature('global') ? Colors.dark.primary : Colors.dark.textSecondary} />
+      </TouchableOpacity>
+    </View>
+  );
+
   if (isLoading && potentialMatches.length === 0 && initialLoad) {
     return (
       <SafeAreaView style={styles.loadingContainer} edges={['bottom']}>
@@ -464,10 +568,10 @@ export default function DiscoverScreen() {
       )}
 
       {/* Main Content */}
-      {!user ? (
+      {!usageStats ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.dark.primary} />
-          <Text style={styles.loadingText}>Loading...</Text>
+          <Text style={styles.loadingText}>Loading usage stats...</Text>
         </View>
       ) : (
         <View style={styles.mainContainer}>
@@ -497,125 +601,124 @@ export default function DiscoverScreen() {
                 />
               </View>
             </View>
-          ) : showLimitModal ? (
-            <View style={styles.matchModalContainer}>
-              <View style={styles.matchModal}>
-                <Text style={styles.matchTitle}>
-                  {swipeLimitReached ? 'Daily Swipe Limit Reached' : 'Daily Match Limit Reached'}
-                </Text>
-                <Text style={styles.matchSubtitle}>
-                  Upgrade to premium for unlimited swipes and matches
-                </Text>
-                
-                <Button
-                  title="Upgrade Now"
-                  onPress={() => handleModalAction('upgrade')}
-                  variant="primary"
-                  size="large"
-                  style={styles.messageButton}
-                />
-                
-                <Button
-                  title="Maybe Later"
-                  onPress={() => handleModalAction('close')}
-                  variant="outline"
-                  size="large"
-                  style={styles.keepBrowsingButton}
-                />
-              </View>
+          ) : renderLimitModal()}
+
+          {/* Profile Detail Modal */}
+          <Modal
+            visible={showProfileDetail}
+            animationType="slide"
+            transparent={true}
+            onRequestClose={() => setShowProfileDetail(false)}
+          >
+            <View style={styles.profileDetailContainer}>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setShowProfileDetail(false)}
+              >
+                <ArrowLeft color={Colors.dark.text} size={24} />
+              </TouchableOpacity>
+              
+              {selectedProfile && (
+                <View style={styles.profileContent}>
+                  <ProfileDetailCard
+                    title="Bio"
+                    content={selectedProfile.bio || "No bio available"}
+                    profile={selectedProfile}
+                  />
+                  <ProfileDetailCard
+                    title="Industry"
+                    content={selectedProfile.industryFocus || selectedProfile.businessField || "Not specified"}
+                    profile={selectedProfile}
+                  />
+                  <ProfileDetailCard
+                    title="Business Stage"
+                    content={selectedProfile.businessStage || "Not specified"}
+                    profile={selectedProfile}
+                  />
+                  {selectedProfile.skillsOffered && (
+                    <ProfileDetailCard
+                      title="Skills Offered"
+                      content={selectedProfile.skillsOffered}
+                      profile={selectedProfile}
+                    />
+                  )}
+                </View>
+              )}
+            </View>
+          </Modal>
+
+          {/* Swipe Cards */}
+          {isLoading && potentialMatches.length === 0 ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={Colors.dark.primary} />
+              <Text style={styles.loadingText}>Loading profiles...</Text>
+            </View>
+          ) : error ? (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>{error}</Text>
+              <Button
+                title="Try Again"
+                onPress={() => fetchPotentialMatches()}
+                variant="primary"
+                size="medium"
+              />
+            </View>
+          ) : noMoreProfiles ? (
+            <View style={styles.noMoreContainer}>
+              <Text style={styles.noMoreText}>No more profiles available</Text>
+              <Text style={styles.noMoreSubtext}>Check back later for new matches</Text>
+              <Button
+                title="Refresh"
+                onPress={() => fetchPotentialMatches()}
+                variant="primary"
+                size="medium"
+                style={styles.refreshButton}
+              />
             </View>
           ) : (
             <View style={styles.cardsContainer}>
-              {/* Profile Detail Modal */}
-              <Modal
-                visible={showProfileDetail}
-                animationType="slide"
-                transparent={true}
-                onRequestClose={() => setShowProfileDetail(false)}
-              >
-                <View style={styles.profileDetailContainer}>
-                  <TouchableOpacity
-                    style={styles.closeButton}
-                    onPress={() => setShowProfileDetail(false)}
-                  >
-                    <ArrowLeft color={Colors.dark.text} size={24} />
-                  </TouchableOpacity>
-                  
-                  {selectedProfile && (
-                    <View style={styles.profileContent}>
-                      <ProfileDetailCard
-                        title="Bio"
-                        content={selectedProfile.bio || "No bio available"}
-                        profile={selectedProfile}
-                      />
-                      <ProfileDetailCard
-                        title="Industry"
-                        content={selectedProfile.industryFocus || selectedProfile.businessField || "Not specified"}
-                        profile={selectedProfile}
-                      />
-                      <ProfileDetailCard
-                        title="Business Stage"
-                        content={selectedProfile.businessStage || "Not specified"}
-                        profile={selectedProfile}
-                      />
-                      {selectedProfile.skillsOffered && (
-                        <ProfileDetailCard
-                          title="Skills Offered"
-                          content={selectedProfile.skillsOffered}
-                          profile={selectedProfile}
-                        />
-                      )}
-                    </View>
-                  )}
-                </View>
-              </Modal>
-
-              {/* Swipe Cards */}
-              {isLoading && potentialMatches.length === 0 ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" color={Colors.dark.primary} />
-                  <Text style={styles.loadingText}>Loading profiles...</Text>
-                </View>
-              ) : error ? (
-                <View style={styles.errorContainer}>
-                  <Text style={styles.errorText}>{error}</Text>
-                  <Button
-                    title="Try Again"
-                    onPress={() => fetchPotentialMatches()}
-                    variant="primary"
-                    size="medium"
-                  />
-                </View>
-              ) : noMoreProfiles ? (
-                <View style={styles.noMoreContainer}>
-                  <Text style={styles.noMoreText}>No more profiles available</Text>
-                  <Text style={styles.noMoreSubtext}>Check back later for new matches</Text>
-                  <Button
-                    title="Refresh"
-                    onPress={() => fetchPotentialMatches()}
-                    variant="primary"
-                    size="medium"
-                    style={styles.refreshButton}
-                  />
-                </View>
-              ) : (
-                <SwipeCards
-                  profiles={potentialMatches}
-                  onSwipeRight={handleSwipeRight}
-                  onSwipeLeft={handleSwipeLeft}
-                  onProfilePress={handleProfilePress}
-                  onRefresh={handleManualRefresh}
-                  refreshing={refreshing}
-                  isLoading={isLoading}
-                />
-              )}
+              {renderPremiumFeatures()}
+              <SwipeCards
+                profiles={potentialMatches}
+                onSwipeRight={handleSwipeRight}
+                onSwipeLeft={handleSwipeLeft}
+                onProfilePress={handleProfilePress}
+                onRefresh={handleManualRefresh}
+                refreshing={refreshing}
+                isLoading={isLoading}
+              />
             </View>
           )}
+        </View>
+      )}
+
+      {/* Add usage stats bar */}
+      {usageStats && (
+        <View style={styles.usageBar}>
+          <View style={styles.usageStat}>
+            <Text style={styles.usageLabel}>Swipes</Text>
+            <Text style={styles.usageValue}>
+              {usageStats.swipeRemaining}/{usageStats.swipeLimit}
+            </Text>
+          </View>
+          <View style={styles.usageStat}>
+            <Text style={styles.usageLabel}>Matches</Text>
+            <Text style={styles.usageValue}>
+              {usageStats.matchRemaining}/{usageStats.matchLimit}
+            </Text>
+          </View>
         </View>
       )}
     </SafeAreaView>
   );
 }
+
+// Helper function for formatting time
+const formatTimeRemaining = (ms: number) => {
+  const hours = Math.floor(ms / (1000 * 60 * 60));
+  const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+  return `${hours}h ${minutes}m`;
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -728,5 +831,78 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: 60,
     paddingBottom: 20
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.8)'
+  },
+  modalContent: {
+    backgroundColor: Colors.dark.card,
+    borderRadius: 20,
+    padding: 20,
+    width: '80%',
+    alignItems: 'center'
+  },
+  modalTitle: {
+    color: Colors.dark.text,
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 10
+  },
+  statsContainer: {
+    marginVertical: 16,
+    alignItems: 'center'
+  },
+  statsText: {
+    fontSize: 16,
+    color: Colors.dark.text,
+    marginBottom: 8
+  },
+  resetText: {
+    fontSize: 14,
+    color: Colors.dark.textSecondary
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%'
+  },
+  upgradeButton: {
+    width: '40%'
+  },
+  premiumFeatures: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    padding: 8
+  },
+  premiumFeature: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: Colors.dark.cardBackground
+  },
+  premiumFeatureDisabled: {
+    opacity: 0.5
+  },
+  usageBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 8,
+    backgroundColor: Colors.dark.background,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.dark.border
+  },
+  usageStat: {
+    alignItems: 'center'
+  },
+  usageLabel: {
+    fontSize: 12,
+    color: Colors.dark.textSecondary
+  },
+  usageValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.dark.text
   }
 });

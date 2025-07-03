@@ -1,3 +1,33 @@
+/**
+ * FILE: app/group/[id].tsx
+ * LAST UPDATED: 2025-07-03 11:25
+ * 
+ * CURRENT STATE:
+ * Group detail screen that displays group information and events. Features:
+ * - Shows group details, members, and events
+ * - Allows editing group info and events (for admins)
+ * - Handles event RSVPs and notifications
+ * - Manages group membership
+ * 
+ * RECENT CHANGES:
+ * - Added event editing functionality
+ * - Improved group editing UI
+ * - Enhanced permission checks for admins
+ * - Added haptic feedback for actions
+ * 
+ * FILE INTERACTIONS:
+ * - Imports from: groups-store (group data), auth-store (permissions)
+ * - Exports to: Used by app router for group details
+ * - Dependencies: expo-router, react-native, date-fns
+ * - Data flow: Manages group and event data through stores
+ * 
+ * KEY FUNCTIONS/COMPONENTS:
+ * - GroupDetailScreen: Main component for group details
+ * - handleEditEvent: Manages event editing
+ * - handleEditGroup: Handles group info updates
+ * - handleRSVP: Processes event RSVPs
+ */
+
 import React, { useEffect, useState, useRef } from 'react';
 import { 
   View, 

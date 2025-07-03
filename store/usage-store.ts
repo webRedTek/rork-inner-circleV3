@@ -10,43 +10,49 @@ import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory } 
 
 /**
  * FILE: store/usage-store.ts
- * LAST UPDATED: 2025-07-02 18:00
+ * LAST UPDATED: 2025-07-03 10:30
  * 
  * CURRENT STATE:
- * Enhanced central usage tracking store using Zustand. Handles tracking and limiting
- * user actions based on their membership tier. Uses cached tier settings
- * from auth store for feature permissions and limits. Implements optimized
- * batching and caching strategies for usage data with improved error handling.
+ * Central store for all usage tracking and batch processing. Features:
+ * - Tracks all user actions and enforces tier-based limits
+ * - Handles batch processing for all usage data
+ * - Manages periodic syncing with database
+ * - Uses cached tier settings from auth store
+ * - Provides usage stats and limit checking
  * 
  * RECENT CHANGES:
- * - Enhanced error handling with proper error stringification to prevent [object Object] errors
- * - Improved user feedback through notification system integration
- * - Better error categorization and user-friendly messages
- * - Enhanced database operations with better error recovery
- * - Improved sync operations with better error visibility
- * - Better integration with enhanced SwipeCards and discover components
+ * - Centralized all batch processing here (moved from matches store)
+ * - Enhanced error handling with proper error stringification
+ * - Improved user feedback through notification system
+ * - Better error categorization and messages
+ * - Enhanced database operations with error recovery
  * 
  * FILE INTERACTIONS:
- * - Imports from: user types (UserProfile, MembershipTier)
- * - Imports from: supabase lib (database operations)
- * - Imports from: auth-store (user data, tier settings access)
- * - Imports from: error-utils, network-utils (error handling and network checks)
- * - Exports to: All stores and screens that need usage tracking
- * - Dependencies: AsyncStorage (persistence), Zustand (state management)
- * - Data flow: Tracks user actions, enforces limits, provides usage data to UI
+ * - Imports from: auth-store (tier settings)
+ * - Exports to: All stores that need usage tracking
+ * - Used by: matches-store, groups-store, messages-store
+ * - Dependencies: AsyncStorage (persistence), Supabase (database)
  * 
  * KEY FUNCTIONS:
- * - getUsageStats: Get current usage stats with tier limits
- * - updateUsage: Track new usage with proper validation
- * - syncUsageData: Enhanced sync usage data with database
- * - checkUsageLimits: Check if action is allowed based on limits
- * - resetUsage: Reset usage tracking data
+ * - updateUsage: Track new usage with validation
+ * - queueBatchUpdate: Add updates to batch queue
+ * - syncUsageData: Sync batched updates with database
+ * - startUsageSync/stopUsageSync: Control sync intervals
+ * - getUsageStats: Get current usage with limits
+ * 
+ * BATCH PROCESSING:
+ * This store is the central point for all batch processing:
+ * 1. Other stores call updateUsage/trackUsage
+ * 2. Updates are queued via queueBatchUpdate
+ * 3. Periodic sync via syncUsageData (every 30s)
+ * 4. Manual sync available via force parameter
+ * 5. Handles all error cases and retries
  * 
  * INITIALIZATION ORDER:
- * 1. Requires auth-store to be initialized first
- * 2. Initializes after auth-store confirms user session
- * 3. Sets up sync intervals based on feature criticality
- * 4. Starts background sync process if needed
+ * 1. Requires auth-store for tier settings
+ * 2. Initializes after user session
+ * 3. Sets up sync intervals
+ * 4. Starts background sync
  */
 
 // Default usage cache
@@ -416,30 +422,12 @@ export const useUsageStore = create<UsageStore>()(
         }
       },
 
-      getUsageStats: async (userId: string): Promise<UsageStats> => {
+      getUsageStats: async (): Promise<UsageStats> => {
         const { usageCache } = get();
-        const { user, allTierSettings } = useAuthStore.getState();
+        const tierSettings = useAuthStore.getState().getTierSettings();
         
-        if (!usageCache || !user || !allTierSettings) {
+        if (!usageCache || !tierSettings) {
           const errorMessage = 'Usage cache or tier settings not available for stats';
-          const appError = handleError(new Error(errorMessage));
-          
-          useNotificationStore.getState().addNotification({
-            type: 'error',
-            message: appError.userMessage,
-            displayStyle: 'toast',
-            duration: 5000
-          });
-          throw {
-            category: ErrorCategory.BUSINESS,
-            code: ErrorCodes.BUSINESS_LIMIT_REACHED,
-            message: appError.userMessage
-          };
-        }
-
-        const tierSettings = allTierSettings[user.membershipTier];
-        if (!tierSettings) {
-          const errorMessage = 'Tier settings not available for your membership level';
           const appError = handleError(new Error(errorMessage));
           
           useNotificationStore.getState().addNotification({
@@ -477,29 +465,13 @@ export const useUsageStore = create<UsageStore>()(
         };
       },
 
-      updateUsage: async (userId: string, action: string): Promise<UsageResult> => {
+      updateUsage: async (action: string): Promise<UsageResult> => {
         const { usageCache } = get();
-        
-        if (!usageCache) {
-          const errorMessage = 'Usage cache not initialized for tracking';
-          const appError = handleError(new Error(errorMessage));
-          
-          useNotificationStore.getState().addNotification({
-            type: 'error',
-            message: appError.userMessage,
-            displayStyle: 'toast',
-            duration: 5000
-          });
-          throw {
-            category: 'BUSINESS',
-            code: 'BUSINESS_LIMIT_REACHED',
-            message: appError.userMessage
-          };
-        }
-
+        const { user } = useAuthStore.getState();
         const tierSettings = useAuthStore.getState().getTierSettings();
-        if (!tierSettings) {
-          const errorMessage = 'Tier settings not available for usage limits';
+        
+        if (!usageCache || !tierSettings || !user) {
+          const errorMessage = 'Usage cache or tier settings not available';
           const appError = handleError(new Error(errorMessage));
           
           useNotificationStore.getState().addNotification({
@@ -509,8 +481,8 @@ export const useUsageStore = create<UsageStore>()(
             duration: 5000
           });
           throw {
-            category: 'BUSINESS',
-            code: 'BUSINESS_LIMIT_REACHED',
+            category: ErrorCategory.BUSINESS,
+            code: ErrorCodes.BUSINESS_LIMIT_REACHED,
             message: appError.userMessage
           };
         }
@@ -519,7 +491,9 @@ export const useUsageStore = create<UsageStore>()(
           ? tierSettings.daily_swipe_limit
           : action === 'match' 
             ? tierSettings.daily_match_limit
-            : tierSettings.message_sending_limit;
+            : action === 'like'
+              ? tierSettings.daily_like_limit
+              : tierSettings.message_sending_limit;
 
         const now = Date.now();
         const usageData = usageCache.usageData[action];
@@ -527,16 +501,15 @@ export const useUsageStore = create<UsageStore>()(
         const currentCount = usageData ? usageData.currentCount : 0;
         const isAllowed = currentCount < limit;
 
-        // Optimistic update if action is allowed
         if (isAllowed) {
-          const updatedCount = currentCount + 1;
+          // Update usage count
           set({
             usageCache: {
               ...usageCache,
               usageData: {
                 ...usageCache.usageData,
                 [action]: {
-                  currentCount: updatedCount,
+                  currentCount: currentCount + 1,
                   firstActionTimestamp: usageData?.firstActionTimestamp || now,
                   lastActionTimestamp: now,
                   resetTimestamp,
@@ -545,16 +518,16 @@ export const useUsageStore = create<UsageStore>()(
             },
           });
 
-          // Always queue for batch update
+          // Queue update for sync
           get().queueBatchUpdate(action, 1);
         }
 
         return {
           isAllowed,
           actionType: action,
-          currentCount,
+          currentCount: currentCount + (isAllowed ? 1 : 0),
           limit,
-          remaining: Math.max(0, limit - currentCount),
+          remaining: Math.max(0, limit - (currentCount + (isAllowed ? 1 : 0))),
           timestamp: now,
         };
       },
@@ -598,53 +571,23 @@ export const useUsageStore = create<UsageStore>()(
             action = options.actionType;
         }
 
-        return await get().updateUsage(user.id, action);
+        return await get().updateUsage(action);
       },
 
-      queueBatchUpdate: (actionType: string, countChange: number) => {
-        const userId = useAuthStore.getState().user?.id;
-        if (!userId) {
-          throw {
-            category: 'BUSINESS',
-            code: 'BUSINESS_LOGIC_VIOLATION',
-            message: 'User ID not available for batch update'
-          };
-        }
+      queueBatchUpdate: (action: string, count: number) => {
+        const { user } = useAuthStore.getState();
+        if (!user) return;
 
-        const now = Date.now();
-        set(state => {
-          const existingBatch = state.batchUpdates.find(b => b.user_id === userId);
-          if (existingBatch) {
-            const existingUpdate = existingBatch.updates.find(u => u.action_type === actionType);
-            if (existingUpdate) {
-              existingUpdate.count_change += countChange;
-              existingUpdate.timestamp = now;
-            } else {
-              existingBatch.updates.push({
-                action_type: actionType,
-                count_change: countChange,
-                timestamp: now,
-              });
-            }
-            return { batchUpdates: [...state.batchUpdates] };
-          } else {
-            return {
-              batchUpdates: [
-                ...state.batchUpdates,
-                {
-                  user_id: userId,
-                  updates: [
-                    {
-                      action_type: actionType,
-                      count_change: countChange,
-                      timestamp: now,
-                    },
-                  ],
-                },
-              ],
-            };
-          }
-        });
+        const batchUpdate = {
+          userId: user.id,
+          action,
+          count,
+          timestamp: Date.now()
+        };
+
+        set(state => ({
+          batchUpdates: [...state.batchUpdates, batchUpdate]
+        }));
       },
 
       syncUsageData: async (force?: boolean) => {
@@ -817,8 +760,8 @@ export const useUsageStore = create<UsageStore>()(
             duration: 5000
           });
           throw {
-            category: 'BUSINESS',
-            code: 'BUSINESS_LIMIT_REACHED',
+            category: ErrorCategory.BUSINESS,
+            code: ErrorCodes.BUSINESS_LIMIT_REACHED,
             message: appError.userMessage
           };
         }

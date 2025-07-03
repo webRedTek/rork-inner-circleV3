@@ -89,6 +89,7 @@ interface AuthState {
   checkSession: () => Promise<void>;
   checkNetworkConnection: () => Promise<void>;
   validateAndRefreshCache: (newUserId: string) => Promise<void>;
+  initializeTierSettings: () => Promise<void>;
 }
 
 // Helper function to convert Supabase response to UserProfile type
@@ -193,12 +194,12 @@ export const useAuthStore = create<AuthState>()(
           set({ isLoading: true });
           
           // Clear matches, groups, and messages data
-          useMatchesStore.getState().resetCacheAndState(); // This also clears the ProfileCache
+          useMatchesStore.getState().resetCacheAndState();
           useGroupsStore.getState().clearGroups();
           useMessagesStore.getState().clearMessages();
           
           // Reset usage tracking data
-          useUsageStore.getState().resetUsage(); // Using resetUsage instead of resetUsageCache
+          useUsageStore.getState().resetUsage();
           
           // Reset affiliate data
           useAffiliateStore.getState().resetAffiliateCache();
@@ -227,7 +228,7 @@ export const useAuthStore = create<AuthState>()(
               throw {
                 category: ErrorCategory.AUTH,
                 code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-                message: error instanceof Error ? error.message : 'Failed to initialize authentication service. Please check your network connection and try again.'
+                message: error instanceof Error ? error.message : 'Failed to initialize authentication service.'
               };
             }
             
@@ -235,12 +236,12 @@ export const useAuthStore = create<AuthState>()(
               throw {
                 category: ErrorCategory.AUTH,
                 code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-                message: 'Authentication service is not configured. Please check your setup and try again.'
+                message: 'Authentication service is not configured.'
               };
             }
 
             // Login operation
-            const { data, error } = await withRetry(
+            const { data: authData, error: authError } = await withRetry(
               async () => {
                 if (!supabase) throw new Error('Supabase client is not initialized');
                 return await supabase.auth.signInWithPassword({ email, password });
@@ -251,95 +252,49 @@ export const useAuthStore = create<AuthState>()(
               }
             );
 
-            if (error) {
-              if (error.message?.toLowerCase().includes('invalid login credentials')) {
-                throw {
-                  category: ErrorCategory.AUTH,
-                  code: ErrorCodes.AUTH_INVALID_CREDENTIALS,
-                  message: 'Invalid email or password. Please check your credentials and try again.'
-                };
-              }
-              throw error;
+            if (authError) throw authError;
+
+            const userId = authData.user?.id;
+            if (!userId) {
+              throw new Error('No user ID returned from authentication');
             }
 
-            // Profile fetch operation
-            const { data: profileData, error: profileError } = await withRetry(
-              async () => {
-                if (!supabase) throw new Error('Supabase client is not initialized');
-                return await supabase
-                  .from('users')
-                  .select('*')
-                  .eq('id', data.user.id)
-                  .single();
-              }
-            );
+            // Fetch user profile
+            const { data: profileData, error: profileError } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', userId)
+              .single();
 
-            if (profileError?.code === 'PGRST116') {
-              // Create new profile if it doesn't exist
-              const newProfile = createDefaultProfile(data.user.id, email);
-              const profileRecord = convertToSnakeCase(newProfile);
+            if (profileError) throw profileError;
 
-              const { error: insertError } = await withRetry(
-                async () => {
-                  if (!supabase) throw new Error('Supabase client is not initialized');
-                  return await supabase
-                    .from('users')
-                    .insert(profileRecord);
-                }
-              );
+            const userProfile = supabaseToUserProfile(profileData);
+            
+            // Initialize tier settings after successful login
+            await get().fetchAllTierSettings();
+            
+            set({ 
+              user: userProfile,
+              isAuthenticated: true,
+              isReady: true
+            });
 
-              if (insertError) {
-                throw {
-                  category: ErrorCategory.DATABASE,
-                  code: ErrorCodes.DB_QUERY_ERROR,
-                  message: 'Failed to create user profile. Please try logging in again.'
-                };
-              }
+            // Initialize user's specific tier settings
+            await get().initializeTierSettings();
 
-              set({
-                user: newProfile,
-                isAuthenticated: true,
-                isLoading: false
-              });
+            // Start usage tracking
+            await startUsageSync();
 
-              // Initialize usage tracking
-              useUsageStore.getState().resetUsage(); // Clear any previous user's usage data
-              await useUsageStore.getState().initializeUsage(data.user.id);
-            } else if (profileError) {
-              throw {
-                category: ErrorCategory.DATABASE,
-                code: ErrorCodes.DB_QUERY_ERROR,
-                message: 'Failed to fetch user profile. Please try logging in again.'
-              };
-            } else {
-              const userProfile = supabaseToUserProfile(profileData || {});
-              
-              // Validate and refresh cache if needed
-              await get().validateAndRefreshCache(userProfile.id);
-              
-              await useUsageStore.getState().initializeUsage(userProfile.id);
-
-              set({
-                user: userProfile,
-                isAuthenticated: true,
-                isLoading: false,
-                error: null
-              });
-            }
+            // Validate and refresh cache for the new user
+            await get().validateAndRefreshCache(userId);
           });
         } catch (error) {
+          console.error('Login error:', error);
           const appError = handleError(error);
-          console.error('[AuthStore] Login error:', {
-            category: appError.category,
-            code: appError.code,
-            message: appError.message,
-            technical: appError.technical
-          });
-          set({
-            isLoading: false,
-            error: appError.userMessage
-          });
-          throw appError;
+          set({ error: appError.userMessage });
+          throw error;
+        } finally {
+          set({ isLoading: false });
         }
       },
 
@@ -489,13 +444,6 @@ export const useAuthStore = create<AuthState>()(
         
         try {
           const { user } = get();
-          if (!user) {
-            throw {
-              category: ErrorCategory.AUTH,
-              code: ErrorCodes.AUTH_NOT_AUTHENTICATED,
-              message: 'Not authenticated'
-            };
-          }
           
           await withNetworkCheck(async () => {
             await initSupabase();
@@ -514,14 +462,14 @@ export const useAuthStore = create<AuthState>()(
                 return await supabase
                   .from('users')
                   .update({ membership_tier: tier })
-                  .eq('id', user.id);
+                  .eq('id', user!.id);
               }
             );
 
             if (error) throw error;
 
             set({
-              user: { ...user, membershipTier: tier },
+              user: { ...user!, membershipTier: tier },
               isLoading: false
             });
 
@@ -538,114 +486,85 @@ export const useAuthStore = create<AuthState>()(
       },
 
       fetchAllTierSettings: async () => {
+        console.log('Fetching all tier settings');
         try {
           await withNetworkCheck(async () => {
             await initSupabase();
             
             if (!isSupabaseConfigured() || !supabase) {
-              throw {
-                category: ErrorCategory.DATABASE,
-                code: ErrorCodes.DB_CONNECTION_ERROR,
-                message: 'Database is not configured'
-              };
+              throw new Error('Supabase not configured for tier settings fetch');
             }
 
-            const { data, error } = await withRetry(
-              async () => {
-                if (!supabase) throw new Error('Supabase client is not initialized');
-                return await supabase
-                  .from('app_settings')
-                  .select('*');
-              }
-            );
+            const { data, error } = await supabase
+              .from('tier_settings')
+              .select('*');
 
-            if (error) {
-              console.error('Error fetching tier settings:', error);
-              throw {
-                category: ErrorCategory.DATABASE,
-                code: ErrorCodes.DB_QUERY_ERROR,
-                message: `Failed to fetch tier settings: ${error.message}`
-              };
+            if (error) throw error;
+
+            if (!data || !Array.isArray(data)) {
+              throw new Error('Invalid tier settings data format');
             }
 
-            if (!data || data.length === 0) {
-              console.error('No tier settings found in database');
-              throw {
-                category: ErrorCategory.BUSINESS,
-                code: ErrorCodes.BUSINESS_LOGIC_VIOLATION,
-                message: 'No tier settings found in database'
-              };
-            }
-
-            // Initialize settings with empty objects for each tier
-            const settings: Record<MembershipTier, TierSettings> = {
-              bronze: {} as TierSettings,
-              silver: {} as TierSettings,
-              gold: {} as TierSettings
-            };
-
-            // Map database values to settings
-            data.forEach(setting => {
-              if (setting.tier && ['bronze', 'silver', 'gold'].includes(setting.tier)) {
-                settings[setting.tier as MembershipTier] = setting;
-              }
+            const settings: Record<MembershipTier, TierSettings> = {} as Record<MembershipTier, TierSettings>;
+            data.forEach(tier => {
+              const tierData = convertToCamelCase(tier);
+              settings[tierData.tier as MembershipTier] = tierData as TierSettings;
             });
 
-            // Verify we have settings for all tiers
-            const requiredTiers: MembershipTier[] = ['bronze', 'silver', 'gold'];
-            const missingTiers = requiredTiers.filter(tier => !settings[tier] || Object.keys(settings[tier]).length === 0);
-            
-            if (missingTiers.length > 0) {
-              console.error('Missing tier settings for:', missingTiers);
-              throw {
-                category: ErrorCategory.BUSINESS,
-                code: ErrorCodes.BUSINESS_LOGIC_VIOLATION,
-                message: `Missing tier settings for: ${missingTiers.join(', ')}`
-              };
-            }
-
-            console.log('Successfully loaded tier settings:', settings);
-            set({
+            set({ 
               allTierSettings: settings,
               tierSettingsTimestamp: Date.now()
             });
+
+            console.log('Successfully cached all tier settings');
           });
         } catch (error) {
+          console.error('Error fetching tier settings:', error);
           const appError = handleError(error);
-          console.error('Failed to fetch tier settings:', appError);
-          
-          // Show user-friendly error notification
           useNotificationStore.getState().addNotification({
             type: 'error',
-            message: `Failed to load membership plans: ${appError.userMessage}`,
+            message: appError.userMessage,
             displayStyle: 'toast',
             duration: 5000
           });
-          
-          throw {
-            category: ErrorCategory.BUSINESS,
-            code: ErrorCodes.BUSINESS_LOGIC_VIOLATION,
-            message: `Failed to fetch tier settings: ${appError.userMessage}`
-          };
+          throw error;
         }
       },
 
-      getTierSettings: () => {
-        const { allTierSettings, user } = get();
+      initializeTierSettings: async () => {
+        const { user, allTierSettings } = get();
         
         if (!user) {
-          console.warn('User not authenticated when getting tier settings');
-          return null;
+          console.warn('Cannot initialize tier settings: No user logged in');
+          return;
         }
+
+        if (!allTierSettings) {
+          console.log('All tier settings not cached, fetching first...');
+          await get().fetchAllTierSettings();
+        }
+
+        const userTierSettings = get().allTierSettings?.[user.membershipTier];
+        if (!userTierSettings) {
+          throw new Error(`No tier settings found for membership level: ${user.membershipTier}`);
+        }
+
+        // Cache the user's current tier settings
+        await AsyncStorage.setItem('currentTierSettings', JSON.stringify(userTierSettings));
+        console.log('Successfully cached user tier settings');
+      },
+
+      getTierSettings: () => {
+        const { user, allTierSettings } = get();
         
         if (!allTierSettings) {
           console.warn('Tier settings not loaded yet');
           return null;
         }
         
-        const tierSettings = allTierSettings[user.membershipTier];
+        const tierSettings = allTierSettings[user!.membershipTier];
         if (!tierSettings) {
-          console.warn(`No tier settings found for membership level: ${user.membershipTier}`);
+          console.warn(`No tier settings found for membership level: ${user!.membershipTier}`);
           return null;
         }
         
