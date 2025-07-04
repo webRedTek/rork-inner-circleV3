@@ -42,6 +42,24 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
   // Get the current user's tier settings
   const tierSettings = user && allTierSettings ? allTierSettings[user.membershipTier] : null;
 
+  // Helper function to get daily limits from tier settings (handles both camelCase and snake_case)
+  const getDailyLimit = (type: string) => {
+    if (!tierSettings) return 'N/A';
+    
+    switch (type) {
+      case 'swipe':
+        return (tierSettings as any).dailySwipeLimit || tierSettings.daily_swipe_limit || 'N/A';
+      case 'match':
+        return (tierSettings as any).dailyMatchLimit || tierSettings.daily_match_limit || 'N/A';
+      case 'like':
+        return (tierSettings as any).dailyLikeLimit || tierSettings.daily_like_limit || 'N/A';
+      case 'message':
+        return (tierSettings as any).messageSendingLimit || tierSettings.message_sending_limit || 'N/A';
+      default:
+        return 'N/A';
+    }
+  };
+
   useEffect(() => {
     if (visible && user) {
       fetchAllTierSettings().catch((error: unknown) => console.error('Error refreshing tier settings:', error));
@@ -103,13 +121,7 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
       const data = usageCache.usageData[type];
       if (!data) return null;
 
-      const limit = type === 'swipe' 
-        ? tierSettings?.daily_swipe_limit || 'N/A'
-        : type === 'match'
-        ? tierSettings?.daily_match_limit || 'N/A'
-        : type === 'like'
-        ? tierSettings?.daily_like_limit || 'N/A'
-        : tierSettings?.message_sending_limit || 'N/A';
+      const limit = getDailyLimit(type);
       const isCloseToLimit = typeof limit === 'number' && data.currentCount >= limit * 0.8;
 
       return (
@@ -129,37 +141,7 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
     });
   };
 
-  const renderDatabaseTotals = () => {
-    if (!databaseTotals) return <Text style={styles.noDataText}>No database totals available</Text>;
 
-    const usageTypes = [
-      { key: 'swipe', count: databaseTotals.swipe_count },
-      { key: 'match', count: databaseTotals.match_count },
-      { key: 'message', count: databaseTotals.message_count },
-      { key: 'like', count: databaseTotals.like_count },
-    ];
-
-    return usageTypes.map(({ key, count }) => {
-      const limit = key === 'swipe' 
-        ? tierSettings?.daily_swipe_limit || 'N/A'
-        : key === 'match'
-        ? tierSettings?.daily_match_limit || 'N/A'
-        : key === 'like'
-        ? tierSettings?.daily_like_limit || 'N/A'
-        : tierSettings?.message_sending_limit || 'N/A';
-
-      return (
-        <View key={key} style={styles.row}>
-          <Text style={styles.cell}>{key.charAt(0).toUpperCase() + key.slice(1)}</Text>
-          <Text style={styles.cell}>{count} / {limit}</Text>
-          <Text style={styles.cell}>
-            {databaseTotals.daily_reset_at ? formatTimeRemaining(new Date(databaseTotals.daily_reset_at).getTime() - Date.now()) : 'N/A'}
-          </Text>
-          <Text style={styles.cell}>N/A</Text>
-        </View>
-      );
-    });
-  };
 
   const renderPremiumFeatures = () => {
     if (!usageCache) return <Text style={styles.noDataText}>No premium data available</Text>;
@@ -282,7 +264,6 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
               <Text style={styles.errorText}>Last Sync Error: {lastSyncError}</Text>
             )}
             {renderSection('Current Session Usage', 'usage', renderUsageData)}
-            {renderSection('Database Totals', 'database', renderDatabaseTotals)}
             {renderSection('Premium Features', 'premium', renderPremiumFeatures)}
             {renderSection('Analytics', 'analytics', renderAnalytics)}
             {renderSection('Tier Settings', 'tier', renderTierSettings)}
