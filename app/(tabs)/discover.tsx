@@ -62,7 +62,7 @@ import { X, ArrowLeft, RefreshCw, Crown, Rewind, Globe } from 'lucide-react-nati
 import { useDebugStore } from '@/store/debug-store';
 import { withErrorHandling, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
 import { useNotificationStore } from '@/store/notification-store';
-import { useUsageStore } from '@/store/usage-store';
+import { useUsageStore, startUsageSyncForDiscovery } from '@/store/usage-store';
 
 export default function DiscoverScreen() {
   const router = useRouter();
@@ -177,6 +177,16 @@ export default function DiscoverScreen() {
       isMounted = false;
     };
   }, [user?.id]);
+
+  // Trigger usage sync when discover tab is accessed
+  useFocusEffect(
+    useCallback(() => {
+      if (user?.id) {
+        addDebugInfo('Discover tab focused - triggering usage sync');
+        startUsageSyncForDiscovery();
+      }
+    }, [user?.id, addDebugInfo])
+  );
 
   useEffect(() => {
     // Check for new matches and display modal

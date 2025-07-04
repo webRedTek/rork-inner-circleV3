@@ -104,7 +104,7 @@ const defaultUsageCache: UsageCache = {
 // Sync strategy configuration
 const defaultSyncStrategy: SyncStrategy = {
   critical: {
-    interval: 30 * 1000, // 30 seconds
+    interval: 60 * 1000, // 60 seconds (1 minute)
     features: ['swipes', 'matches', 'messages', 'likes'],
   },
   standard: {
@@ -984,4 +984,60 @@ export const stopUsageSync = () => {
   clearInterval(saveIntervalId);
   saveIntervalId = null;
   console.log('Usage data save stopped');
+};
+
+// New function: Run usage sync once after login (60 seconds = 1 minute)
+export const startUsageSyncOnce = () => {
+  const { user } = useAuthStore.getState();
+  if (!user) {
+    console.log('No user authenticated, skipping usage sync');
+    return;
+  }
+
+  console.log('Starting one-time usage sync (60 seconds)...');
+  
+  setTimeout(async () => {
+    try {
+      const { user: currentUser } = useAuthStore.getState();
+      if (!currentUser) {
+        console.log('User logged out during sync delay, skipping');
+        return;
+      }
+
+      await useUsageStore.getState().syncUsageData();
+      console.log('One-time usage sync completed successfully');
+    } catch (error) {
+      const appError = handleError(error);
+      const errorMessage = safeStringifyError(error);
+      console.error('One-time usage sync failed:', errorMessage);
+    }
+  }, 60000); // 60 seconds = 1 minute
+};
+
+// New function: Trigger usage sync when discover tab is accessed
+export const startUsageSyncForDiscovery = () => {
+  const { user } = useAuthStore.getState();
+  if (!user) {
+    console.log('No user authenticated, skipping discovery usage sync');
+    return;
+  }
+
+  console.log('Starting usage sync for discovery tab (60 seconds)...');
+  
+  setTimeout(async () => {
+    try {
+      const { user: currentUser } = useAuthStore.getState();
+      if (!currentUser) {
+        console.log('User logged out during discovery sync delay, skipping');
+        return;
+      }
+
+      await useUsageStore.getState().syncUsageData();
+      console.log('Discovery usage sync completed successfully');
+    } catch (error) {
+      const appError = handleError(error);
+      const errorMessage = safeStringifyError(error);
+      console.error('Discovery usage sync failed:', errorMessage);
+    }
+  }, 60000); // 60 seconds = 1 minute
 };
