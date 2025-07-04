@@ -1,3 +1,28 @@
+/**
+ * FILE: app/(tabs)/debug.tsx
+ * LAST UPDATED: 2025-07-03 20:56
+ * 
+ * CURRENT STATE:
+ * Debug screen showing real-time app state and operation timeline:
+ * - Shows usage store state and cache
+ * - Shows matches store state and stats
+ * - Shows auth store state and tier settings
+ * - Shows chronological operation timeline
+ * 
+ * RECENT CHANGES:
+ * - Fixed color constants usage
+ * - Fixed DebugLogEntry type usage
+ * - Enhanced timeline display
+ * - Added source-based filtering
+ * - Fixed log display formatting
+ * 
+ * FILE INTERACTIONS:
+ * - Imports from: usage-store, matches-store, auth-store, debug-store
+ * - Components: None (uses native components)
+ * - Dependencies: react-native, safe-area-context
+ * - Data flow: Reads from all stores, displays state
+ */
+
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,6 +32,7 @@ import { useMatchesStore } from '@/store/matches-store';
 import { useAuthStore } from '@/store/auth-store';
 import { useDebugStore } from '@/store/debug-store';
 import { MembershipTier, TierSettings } from '@/types/user';
+import type { DebugLogEntry } from '@/store/debug-store';
 
 export default function DebugScreen() {
   const [refreshing, setRefreshing] = useState(false);
@@ -32,6 +58,9 @@ export default function DebugScreen() {
   } = useMatchesStore();
 
   const { user, allTierSettings } = useAuthStore();
+
+  // Get debug logs
+  const { debugLog } = useDebugStore();
 
   // Format timestamps
   const formatTime = (timestamp: number) => {
@@ -65,6 +94,49 @@ export default function DebugScreen() {
       >
         <Text style={styles.title}>Debug Information</Text>
         <Text style={styles.subtitle}>Last Updated: {lastRefresh.toLocaleTimeString()}</Text>
+
+        {/* Timeline Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Operation Timeline</Text>
+          <View style={styles.timelineContainer}>
+            {debugLog
+              .filter(log => 
+                ['matches-store', 'usage-store', 'discover-screen'].includes(log.source)
+              )
+              .sort((a, b) => b.timestamp - a.timestamp)
+              .map((log) => (
+                <View key={log.id} style={styles.timelineEntry}>
+                  <View style={styles.timelineContent}>
+                    <Text style={styles.timelineTime}>
+                      {formatTime(log.timestamp)}
+                    </Text>
+                    <Text style={[
+                      styles.timelineSource,
+                      { color: log.source === 'matches-store' ? Colors.light.tint :
+                              log.source === 'usage-store' ? Colors.light.success :
+                              Colors.light.text }
+                    ]}>
+                      {log.source}
+                    </Text>
+                    <Text style={[
+                      styles.timelineMessage,
+                      { color: log.status === 'error' ? Colors.light.error :
+                              log.status === 'success' ? Colors.light.success :
+                              log.status === 'warning' ? Colors.light.warning :
+                              Colors.light.text }
+                    ]}>
+                      {log.event}
+                    </Text>
+                    {log.details && (
+                      <Text style={styles.timelineDetails}>
+                        {log.details}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              ))}
+          </View>
+        </View>
 
         {/* Usage Store Section */}
         <View style={styles.section}>
@@ -181,38 +253,6 @@ export default function DebugScreen() {
             </View>
           )}
         </View>
-
-        {/* Timeline Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Operation Timeline</Text>
-          <View style={styles.timelineContainer}>
-            {useDebugStore.getState().debugLog
-              .filter(log => ['matches-store', 'usage-store', 'discover-screen'].includes(log.source))
-              .sort((a, b) => b.timestamp - a.timestamp)
-              .map((log, index) => (
-                <View key={log.id} style={styles.timelineEntry}>
-                  <View style={styles.timelineDot} />
-                  <View style={styles.timelineContent}>
-                    <Text style={styles.timelineTime}>
-                      {new Date(log.timestamp).toLocaleTimeString()}
-                    </Text>
-                    <Text style={[
-                      styles.timelineStatus,
-                      { color: log.status === 'error' ? Colors.dark.error :
-                              log.status === 'warning' ? Colors.dark.warning :
-                              log.status === 'success' ? Colors.dark.success :
-                              Colors.dark.info }
-                    ]}>
-                      [{log.source}] {log.status.toUpperCase()}
-                    </Text>
-                    <Text style={styles.timelineEvent}>{log.event}</Text>
-                    <Text style={styles.timelineDetails}>{log.details}</Text>
-                  </View>
-                </View>
-              ))
-            }
-          </View>
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -221,7 +261,7 @@ export default function DebugScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.dark.background
+    backgroundColor: Colors.light.background
   },
   scrollView: {
     flex: 1,
@@ -230,78 +270,64 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: Colors.dark.text,
+    color: Colors.light.text,
     marginBottom: 8
   },
   subtitle: {
     fontSize: 14,
-    color: Colors.dark.textSecondary,
+    color: Colors.light.textSecondary,
     marginBottom: 16
   },
   section: {
     marginBottom: 24,
-    padding: 16,
-    backgroundColor: Colors.dark.card,
-    borderRadius: 12
+    backgroundColor: Colors.light.card,
+    borderRadius: 12,
+    padding: 16
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: Colors.dark.text,
-    marginBottom: 16
+    color: Colors.light.text,
+    marginBottom: 12
   },
   infoBlock: {
     marginBottom: 12
   },
   label: {
     fontSize: 14,
-    color: Colors.dark.textSecondary,
+    color: Colors.light.textSecondary,
     marginBottom: 4
   },
   value: {
     fontSize: 14,
-    color: Colors.dark.text,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace'
+    color: Colors.light.text
   },
   timelineContainer: {
-    paddingLeft: 20,
+    marginTop: 8
   },
   timelineEntry: {
-    flexDirection: 'row',
-    marginBottom: 16,
-  },
-  timelineDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: Colors.dark.accent,
-    marginRight: 12,
-    marginTop: 4,
+    marginBottom: 12,
+    padding: 12,
+    backgroundColor: Colors.light.cardAlt,
+    borderRadius: 8
   },
   timelineContent: {
-    flex: 1,
-    borderLeftWidth: 1,
-    borderLeftColor: Colors.dark.border,
-    paddingLeft: 12,
-    marginLeft: -6,
+    gap: 4
   },
   timelineTime: {
     fontSize: 12,
-    color: Colors.dark.textSecondary,
-    marginBottom: 2,
+    color: Colors.light.textSecondary
   },
-  timelineStatus: {
+  timelineSource: {
     fontSize: 12,
-    fontWeight: 'bold',
-    marginBottom: 2,
+    fontWeight: 'bold'
   },
-  timelineEvent: {
-    fontSize: 14,
-    color: Colors.dark.text,
-    marginBottom: 2,
+  timelineMessage: {
+    fontSize: 14
   },
   timelineDetails: {
     fontSize: 12,
-    color: Colors.dark.textSecondary,
-  },
+    color: Colors.light.textSecondary,
+    marginTop: 4
+  }
 }); 

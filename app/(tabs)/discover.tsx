@@ -1,6 +1,6 @@
 /**
  * FILE: app/(tabs)/discover.tsx
- * LAST UPDATED: 2025-07-03 10:30
+ * LAST UPDATED: 2025-07-03 20:55
  * 
  * INITIALIZATION ORDER:
  * 1. Initializes after auth-store confirms user session
@@ -17,16 +17,14 @@
  * - Centralized tier settings integration
  * 
  * RECENT CHANGES:
- * - Removed batch processing (moved to usage store)
- * - Removed redundant auth checks
- * - Added tier-specific UI elements to show limits/usage
- * - Improved error messages with remaining time info
- * - Added premium feature indicators
- * - Enhanced limit reached modal with tier info
- * - Using centralized tier settings from auth store
+ * - Added usage store initialization
+ * - Fixed initialization order (usage store before matches)
+ * - Enhanced error handling for initialization
+ * - Added more detailed debug logging
+ * - Fixed timeline display
  * 
  * FILE INTERACTIONS:
- * - Imports from: matches-store (swipes), auth-store (tier settings)
+ * - Imports from: matches-store (swipes), auth-store (tier settings), usage-store (limits)
  * - Components: SwipeCards, EntrepreneurCard, Button
  * - Dependencies: expo-router, react-native, haptics
  * - Data flow: Uses tier settings for UI and limits
@@ -48,7 +46,8 @@ import {
   Modal,
   Alert,
   RefreshControl,
-  Platform
+  Platform,
+  ScrollView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -82,10 +81,10 @@ export default function DiscoverScreen() {
     noMoreProfiles
   } = useMatchesStore();
   
-  const { getTierSettings } = useAuthStore();
-  const { isDebugMode } = useDebugStore();
+  const { getTierSettings, user } = useAuthStore();
+  const { isDebugMode, addDebugLog } = useDebugStore();
   const { addNotification } = useNotificationStore();
-  const { getUsageStats, trackUsage } = useUsageStore();
+  const { getUsageStats, trackUsage, initializeUsage } = useUsageStore();
   
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [matchedUser, setMatchedUser] = useState<UserProfile | null>(null);
@@ -120,14 +119,17 @@ export default function DiscoverScreen() {
     }
   }, []);
 
-  // DEBUG: Add temporary debugging state
-  const [debugInfo, setDebugInfo] = useState<string[]>([]);
-  const addDebugInfo = useCallback((info: string) => {
+  // DEBUG: Add debug logging helper
+  const addDebugInfo = useCallback((message: string, status: 'success' | 'error' | 'info' | 'warning' = 'info') => {
     if (isDebugMode) {
-      console.log(`[DISCOVER-DEBUG] ${info}`);
+      addDebugLog({
+        event: message,
+        status,
+        details: '',
+        source: 'discover-screen'
+      });
     }
-    setDebugInfo(prev => [...prev.slice(-4), `${new Date().toLocaleTimeString()}: ${info}`]);
-  }, [isDebugMode]);
+  }, [isDebugMode, addDebugLog]);
 
   // Update initialization effect
   useEffect(() => {
@@ -143,7 +145,20 @@ export default function DiscoverScreen() {
       setHasInitialized(true);
 
       try {
+        if (!user?.id) {
+          throw new Error('No user ID available');
+        }
+
+        // First initialize usage store
         if (isMounted) {
+          addDebugInfo('Initializing usage store');
+          await initializeUsage(user.id);
+          addDebugInfo('Usage store initialized');
+        }
+
+        // Then fetch matches
+        if (isMounted) {
+          addDebugInfo('Fetching potential matches');
           await fetchPotentialMatches();
           setInitialLoad(false);
           addDebugInfo('Initial fetch completed successfully');
@@ -154,7 +169,7 @@ export default function DiscoverScreen() {
           addDebugInfo(`Initialization error: ${error}`);
           addNotification({
             type: 'error',
-            message: 'Failed to load matches. Please try again.',
+            message: 'Failed to initialize. Please try again.',
             displayStyle: 'toast',
             duration: 5000
           });
@@ -167,7 +182,7 @@ export default function DiscoverScreen() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     // Check for new matches and display modal
@@ -504,6 +519,74 @@ export default function DiscoverScreen() {
     </View>
   );
 
+  // Render match modal
+  const renderMatchModal = () => (
+    <Modal
+      visible={showMatchModal && !!matchedUser}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setShowMatchModal(false)}
+    >
+      <View style={styles.modalContainer}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>It's a Match!</Text>
+          <Text style={styles.modalSubtitle}>
+            You and {matchedUser?.name} have liked each other
+          </Text>
+          
+          <View style={styles.buttonContainer}>
+            <Button
+              title="Send Message"
+              onPress={() => handleModalAction('message')}
+              style={styles.messageButton}
+            />
+            <Button
+              title="Keep Browsing"
+              onPress={() => handleModalAction('close')}
+              variant="secondary"
+            />
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  // Render profile detail modal
+  const renderProfileDetailModal = () => (
+    <Modal
+      visible={showProfileDetail && !!selectedProfile}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setShowProfileDetail(false)}
+    >
+      <View style={styles.modalContainer}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>{selectedProfile?.name}</Text>
+          
+          <ScrollView style={styles.profileDetails}>
+            <Text style={styles.profileText}>{selectedProfile?.bio}</Text>
+            <Text style={styles.profileLabel}>Industry</Text>
+            <Text style={styles.profileText}>
+              {selectedProfile?.industryFocus || selectedProfile?.businessField || "Not specified"}
+            </Text>
+            <Text style={styles.profileLabel}>Business Stage</Text>
+            <Text style={styles.profileText}>
+              {selectedProfile?.businessStage || "Not specified"}
+            </Text>
+          </ScrollView>
+
+          <View style={styles.buttonContainer}>
+            <Button
+              title="Close"
+              onPress={() => setShowProfileDetail(false)}
+              variant="secondary"
+            />
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
   if (isLoading && potentialMatches.length === 0 && initialLoad) {
     return (
       <SafeAreaView style={styles.loadingContainer} edges={['bottom']}>
@@ -558,157 +641,52 @@ export default function DiscoverScreen() {
   
   return (
     <SafeAreaView style={styles.container}>
-      {/* Debug Info */}
-      {isDebugMode && (
-        <View style={styles.debugContainer}>
-          {debugInfo.map((info, index) => (
-            <Text key={index} style={styles.debugText}>{info}</Text>
-          ))}
-        </View>
-      )}
+      <View style={styles.header}>
+        <Text style={styles.title}>Discover</Text>
+        {isDebugMode && (
+          <TouchableOpacity onPress={handleManualRefresh}>
+            <RefreshCw size={24} color={Colors.light.text} />
+          </TouchableOpacity>
+        )}
+      </View>
 
-      {/* Main Content */}
-      {!usageStats ? (
+      {/* Main content */}
+      {isLoading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.dark.primary} />
-          <Text style={styles.loadingText}>Loading usage stats...</Text>
+          <ActivityIndicator size="large" color={Colors.light.tint} />
+          <Text style={styles.loadingText}>Loading profiles...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          <Button onPress={handleManualRefresh} title="Try Again" />
+        </View>
+      ) : potentialMatches.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>
+            {noMoreProfiles ? 'No more profiles available.' : 'No profiles loaded.'}
+          </Text>
+          <Button onPress={handleManualRefresh} title="Refresh" />
         </View>
       ) : (
-        <View style={styles.mainContainer}>
-          {/* Modals */}
-          {showMatchModal && matchedUser ? (
-            <View style={styles.matchModalContainer}>
-              <View style={styles.matchModal}>
-                <Text style={styles.matchTitle}>It's a Match!</Text>
-                <Text style={styles.matchSubtitle}>
-                  You and {matchedUser.name} have liked each other
-                </Text>
-                
-                <Button
-                  title="Send Message"
-                  onPress={() => handleModalAction('message')}
-                  variant="primary"
-                  size="large"
-                  style={styles.messageButton}
-                />
-                
-                <Button
-                  title="Keep Browsing"
-                  onPress={() => handleModalAction('close')}
-                  variant="outline"
-                  size="large"
-                  style={styles.keepBrowsingButton}
-                />
-              </View>
-            </View>
-          ) : renderLimitModal()}
-
-          {/* Profile Detail Modal */}
-          <Modal
-            visible={showProfileDetail}
-            animationType="slide"
-            transparent={true}
-            onRequestClose={() => setShowProfileDetail(false)}
-          >
-            <View style={styles.profileDetailContainer}>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setShowProfileDetail(false)}
-              >
-                <ArrowLeft color={Colors.dark.text} size={24} />
-              </TouchableOpacity>
-              
-              {selectedProfile && (
-                <View style={styles.profileContent}>
-                  <ProfileDetailCard
-                    title="Bio"
-                    content={selectedProfile.bio || "No bio available"}
-                    profile={selectedProfile}
-                  />
-                  <ProfileDetailCard
-                    title="Industry"
-                    content={selectedProfile.industryFocus || selectedProfile.businessField || "Not specified"}
-                    profile={selectedProfile}
-                  />
-                  <ProfileDetailCard
-                    title="Business Stage"
-                    content={selectedProfile.businessStage || "Not specified"}
-                    profile={selectedProfile}
-                  />
-                  {selectedProfile.skillsOffered && (
-                    <ProfileDetailCard
-                      title="Skills Offered"
-                      content={selectedProfile.skillsOffered}
-                      profile={selectedProfile}
-                    />
-                  )}
-                </View>
-              )}
-            </View>
-          </Modal>
-
-          {/* Swipe Cards */}
-          {isLoading && potentialMatches.length === 0 ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={Colors.dark.primary} />
-              <Text style={styles.loadingText}>Loading profiles...</Text>
-            </View>
-          ) : error ? (
-            <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>{error}</Text>
-              <Button
-                title="Try Again"
-                onPress={() => fetchPotentialMatches()}
-                variant="primary"
-                size="medium"
-              />
-            </View>
-          ) : noMoreProfiles ? (
-            <View style={styles.noMoreContainer}>
-              <Text style={styles.noMoreText}>No more profiles available</Text>
-              <Text style={styles.noMoreSubtext}>Check back later for new matches</Text>
-              <Button
-                title="Refresh"
-                onPress={() => fetchPotentialMatches()}
-                variant="primary"
-                size="medium"
-                style={styles.refreshButton}
-              />
-            </View>
-          ) : (
-            <View style={styles.cardsContainer}>
-              {renderPremiumFeatures()}
-              <SwipeCards
-                profiles={potentialMatches}
-                onSwipeRight={handleSwipeRight}
-                onSwipeLeft={handleSwipeLeft}
-                onProfilePress={handleProfilePress}
-                onRefresh={handleManualRefresh}
-                refreshing={refreshing}
-                isLoading={isLoading}
-              />
-            </View>
-          )}
-        </View>
+        <SwipeCards
+          profiles={potentialMatches}
+          onSwipeRight={handleSwipeRight}
+          onSwipeLeft={handleSwipeLeft}
+          onProfilePress={handleProfilePress}
+          isLoading={isLoading}
+          error={error}
+          onRetry={handleManualRefresh}
+          onRefresh={handleManualRefresh}
+          refreshing={false}
+        />
       )}
 
-      {/* Add usage stats bar */}
-      {usageStats && (
-        <View style={styles.usageBar}>
-          <View style={styles.usageStat}>
-            <Text style={styles.usageLabel}>Swipes</Text>
-            <Text style={styles.usageValue}>
-              {usageStats.swipeRemaining}/{usageStats.swipeLimit}
-            </Text>
-          </View>
-          <View style={styles.usageStat}>
-            <Text style={styles.usageLabel}>Matches</Text>
-            <Text style={styles.usageValue}>
-              {usageStats.matchRemaining}/{usageStats.matchLimit}
-            </Text>
-          </View>
-        </View>
-      )}
+      {/* Modals */}
+      {renderMatchModal()}
+      {renderLimitModal()}
+      {renderProfileDetailModal()}
+      {renderPremiumFeatures()}
     </SafeAreaView>
   );
 }
@@ -725,11 +703,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.dark.background
   },
-  mainContainer: {
-    flex: 1
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10
   },
-  cardsContainer: {
-    flex: 1
+  title: {
+    color: Colors.dark.text,
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginRight: 10
   },
   loadingContainer: {
     flex: 1,
@@ -851,6 +834,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 10
   },
+  modalSubtitle: {
+    color: Colors.dark.textSecondary,
+    textAlign: 'center',
+    marginBottom: 20
+  },
   statsContainer: {
     marginVertical: 16,
     alignItems: 'center'
@@ -904,5 +892,27 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: Colors.dark.text
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  emptyText: {
+    color: Colors.dark.text,
+    marginBottom: 20
+  },
+  profileDetails: {
+    flex: 1,
+    padding: 20
+  },
+  profileText: {
+    color: Colors.dark.text,
+    marginBottom: 10
+  },
+  profileLabel: {
+    color: Colors.dark.textSecondary,
+    fontWeight: 'bold',
+    marginBottom: 5
   }
 });
