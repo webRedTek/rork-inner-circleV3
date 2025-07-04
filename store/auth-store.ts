@@ -271,6 +271,10 @@ export const useAuthStore = create<AuthState>()(
 
             const userProfile = supabaseToUserProfile(profileData);
             
+            // Initialize usage store first
+            await useUsageStore.getState().initializeUsage(userId);
+            await startUsageSync();
+            
             // Initialize tier settings after successful login
             await get().fetchAllTierSettings();
             
@@ -282,9 +286,6 @@ export const useAuthStore = create<AuthState>()(
 
             // Initialize user's specific tier settings
             await get().initializeTierSettings();
-
-            // Start usage tracking
-            await startUsageSync();
 
             // Validate and refresh cache for the new user
             await get().validateAndRefreshCache(userId);

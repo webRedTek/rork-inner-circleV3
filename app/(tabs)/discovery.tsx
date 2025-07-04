@@ -72,7 +72,7 @@ export default function DiscoveryScreen() {
   const [noMoreProfiles, setNoMoreProfiles] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuthStore();
-  const { usageCache, initializeUsage } = useUsageStore();
+  const { usageCache } = useUsageStore();
 
   const fetchUsers = async () => {
     logDebug('Starting fetchUsers');
@@ -92,12 +92,7 @@ export default function DiscoveryScreen() {
         userId: user.id 
       });
 
-      // Initialize usage if not already done
-      if (!usageCache) {
-        logDebug('Usage cache not found, initializing');
-        await initializeUsage(user.id);
-        logDebug('Usage cache initialized');
-      }
+      // Usage store is already initialized in auth-store after login
 
       logDebug('Calling fetch_potential_matches', { 
         userId: user.id,

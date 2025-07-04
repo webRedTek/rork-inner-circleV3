@@ -1,12 +1,12 @@
 /**
  * FILE: app/(tabs)/discover.tsx
- * LAST UPDATED: 2025-07-03 20:55
+ * LAST UPDATED: 2025-01-03 12:00
  * 
  * INITIALIZATION ORDER:
- * 1. Initializes after auth-store confirms user session
+ * 1. Initializes after auth-store confirms user session and initializes usage-store
  * 2. Requires matches-store to be initialized for profile fetching
  * 3. Requires notification-store for match alerts
- * 4. Requires usage-store for swipe/match limits
+ * 4. Usage-store is already initialized by auth-store
  * 
  * CURRENT STATE:
  * Discover screen for entrepreneur matching with tier-based features:
@@ -17,8 +17,7 @@
  * - Centralized tier settings integration
  * 
  * RECENT CHANGES:
- * - Added usage store initialization
- * - Fixed initialization order (usage store before matches)
+ * - Removed usage store initialization (moved to auth-store)
  * - Enhanced error handling for initialization
  * - Added more detailed debug logging
  * - Fixed timeline display
@@ -84,7 +83,7 @@ export default function DiscoverScreen() {
   const { getTierSettings, user } = useAuthStore();
   const { isDebugMode, addDebugLog } = useDebugStore();
   const { addNotification } = useNotificationStore();
-  const { getUsageStats, trackUsage, initializeUsage } = useUsageStore();
+  const { getUsageStats, trackUsage } = useUsageStore();
   
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [matchedUser, setMatchedUser] = useState<UserProfile | null>(null);
@@ -149,12 +148,7 @@ export default function DiscoverScreen() {
           throw new Error('No user ID available');
         }
 
-        // First initialize usage store
-        if (isMounted) {
-          addDebugInfo('Initializing usage store');
-          await initializeUsage(user.id);
-          addDebugInfo('Usage store initialized');
-        }
+        // Usage store is already initialized in auth-store after login
 
         // Then fetch matches
         if (isMounted) {
