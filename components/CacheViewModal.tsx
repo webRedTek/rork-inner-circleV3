@@ -69,6 +69,7 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
       {
         usageCache,
         tierSettings,
+        databaseTotals,
         lastSyncTimestamp: usageCache?.lastSyncTimestamp || 'N/A',
         tierSettingsTimestamp: tierSettingsTimestamp || 'N/A',
         lastSyncError: lastSyncError || 'None',

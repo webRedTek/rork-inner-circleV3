@@ -23,18 +23,18 @@ export const ProfileHeader: React.FC = () => {
     : user.membershipTier === 'silver' 
       ? Colors.dark.silver 
       : Colors.dark.bronze;
-
+  
   return (
     <View style={styles.container}>
-      <TouchableOpacity 
+    <TouchableOpacity 
         style={styles.imageContainer}
         onPress={() => router.push('/edit-profile')}
-      >
+    >
         {user.photoUrl ? (
-          <Image 
+      <Image
             source={{ uri: user.photoUrl }} 
             style={styles.profileImage} 
-          />
+      />
         ) : (
           <View style={[styles.profileImage, styles.placeholderImage]}>
             <Text style={styles.placeholderText}>
@@ -43,7 +43,7 @@ export const ProfileHeader: React.FC = () => {
           </View>
         )}
       </TouchableOpacity>
-
+      
       <View style={styles.infoContainer}>
         <Text style={styles.name}>{user.name || 'Anonymous'}</Text>
         <Text style={styles.email}>{user.email}</Text>
@@ -55,7 +55,7 @@ export const ProfileHeader: React.FC = () => {
           <Shield size={16} color={Colors.dark.text} />
           <Text style={styles.tierText}>
             {user.membershipTier.charAt(0).toUpperCase() + user.membershipTier.slice(1)}
-          </Text>
+            </Text>
         </TouchableOpacity>
       </View>
     </View>

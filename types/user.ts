@@ -176,6 +176,7 @@ export interface GroupEvent {
   title: string;
   description: string;
   location?: string;
+  imageUrl?: string;
   startTime: number;
   endTime?: number;
   reminder?: number;
@@ -217,7 +218,6 @@ export interface TierSettings {
   daily_match_limit: number;
   daily_like_limit: number;
   message_sending_limit: number;
-  like_sending_limit: number;
   can_see_who_liked_you: boolean;
   can_rewind_last_swipe: boolean;
   profile_visibility_control: boolean;
@@ -276,12 +276,10 @@ export interface UsageCache {
 }
 
 export interface BatchUpdate {
-  user_id: string;
-  updates: {
-    action_type: string;
-    count_change: number;
-    timestamp: number;
-  }[];
+  userId: string;
+  action: string;
+  count: number;
+  timestamp: number;
 }
 
 export interface SyncStrategy {
@@ -410,9 +408,11 @@ export interface UsageStore {
   initializeUsage: (userId: string) => Promise<void>;
   fetchDatabaseTotals: (userId: string) => Promise<DatabaseTotals | undefined>;
   syncUsageData: (force?: boolean) => Promise<void>;
-  trackUsage: (options: UsageTrackingOptions) => Promise<UsageResult>;
-  getUsageStats: () => UsageStats | null;
-  queueBatchUpdate: (actionType: string, count: number) => void;
+  getUsageStats: () => Promise<UsageStats>;
+  queueBatchUpdate: (action: string, count: number) => void;
   resetUsage: (actionType?: string) => void;
   clearError: () => void;
+  updateUsage: (action: string) => Promise<UsageResult>;
+  trackUsage: (options: UsageTrackingOptions) => Promise<UsageResult>;
+  resetUsageCache: () => Promise<void>;
 }

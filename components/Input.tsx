@@ -1,3 +1,37 @@
+/**
+ * FILE: components/Input.tsx
+ * LAST UPDATED: 2025-07-01 14:45
+ * 
+ * INITIALIZATION ORDER:
+ * 1. Pure component, initializes when rendered
+ * 2. No external initialization dependencies
+ * 3. Extends React Native TextInput functionality
+ * 4. Parent components depend on value changes
+ * 5. No critical race conditions
+ * 
+ * CURRENT STATE:
+ * Base input component with consistent styling and features:
+ * - Label and error state handling
+ * - Customizable text input properties
+ * - Character limit support
+ * - Consistent styling with app theme
+ * 
+ * RECENT CHANGES:
+ * - Added maxLength support
+ * - Extended TextInputProps for better type safety
+ * - Enhanced error state visualization
+ * - Improved accessibility support
+ * 
+ * FILE INTERACTIONS:
+ * - Imports from: react-native, constants/colors
+ * - Exports to: Used by all form screens
+ * - Dependencies: No external dependencies
+ * - Data flow: One-way data flow with value/onChange pattern
+ * 
+ * KEY FUNCTIONS/COMPONENTS:
+ * - Input: Main input component with label and error handling
+ */
+
 import React from 'react';
 import { 
   View, 
@@ -6,11 +40,12 @@ import {
   StyleSheet, 
   ViewStyle,
   TextStyle,
-  KeyboardTypeOptions
+  KeyboardTypeOptions,
+  TextInputProps
 } from 'react-native';
 import Colors from '@/constants/colors';
 
-interface InputProps {
+export interface InputProps extends TextInputProps {
   label?: string;
   value: string;
   onChangeText: (text: string) => void;
@@ -26,6 +61,7 @@ interface InputProps {
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   editable?: boolean;
   helperText?: string;
+  maxLength?: number;
 }
 
 export const Input: React.FC<InputProps> = ({
@@ -44,6 +80,7 @@ export const Input: React.FC<InputProps> = ({
   autoCapitalize = 'none',
   editable = true,
   helperText,
+  maxLength,
 }) => {
   return (
     <View style={[styles.container, style]}>
@@ -66,6 +103,7 @@ export const Input: React.FC<InputProps> = ({
         numberOfLines={multiline ? numberOfLines : undefined}
         autoCapitalize={autoCapitalize}
         editable={editable}
+        maxLength={maxLength}
       />
       {!error && helperText && (
         <Text style={styles.helperText}>{helperText}</Text>

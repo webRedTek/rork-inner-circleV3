@@ -1,3 +1,33 @@
+/**
+ * FILE: app/(tabs)/messages.tsx
+ * LAST UPDATED: 2025-07-03 11:20
+ * 
+ * CURRENT STATE:
+ * Messages tab screen that displays chat previews and handles navigation. Features:
+ * - Displays list of chat conversations with previews
+ * - Shows unread message counts and timestamps
+ * - Handles navigation to individual chat screens
+ * - Lazy loads messages when conversation opened
+ * 
+ * RECENT CHANGES:
+ * - Improved chat preview UI with better spacing
+ * - Added proper timestamp formatting
+ * - Enhanced error handling and loading states
+ * - Implemented lazy message loading
+ * 
+ * FILE INTERACTIONS:
+ * - Imports from: messages-store (chat data), auth-store (user)
+ * - Exports to: Used by app router for messages tab
+ * - Dependencies: expo-router (navigation), react-native
+ * - Data flow: Displays messages from store, navigates to chat
+ * 
+ * KEY FUNCTIONS/COMPONENTS:
+ * - MessagesScreen: Main component for messages list
+ * - renderChatPreview: Renders individual chat previews
+ * - handleChatPress: Handles chat selection and navigation
+ * - formatTime: Formats message timestamps
+ */
+
 import React, { useEffect, useState, useCallback } from 'react';
 import { 
   View, 
@@ -29,7 +59,7 @@ interface ChatPreview {
 export default function MessagesScreen() {
   const router = useRouter();
   const { user, isReady } = useAuthStore();
-  const { matches, getMatches } = useMatchesStore();
+  const { matches, fetchMatches } = useMatchesStore();
   const { messages, getMessages } = useMessagesStore();
   
   const [chatPreviews, setChatPreviews] = useState<ChatPreview[]>([]);
@@ -53,26 +83,44 @@ export default function MessagesScreen() {
   );
   
   const loadData = async () => {
-    if (!user) return; // Silent fail if no user
+    if (!user) return;
     
     setLoading(true);
-    await getMatches();
-    setLoading(false);
+    try {
+      await fetchMatches();
+    } catch (error) {
+      console.error('Error loading matches:', error);
+    } finally {
+      setLoading(false);
+    }
   };
   
   const onRefresh = async () => {
     if (!user) return;
     
     setRefreshing(true);
-    await getMatches();
-    setRefreshing(false);
+    try {
+      await fetchMatches();
+    } catch (error) {
+      console.error('Error refreshing matches:', error);
+    } finally {
+      setRefreshing(false);
+    }
   };
   
   useEffect(() => {
-    if (!user || !isReady) return; // Silent fail if not ready or not authenticated
+    if (!user || !isReady) return;
     
-    // Create chat previews from matches
-    const previews = matches.map(match => {
+    // Filter out matches without user profiles and create chat previews
+    const validMatches = matches.filter((match: MatchWithProfile) => {
+      return match && 
+             match.matched_user_profile && 
+             match.matched_user_profile.id && 
+             match.matched_user_profile.name;
+    });
+    
+    // Create chat previews from valid matches
+    const previews = validMatches.map((match: MatchWithProfile) => {
       // Get messages for this match
       const matchMessages = messages[match.match_id] || [];
       
@@ -129,6 +177,11 @@ export default function MessagesScreen() {
   };
   
   const renderChatPreview = ({ item }: { item: ChatPreview }) => {
+    // Additional safety check for item.user
+    if (!item || !item.user || !item.user.id) {
+      return null;
+    }
+    
     return (
       <TouchableOpacity
         style={styles.chatPreview}
@@ -143,7 +196,7 @@ export default function MessagesScreen() {
         
         <View style={styles.chatInfo}>
           <View style={styles.chatHeader}>
-            <Text style={styles.userName}>{item.user.name}</Text>
+            <Text style={styles.userName}>{item.user.name || 'Unknown User'}</Text>
             {item.lastMessage && (
               <Text style={styles.timestamp}>
                 {formatTime(item.lastMessage.createdAt)}
@@ -162,7 +215,7 @@ export default function MessagesScreen() {
               >
                 {item.lastMessage.type === 'voice' 
                   ? '🎤 Voice message' 
-                  : item.lastMessage.content}
+                  : item.lastMessage.content || 'Message'}
               </Text>
             ) : (
               <Text style={styles.previewText}>Start a conversation</Text>

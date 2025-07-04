@@ -16,6 +16,26 @@ interface AffiliateState {
   resetAffiliateCache: () => Promise<void>;
 }
 
+// Helper function to generate a simple referral code
+const generateSimpleReferralCode = (username: string): string => {
+  // Clean username: remove spaces, special chars, convert to lowercase
+  const cleanUsername = username.toLowerCase().replace(/[^a-z0-9]/g, '');
+  
+  // Take first 3-4 characters of username
+  const userPart = cleanUsername.substring(0, Math.min(4, cleanUsername.length));
+  
+  // Generate random alphanumeric characters for the rest
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  const remainingLength = 7 - userPart.length;
+  let randomPart = '';
+  
+  for (let i = 0; i < remainingLength; i++) {
+    randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  
+  return userPart + randomPart;
+};
+
 export const useAffiliateStore = create<AffiliateState>((set, get) => ({
   stats: null,
   referralHistory: [],
@@ -101,7 +121,15 @@ export const useAffiliateStore = create<AffiliateState>((set, get) => ({
 
   generateReferralLink: async () => {
     const { user, isReady } = useAuthStore.getState();
-    if (!isReady || !user) return '';
+    if (!isReady || !user) {
+      useNotificationStore.getState().addNotification({
+        type: 'error',
+        message: 'User not authenticated',
+        displayStyle: 'toast',
+        duration: 5000
+      });
+      return '';
+    }
     
     set({ isLoading: true, error: null });
     try {
@@ -115,32 +143,98 @@ export const useAffiliateStore = create<AffiliateState>((set, get) => ({
         if (linkError) {
           // If no link exists, create one
           if (linkError.code === 'PGRST116') {
-            const newCode = `ref-${user.id.substring(0, 8)}-${Date.now()}`;
+            // Generate simple referral code using username
+            const newCode = generateSimpleReferralCode(user.name || user.email || 'user');
+            
+            // Check if code already exists and generate a new one if needed
+            let finalCode = newCode;
+            let attempts = 0;
+            const maxAttempts = 10;
+            
+            while (attempts < maxAttempts) {
+              const { data: existingCode } = await supabase
+                .from('affiliate_links')
+                .select('id')
+                .eq('referral_code', finalCode)
+                .single();
+                
+              if (!existingCode) {
+                // Code is unique, we can use it
+                break;
+              }
+              
+              // Code exists, generate a new one
+              attempts++;
+              finalCode = generateSimpleReferralCode(user.name || user.email || 'user');
+            }
+            
+            if (attempts >= maxAttempts) {
+              // Fallback to timestamp-based code if we can't find a unique one
+              finalCode = generateSimpleReferralCode(user.name || user.email || 'user').substring(0, 4) + 
+                         Date.now().toString().slice(-3);
+            }
+            
             const { error: insertError } = await supabase
               .from('affiliate_links')
               .insert({ 
                 user_id: user.id, 
-                referral_code: newCode,
+                referral_code: finalCode,
                 tier_id: '00000000-0000-0000-0000-000000000000' // Placeholder UUID, should be updated based on actual tier
               });
               
-            if (insertError) throw insertError;
+            if (insertError) {
+              console.error('Error creating referral link:', getReadableError(insertError));
+              useNotificationStore.getState().addNotification({
+                type: 'error',
+                message: `Failed to create referral link: ${getReadableError(insertError)}`,
+                displayStyle: 'toast',
+                duration: 5000
+              });
+              throw insertError;
+            }
+            
             set({ isLoading: false });
-            return `https://app.example.com/referral/${newCode}`;
+            useNotificationStore.getState().addNotification({
+              type: 'success',
+              message: `Referral code created: ${finalCode}`,
+              displayStyle: 'toast',
+              duration: 5000
+            });
+            return `https://app.example.com/referral/${finalCode}`;
           }
+          console.error('Error fetching referral link:', getReadableError(linkError));
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: `Failed to fetch referral link: ${getReadableError(linkError)}`,
+            displayStyle: 'toast',
+            duration: 5000
+          });
           throw linkError;
         }
         
         set({ isLoading: false });
+        useNotificationStore.getState().addNotification({
+          type: 'success',
+          message: `Your referral code: ${linkData?.referral_code || ''}`,
+          displayStyle: 'toast',
+          duration: 5000
+        });
         return `https://app.example.com/referral/${linkData?.referral_code || ''}`;
       } else {
         throw new Error('Supabase is not configured');
       }
     } catch (error) {
       console.error('Error generating referral link:', getReadableError(error));
+      const errorMessage = getReadableError(error);
       set({ 
-        error: getReadableError(error), 
+        error: errorMessage, 
         isLoading: false 
+      });
+      useNotificationStore.getState().addNotification({
+        type: 'error',
+        message: `Referral link generation failed: ${errorMessage}`,
+        displayStyle: 'toast',
+        duration: 5000
       });
       return '';
     }
@@ -156,18 +250,52 @@ export const useAffiliateStore = create<AffiliateState>((set, get) => ({
           .eq('referral_code', code)
           .single();
           
-        if (codeError) throw codeError;
+        if (codeError) {
+          console.error('Error checking referral code:', getReadableError(codeError));
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            message: `Failed to check referral code: ${getReadableError(codeError)}`,
+            displayStyle: 'toast',
+            duration: 5000
+          });
+          throw codeError;
+        }
         
         set({ isLoading: false });
-        return !!codeData;
+        const isValid = !!codeData;
+        
+        if (isValid) {
+          useNotificationStore.getState().addNotification({
+            type: 'success',
+            message: 'Referral code is valid',
+            displayStyle: 'toast',
+            duration: 3000
+          });
+        } else {
+          useNotificationStore.getState().addNotification({
+            type: 'warning',
+            message: 'Referral code not found',
+            displayStyle: 'toast',
+            duration: 3000
+          });
+        }
+        
+        return isValid;
       } else {
         throw new Error('Supabase is not configured');
       }
     } catch (error) {
       console.error('Error checking referral code:', getReadableError(error));
+      const errorMessage = getReadableError(error);
       set({ 
-        error: getReadableError(error), 
+        error: errorMessage, 
         isLoading: false 
+      });
+      useNotificationStore.getState().addNotification({
+        type: 'error',
+        message: `Referral code check failed: ${errorMessage}`,
+        displayStyle: 'toast',
+        duration: 5000
       });
       return false;
     }
