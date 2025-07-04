@@ -200,29 +200,35 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
   const renderTierSettings = () => {
     if (!tierSettings) return <Text style={styles.noDataText}>No tier settings available</Text>;
 
+    // Handle both camelCase and snake_case formats due to potential data transformation
+    const dailySwipeLimit = (tierSettings as any).dailySwipeLimit || tierSettings.daily_swipe_limit;
+    const dailyLikeLimit = (tierSettings as any).dailyLikeLimit || tierSettings.daily_like_limit;
+    const dailyMatchLimit = (tierSettings as any).dailyMatchLimit || tierSettings.daily_match_limit;
+    const messageSendingLimit = (tierSettings as any).messageSendingLimit || tierSettings.message_sending_limit;
+
     return (
       <>
         <View style={styles.row}>
           <Text style={styles.cell}>Daily Swipe Limit</Text>
-          <Text style={styles.cell}>{tierSettings.daily_swipe_limit}</Text>
+          <Text style={styles.cell}>{dailySwipeLimit}</Text>
           <Text style={styles.cell}>N/A</Text>
           <Text style={styles.cell}>{formatTimestamp(tierSettingsTimestamp)}</Text>
         </View>
-				 <View style={styles.row}>
+        <View style={styles.row}>
           <Text style={styles.cell}>Daily Like Limit</Text>
-          <Text style={styles.cell}>{tierSettings.daily_like_limit}</Text>
+          <Text style={styles.cell}>{dailyLikeLimit}</Text>
           <Text style={styles.cell}>N/A</Text>
           <Text style={styles.cell}>{formatTimestamp(tierSettingsTimestamp)}</Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.cell}>Daily Match Limit</Text>
-          <Text style={styles.cell}>{tierSettings.daily_match_limit}</Text>
+          <Text style={styles.cell}>{dailyMatchLimit}</Text>
           <Text style={styles.cell}>N/A</Text>
           <Text style={styles.cell}>{formatTimestamp(tierSettingsTimestamp)}</Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.cell}>Message Sending Limit</Text>
-          <Text style={styles.cell}>{tierSettings.message_sending_limit}</Text>
+          <Text style={styles.cell}>{messageSendingLimit}</Text>
           <Text style={styles.cell}>N/A</Text>
           <Text style={styles.cell}>{formatTimestamp(tierSettingsTimestamp)}</Text>
         </View>

@@ -85,6 +85,7 @@ export default {
     border: '#374151', // Enhanced for better definition
     placeholder: '#6B7280', // Enhanced for better form visibility
     disabled: '#4B5563', // Enhanced for better disabled state visibility
+    overlay: 'rgba(0, 0, 0, 0.7)', // Enhanced for better modal overlay
     bronze: '#CD7F32',
     silver: '#C0C0C0',
     gold: '#FFD700'
