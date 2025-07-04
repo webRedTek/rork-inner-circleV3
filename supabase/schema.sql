@@ -476,8 +476,8 @@ $$ language plpgsql security definer;
 -- Create stored procedure to fetch potential matches
 create or replace function fetch_potential_matches(
   p_user_id uuid, 
-  p_max_distance integer, 
-  p_is_global_discovery boolean, 
+  p_max_distance integer default null, 
+  p_is_global_discovery boolean default false, 
   p_limit integer default 25,
   p_offset integer default 0
 )
@@ -501,8 +501,11 @@ begin
   from public.users
   where id = p_user_id;
 
-  v_user_lat := (v_user->>'latitude')::double precision;
-  v_user_lon := (v_user->>'longitude')::double precision;
+  -- Only get user location if doing local discovery
+  if not p_is_global_discovery then
+    v_user_lat := (v_user->>'latitude')::double precision;
+    v_user_lon := (v_user->>'longitude')::double precision;
+  end if;
 
   -- Get IDs of users already liked by the current user
   select array_agg(liked_id) into v_liked_ids
@@ -538,10 +541,11 @@ begin
     and u.id not in (select unnest(v_matched_ids))
     and (
       p_is_global_discovery or
-      6371 * acos(
-        cos(radians(v_user_lat)) * cos(radians(u.latitude)) * cos(radians(u.longitude) - radians(v_user_lon)) +
-        sin(radians(v_user_lat)) * sin(radians(u.latitude))
-      ) <= p_max_distance
+      (p_max_distance is not null and 
+       6371 * acos(
+         cos(radians(v_user_lat)) * cos(radians(u.latitude)) * cos(radians(u.longitude) - radians(v_user_lon)) +
+         sin(radians(v_user_lat)) * sin(radians(u.latitude))
+       ) <= p_max_distance)
     )
     order by
       case when p_is_global_discovery then random() end,

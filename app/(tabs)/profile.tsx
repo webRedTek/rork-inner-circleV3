@@ -150,7 +150,7 @@ export default function ProfileScreen() {
   const handleRefreshMatches = async () => {
     try {
       if (user) {
-        await fetchPotentialMatches(50, true); // Force refresh with 50km radius
+        await fetchPotentialMatches(); // Force refresh - uses store method
         Alert.alert('Success', 'Matches refreshed successfully');
       }
     } catch (err) {
