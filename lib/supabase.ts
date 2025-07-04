@@ -113,6 +113,8 @@ export type Database = {
           has_virtual_meeting_room: boolean;
           has_custom_branding: boolean;
           has_dedicated_support: boolean;
+          trial_duration: number;
+          daily_like_limit: number | null;
         };
         Insert: {
           id?: string;
@@ -142,6 +144,8 @@ export type Database = {
           has_virtual_meeting_room?: boolean;
           has_custom_branding?: boolean;
           has_dedicated_support?: boolean;
+          trial_duration?: number;
+          daily_like_limit?: number | null;
         };
         Update: {
           id?: string;
@@ -170,86 +174,73 @@ export type Database = {
           has_virtual_meeting_room?: boolean;
           has_custom_branding?: boolean;
           has_dedicated_support?: boolean;
+          trial_duration?: number;
+          daily_like_limit?: number | null;
         };
       };
       user_daily_usage: {
         Row: {
           id: string;
-          user_id: string;
-          action_type: string;
-          current_count: number;
-          first_action_timestamp: number;
-          last_action_timestamp: number;
-          reset_timestamp: number;
-          created_at: string;
-          boost_minutes_remaining?: number;
-          boost_uses_remaining?: number;
-          events_created_this_month?: number;
-          events_month_reset_timestamp?: number;
-          direct_intros_sent?: number;
-          virtual_meetings_hosted?: number;
-          groups_joined?: number;
-          groups_created?: number;
-          featured_portfolios_count?: number;
-          messages_sent_count?: number;
-          priority_messages_sent?: number;
-          profile_views_received?: number;
-          search_appearances?: number;
-          premium_features_used?: any;
-          last_tier_change_timestamp?: number;
-          tier_history?: any;
+          user_id: string | null;
+          date: string;
+          swipe_count: number | null;
+          match_count: number | null;
+          message_count: number | null;
+          direct_intro_count: number | null;
+          groups_joined_count: number | null;
+          groups_created_count: number | null;
+          events_created_count: number | null;
+          featured_portfolio_count: number | null;
+          virtual_meetings_hosted: number | null;
+          boost_minutes_used: number | null;
+          boost_uses_count: number | null;
+          last_updated: string | null;
+          created_at: string | null;
+          monthly_reset_at: string | null;
+          daily_reset_at: string | null;
+          like_count: number;
         };
         Insert: {
           id?: string;
-          user_id: string;
-          action_type: string;
-          current_count: number;
-          first_action_timestamp: number;
-          last_action_timestamp: number;
-          reset_timestamp: number;
-          created_at?: string;
-          boost_minutes_remaining?: number;
-          boost_uses_remaining?: number;
-          events_created_this_month?: number;
-          events_month_reset_timestamp?: number;
-          direct_intros_sent?: number;
-          virtual_meetings_hosted?: number;
-          groups_joined?: number;
-          groups_created?: number;
-          featured_portfolios_count?: number;
-          messages_sent_count?: number;
-          priority_messages_sent?: number;
-          profile_views_received?: number;
-          search_appearances?: number;
-          premium_features_used?: any;
-          last_tier_change_timestamp?: number;
-          tier_history?: any;
+          user_id?: string | null;
+          date?: string;
+          swipe_count?: number | null;
+          match_count?: number | null;
+          message_count?: number | null;
+          direct_intro_count?: number | null;
+          groups_joined_count?: number | null;
+          groups_created_count?: number | null;
+          events_created_count?: number | null;
+          featured_portfolio_count?: number | null;
+          virtual_meetings_hosted?: number | null;
+          boost_minutes_used?: number | null;
+          boost_uses_count?: number | null;
+          last_updated?: string | null;
+          created_at?: string | null;
+          monthly_reset_at?: string | null;
+          daily_reset_at?: string | null;
+          like_count?: number;
         };
         Update: {
           id?: string;
-          user_id?: string;
-          action_type?: string;
-          current_count?: number;
-          first_action_timestamp?: number;
-          last_action_timestamp?: number;
-          reset_timestamp?: number;
-          created_at?: string;
-          boost_minutes_remaining?: number;
-          boost_uses_remaining?: number;
-          events_created_this_month?: number;
-          events_month_reset_timestamp?: number;
-          direct_intros_sent?: number;
-          virtual_meetings_hosted?: number;
-          groups_joined?: number;
-          groups_created?: number;
-          featured_portfolios_count?: number;
-          messages_sent_count?: number;
-          priority_messages_sent?: number;
-          profile_views_received?: number;
-          search_appearances?: number;
-          premium_features_used?: any;
-          last_tier_change_timestamp?: number;
-          tier_history?: any;
+          user_id?: string | null;
+          date?: string;
+          swipe_count?: number | null;
+          match_count?: number | null;
+          message_count?: number | null;
+          direct_intro_count?: number | null;
+          groups_joined_count?: number | null;
+          groups_created_count?: number | null;
+          events_created_count?: number | null;
+          featured_portfolio_count?: number | null;
+          virtual_meetings_hosted?: number | null;
+          boost_minutes_used?: number | null;
+          boost_uses_count?: number | null;
+          last_updated?: string | null;
+          created_at?: string | null;
+          monthly_reset_at?: string | null;
+          daily_reset_at?: string | null;
+          like_count?: number;
         };
       };
     };
@@ -901,9 +892,10 @@ export const batchUpdateUsage = async (userId: string, updates: Array<{ action_t
   const client = supabase as SupabaseClient<Database>;
   
   return retryOperation(async () => {
-    const { data, error } = await client.rpc('batch_update_usage', {
+    const { data, error } = await client.rpc('handle_user_usage', {
       p_user_id: userId,
-      p_updates: updates,
+      p_action_type: 'batch',
+      p_batch_updates: updates,
     });
     
     if (error) {

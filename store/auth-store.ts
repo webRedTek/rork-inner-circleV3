@@ -271,10 +271,6 @@ export const useAuthStore = create<AuthState>()(
 
             const userProfile = supabaseToUserProfile(profileData);
             
-            // Initialize usage store first
-            await useUsageStore.getState().initializeUsage(userId);
-            await startUsageSync();
-            
             // Initialize tier settings after successful login
             await get().fetchAllTierSettings();
             
@@ -286,6 +282,15 @@ export const useAuthStore = create<AuthState>()(
 
             // Initialize user's specific tier settings
             await get().initializeTierSettings();
+
+            // Initialize usage store AFTER successful authentication (non-blocking)
+            try {
+              await useUsageStore.getState().initializeUsage(userId);
+              await startUsageSync();
+            } catch (error) {
+              console.warn('Usage store initialization failed, but continuing with login:', error);
+              // Don't block authentication if usage store fails
+            }
 
             // Validate and refresh cache for the new user
             await get().validateAndRefreshCache(userId);
@@ -726,15 +731,20 @@ export const useAuthStore = create<AuthState>()(
 
             const userProfile = supabaseToUserProfile(profileData || {});
             
-            // Initialize usage tracking first
-            await useUsageStore.getState().initializeUsage(userProfile.id);
-            startUsageSync();
-
             set({
               user: userProfile,
               isAuthenticated: true,
               isReady: true,
             });
+
+            // Initialize usage tracking AFTER successful authentication (non-blocking)
+            try {
+              await useUsageStore.getState().initializeUsage(userProfile.id);
+              startUsageSync();
+            } catch (error) {
+              console.warn('Usage store initialization failed, but continuing with session:', error);
+              // Don't block authentication if usage store fails
+            }
           } else {
             set({
               user: null,

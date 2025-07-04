@@ -279,7 +279,16 @@ export const useUsageStore = create<UsageStore>()(
                 match_count: isExpired ? 0 : existingData.match_count,
                 message_count: isExpired ? 0 : existingData.message_count,
                 like_count: isExpired ? 0 : existingData.like_count,
+                direct_intro_count: isExpired ? 0 : existingData.direct_intro_count || 0,
+                groups_joined_count: isExpired ? 0 : existingData.groups_joined_count || 0,
+                groups_created_count: isExpired ? 0 : existingData.groups_created_count || 0,
+                events_created_count: isExpired ? 0 : existingData.events_created_count || 0,
+                featured_portfolio_count: isExpired ? 0 : existingData.featured_portfolio_count || 0,
+                virtual_meetings_hosted: isExpired ? 0 : existingData.virtual_meetings_hosted || 0,
+                boost_minutes_used: isExpired ? 0 : existingData.boost_minutes_used || 0,
+                boost_uses_count: isExpired ? 0 : existingData.boost_uses_count || 0,
                 daily_reset_at: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
+                monthly_reset_at: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString(),
                 last_updated: new Date().toISOString()
               })
               .eq('id', existingData.id)
@@ -354,7 +363,16 @@ export const useUsageStore = create<UsageStore>()(
               match_count: 0,
               message_count: 0,
               like_count: 0,
+              direct_intro_count: 0,
+              groups_joined_count: 0,
+              groups_created_count: 0,
+              events_created_count: 0,
+              featured_portfolio_count: 0,
+              virtual_meetings_hosted: 0,
+              boost_minutes_used: 0,
+              boost_uses_count: 0,
               daily_reset_at: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
+              monthly_reset_at: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString(),
               created_at: new Date().toISOString(),
               last_updated: new Date().toISOString()
             })
@@ -657,22 +675,54 @@ export const useUsageStore = create<UsageStore>()(
               swipe_count: 0,
               match_count: 0,
               message_count: 0,
-              like_count: 0
+              like_count: 0,
+              direct_intro_count: 0,
+              groups_joined_count: 0,
+              groups_created_count: 0,
+              events_created_count: 0,
+              featured_portfolio_count: 0,
+              virtual_meetings_hosted: 0,
+              boost_minutes_used: 0,
+              boost_uses_count: 0
             };
 
-            batchUpdates[0].updates.forEach(update => {
-              switch (update.action_type) {
+            batchUpdates.forEach(update => {
+              switch (update.action) {
                 case 'swipe':
-                  counts.swipe_count += update.count_change;
+                  counts.swipe_count += update.count;
                   break;
                 case 'match':
-                  counts.match_count += update.count_change;
+                  counts.match_count += update.count;
                   break;
                 case 'message':
-                  counts.message_count += update.count_change;
+                  counts.message_count += update.count;
                   break;
                 case 'like':
-                  counts.like_count += update.count_change;
+                  counts.like_count += update.count;
+                  break;
+                case 'direct_intro':
+                  counts.direct_intro_count += update.count;
+                  break;
+                case 'groups_joined':
+                  counts.groups_joined_count += update.count;
+                  break;
+                case 'groups_created':
+                  counts.groups_created_count += update.count;
+                  break;
+                case 'events_created':
+                  counts.events_created_count += update.count;
+                  break;
+                case 'featured_portfolio':
+                  counts.featured_portfolio_count += update.count;
+                  break;
+                case 'virtual_meetings':
+                  counts.virtual_meetings_hosted += update.count;
+                  break;
+                case 'boost_minutes':
+                  counts.boost_minutes_used += update.count;
+                  break;
+                case 'boost_uses':
+                  counts.boost_uses_count += update.count;
                   break;
               }
             });
@@ -696,8 +746,17 @@ export const useUsageStore = create<UsageStore>()(
                 match_count: counts.match_count,
                 message_count: counts.message_count,
                 like_count: counts.like_count,
+                direct_intro_count: counts.direct_intro_count,
+                groups_joined_count: counts.groups_joined_count,
+                groups_created_count: counts.groups_created_count,
+                events_created_count: counts.events_created_count,
+                featured_portfolio_count: counts.featured_portfolio_count,
+                virtual_meetings_hosted: counts.virtual_meetings_hosted,
+                boost_minutes_used: counts.boost_minutes_used,
+                boost_uses_count: counts.boost_uses_count,
                 last_updated: now.toISOString(),
-                daily_reset_at: tomorrow.toISOString()
+                daily_reset_at: tomorrow.toISOString(),
+                monthly_reset_at: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
               }, {
                 onConflict: 'user_id, date'
               });
