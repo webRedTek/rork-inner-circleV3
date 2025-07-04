@@ -687,27 +687,16 @@ export const useMatchesStore = create<MatchesState>()(
         const notificationStore = useNotificationStore.getState();
         
         if (!user?.id) {
-          const error = 'User not authenticated for fetching matches';
-          logDebug('Error', { error });
-          set({ error });
-          throw new Error(error);
-        }
-
-        if (!isSupabaseConfigured() || !supabase) {
-          const error = 'Database is not configured';
-          logDebug('Error', { error });
-          set({ error });
-          throw new Error(error);
+          set({ error: 'User not authenticated' });
+          return;
         }
 
         // Don't fetch if already loading
         if (state.isLoading) {
-          logDebug('Skipping fetch - already loading');
           return;
         }
 
         set({ isLoading: true, error: null });
-        logDebug('Starting potential matches fetch', { userId: user.id });
 
         try {
           await withNetworkCheck(async () => {
@@ -720,17 +709,11 @@ export const useMatchesStore = create<MatchesState>()(
               throw new Error('No data returned from potential matches fetch');
             }
 
-            logDataFlow('Received potential matches', result);
-
             const newMatches = (result.matches || [])
               .map((match: any) => convertToCamelCase(match) as UserProfile)
               .filter((profile: UserProfile) => {
                 // Validate required fields
-                const isValid = profile && profile.id && profile.name;
-                if (!isValid) {
-                  logDebug('Filtered out invalid profile', { profile });
-                }
-                return isValid;
+                return profile && profile.id && profile.name;
               })
               // Remove duplicates and already swiped users
               .filter((profile: UserProfile) => {
@@ -738,14 +721,7 @@ export const useMatchesStore = create<MatchesState>()(
                 const isAlreadyPassed = state.passedUsers.some(passed => passed.id === profile.id && passed.expiresAt > Date.now());
                 const isPending = state.pendingLikes.has(profile.id);
                 
-                if (isDuplicate || isAlreadyPassed || isPending) {
-                  logDebug('Filtered out profile', { 
-                    profileId: profile.id, 
-                    reason: isDuplicate ? 'duplicate' : isAlreadyPassed ? 'passed' : 'pending'
-                  });
-                  return false;
-                }
-                return true;
+                return !(isDuplicate || isAlreadyPassed || isPending);
               });
 
             // Warm up cache with new matches
@@ -760,13 +736,6 @@ export const useMatchesStore = create<MatchesState>()(
               isLoading: false,
               noMoreProfiles: newMatches.length === 0 && state.potentialMatches.length === 0,
               cacheStats: enhancedProfileCache.getStats()
-            });
-
-            logStateChange('fetchPotentialMatches', state, get());
-            logDebug('Successfully fetched potential matches', { 
-              newCount: newMatches.length,
-              totalCount: updatedMatches.length,
-              noMoreProfiles: newMatches.length === 0
             });
 
             // Show success notification
@@ -788,9 +757,6 @@ export const useMatchesStore = create<MatchesState>()(
           });
         } catch (error) {
           const appError = handleError(error);
-          const errorMessage = getReadableError(error);
-          
-          logDebug('Error fetching potential matches', { error: errorMessage });
           
           set({ 
             error: appError.userMessage,
