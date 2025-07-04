@@ -130,7 +130,7 @@ class EnhancedProfileCache {
   private isInitialized = false;
 
   constructor() {
-    logger.logger.logFunctionCall('EnhancedProfileCache.constructor');
+    logger.logFunctionCall('EnhancedProfileCache.constructor');
     this.cache = new Map();
     this.config = {
       maxAge: 1000 * 60 * 45, // 45 minutes
