@@ -138,7 +138,7 @@ export default function DiscoverScreen() {
         duration: 3000
       });
     }
-  }, [user?.id]);
+  }, [user?.id, hasInitialized, addNotification]);
 
   // Trigger usage sync when discover tab is accessed
   useFocusEffect(
@@ -234,14 +234,8 @@ export default function DiscoverScreen() {
     }
   }, [getTierSettings]);
   
-  // Enhanced swipe handlers with better error handling and feedback
+  // Simplified swipe handlers - let stores handle limits
   const handleSwipeRight = useCallback(async (profile: UserProfile) => {
-    if (swipeLimitReached) {
-      setShowLimitModal(true);
-      triggerHapticFeedback('error');
-      return;
-    }
-    
     try {
       addDebugInfo(`Swiping right on profile: ${profile.id}`);
       const match = await likeUser(profile.id);
@@ -281,21 +275,13 @@ export default function DiscoverScreen() {
         duration: 4000
       });
     }
-  }, [likeUser, swipeLimitReached, triggerHapticFeedback, addNotification, addDebugInfo]);
+  }, [likeUser, triggerHapticFeedback, addNotification, addDebugInfo]);
   
   const handleSwipeLeft = useCallback(async (profile: UserProfile) => {
-    if (swipeLimitReached) {
-      setShowLimitModal(true);
-      triggerHapticFeedback('error');
-      return;
-    }
-    
     try {
       addDebugInfo(`Swiping left on profile: ${profile.id}`);
       await passUser(profile.id);
       triggerHapticFeedback('light');
-      
-
     } catch (error) {
       console.error('[Discover] Error passing user:', error);
       addDebugInfo(`Error passing user: ${error}`);
@@ -308,7 +294,7 @@ export default function DiscoverScreen() {
         duration: 4000
       });
     }
-  }, [passUser, swipeLimitReached, triggerHapticFeedback, addNotification, addDebugInfo]);
+  }, [passUser, triggerHapticFeedback, addNotification, addDebugInfo]);
   
   const handleModalAction = useCallback((action: 'message' | 'close' | 'upgrade') => {
     triggerHapticFeedback('light');

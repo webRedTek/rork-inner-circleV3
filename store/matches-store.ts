@@ -130,7 +130,7 @@ class EnhancedProfileCache {
   private isInitialized = false;
 
   constructor() {
-    logger.logFunctionCall('EnhancedProfileCache.constructor');
+    logger.logger.logFunctionCall('EnhancedProfileCache.constructor');
     this.cache = new Map();
     this.config = {
       maxAge: 1000 * 60 * 45, // 45 minutes
@@ -154,20 +154,20 @@ class EnhancedProfileCache {
   }
 
   private async initialize(): Promise<void> {
-    logFunctionCall('EnhancedProfileCache.initialize');
+    logger.logFunctionCall('EnhancedProfileCache.initialize');
     try {
       await this.loadFromPersistence();
       this.startCleanupTimer();
       this.startPersistenceTimer();
       this.isInitialized = true;
-      logDebug('Cache initialized successfully');
+      logger.logDebug('Cache initialized successfully');
     } catch (error) {
-      logDebug('Cache initialization failed', { error });
+      logger.logDebug('Cache initialization failed', { error });
     }
   }
 
   private async loadFromPersistence(): Promise<void> {
-    logFunctionCall('EnhancedProfileCache.loadFromPersistence');
+    logger.logFunctionCall('EnhancedProfileCache.loadFromPersistence');
     try {
       const stored = await AsyncStorage.getItem(this.config.persistenceKey);
       if (stored) {
@@ -179,9 +179,9 @@ class EnhancedProfileCache {
               this.cache.set(key, entry);
             }
           });
-          logCacheOperation('loaded', { size: this.cache.size });
+          logger.logCacheOperation('loaded', { size: this.cache.size });
         } else {
-          logCacheOperation('version_mismatch', { 
+          logger.logCacheOperation('version_mismatch', { 
             expected: this.config.version, 
             found: data.version 
           });
@@ -189,7 +189,7 @@ class EnhancedProfileCache {
         }
       }
     } catch (error) {
-      logDebug('Failed to load from persistence', { error });
+      logger.logDebug('Failed to load from persistence', { error });
     }
   }
 
@@ -653,7 +653,7 @@ export const useMatchesStore = create<MatchesState>()(
       ...initialState,
 
       fetchPotentialMatches: async () => {
-        logFunctionCall('fetchPotentialMatches');
+        logger.logFunctionCall('fetchPotentialMatches');
         const state = get();
         const { user } = useAuthStore.getState();
         const notificationStore = useNotificationStore.getState();
@@ -747,7 +747,7 @@ export const useMatchesStore = create<MatchesState>()(
       },
 
       fetchMatches: async () => {
-        logFunctionCall('fetchMatches');
+        logger.logFunctionCall('fetchMatches');
         const notificationStore = useNotificationStore.getState();
         
         if (!isSupabaseConfigured() || !supabase) {
@@ -850,13 +850,13 @@ export const useMatchesStore = create<MatchesState>()(
       },
 
       likeUser: async (userId: string) => {
-        logFunctionCall('likeUser', { userId });
+        logger.logFunctionCall('likeUser', { userId });
         // Implementation...
         return null;
       },
 
       passUser: async (userId: string) => {
-        logFunctionCall('passUser', { userId });
+        logger.logFunctionCall('passUser', { userId });
         // Implementation...
       },
 
