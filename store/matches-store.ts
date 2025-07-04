@@ -56,37 +56,9 @@ import { handleError, withErrorHandling, withRetry, withCircuitBreaker, ErrorCod
 import { withNetworkCheck, checkNetworkStatus } from '@/utils/network-utils';
 import type { StoreApi, StateCreator } from 'zustand';
 
-// Debug logging configuration
-const DEBUG_PREFIX = '[MatchesStore]';
-const logDebug = (message: string, data?: any) => {
-  const timestamp = new Date().toISOString();
-  const logMessage = `${timestamp} ${DEBUG_PREFIX} ${message}`;
-  if (data) {
-    console.log(logMessage, JSON.stringify(data, null, 2));
-  } else {
-    console.log(logMessage);
-  }
-};
-
-const logStateChange = (action: string, prevState: any, nextState: any) => {
-  logDebug(`State Change - ${action}`, {
-    prev: prevState,
-    next: nextState,
-    changes: Object.keys(nextState).filter(key => prevState[key] !== nextState[key])
-  });
-};
-
-const logFunctionCall = (name: string, args?: any) => {
-  logDebug(`Function Call - ${name}`, args);
-};
-
-const logDataFlow = (operation: string, data: any) => {
-  logDebug(`Data Flow - ${operation}`, data);
-};
-
-const logCacheOperation = (operation: string, data: any) => {
-  logDebug(`Cache Operation - ${operation}`, data);
-};
+// Use centralized debug logging
+import { createStoreLogger } from '@/utils/debug-utils';
+const logger = createStoreLogger('MatchesStore');
 
 // Enhanced PassedUser interface with expiration
 interface PassedUser {
@@ -158,7 +130,7 @@ class EnhancedProfileCache {
   private isInitialized = false;
 
   constructor() {
-    logFunctionCall('EnhancedProfileCache.constructor');
+    logger.logFunctionCall('EnhancedProfileCache.constructor');
     this.cache = new Map();
     this.config = {
       maxAge: 1000 * 60 * 45, // 45 minutes
