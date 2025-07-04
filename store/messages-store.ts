@@ -112,14 +112,12 @@ export const useMessagesStore = create<MessagesState>()((set: SetState, get: Get
         await withNetworkCheck(async () => {
           const userId = useAuthStore.getState().user!.id;
 
-          // Check message sending limit based on tier settings
-          const result = await useUsageStore.getState().updateUsage('message');
-          if (!result.isAllowed) {
-            throw {
-              category: ErrorCategory.BUSINESS,
-              code: ErrorCodes.BUSINESS_LIMIT_REACHED,
-              message: `Message limit reached. You can send more messages after ${result.remaining} hours.`
-            };
+          // Track message usage (simplified - let server handle limits)
+          try {
+            await useUsageStore.getState().updateUsage('message');
+          } catch (error) {
+            console.warn('Failed to track message usage:', error);
+            // Don't block message sending if usage tracking fails
           }
 
           if (!isSupabaseConfigured() || !supabase) {

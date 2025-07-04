@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import NotificationProvider from '@/components/NotificationProvider';
 import { useAuthStore } from '@/store/auth-store';
+import Colors from '@/constants/colors';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -30,7 +31,7 @@ export default function RootLayout() {
                 fontWeight: 'bold',
               },
               contentStyle: {
-                backgroundColor: '#121212',
+                backgroundColor: Colors.dark.background,
               },
             }}
           />
