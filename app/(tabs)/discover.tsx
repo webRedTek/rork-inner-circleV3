@@ -59,7 +59,7 @@ import { Button } from '@/components/Button';
 import * as Haptics from 'expo-haptics';
 import { ProfileDetailCard } from '@/components/ProfileDetailCard';
 import { X, ArrowLeft, RefreshCw, Crown, Rewind, Globe } from 'lucide-react-native';
-import { useDebugStore } from '@/store/debug-store';
+
 import { withErrorHandling, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
 import { useNotificationStore } from '@/store/notification-store';
 import { useUsageStore, startUsageSyncForDiscovery } from '@/store/usage-store';
@@ -81,7 +81,6 @@ export default function DiscoverScreen() {
   } = useMatchesStore();
   
   const { getTierSettings, user } = useAuthStore();
-  const { isDebugMode, addDebugLog } = useDebugStore();
   const { addNotification } = useNotificationStore();
   const { getUsageStats, trackUsage } = useUsageStore();
   
@@ -120,15 +119,8 @@ export default function DiscoverScreen() {
 
   // DEBUG: Add debug logging helper
   const addDebugInfo = useCallback((message: string, status: 'success' | 'error' | 'info' | 'warning' = 'info') => {
-    if (isDebugMode) {
-      addDebugLog({
-        event: message,
-        status,
-        details: '',
-        source: 'discover-screen'
-      });
-    }
-  }, [isDebugMode, addDebugLog]);
+    console.log(`[Discover] ${message} - Status: ${status}`);
+  }, []);
 
   // Update initialization effect
   useEffect(() => {
@@ -333,14 +325,7 @@ export default function DiscoverScreen() {
       await passUser(profile.id);
       triggerHapticFeedback('light');
       
-      if (isDebugMode) {
-        addNotification({
-          type: 'info',
-          message: `Passed on ${profile.name}`,
-          displayStyle: 'toast',
-          duration: 1500
-        });
-      }
+
     } catch (error) {
       console.error('[Discover] Error passing user:', error);
       addDebugInfo(`Error passing user: ${error}`);
@@ -353,7 +338,7 @@ export default function DiscoverScreen() {
         duration: 4000
       });
     }
-  }, [passUser, swipeLimitReached, triggerHapticFeedback, addNotification, isDebugMode, addDebugInfo]);
+  }, [passUser, swipeLimitReached, triggerHapticFeedback, addNotification, addDebugInfo]);
   
   const handleModalAction = useCallback((action: 'message' | 'close' | 'upgrade') => {
     triggerHapticFeedback('light');
@@ -596,9 +581,7 @@ export default function DiscoverScreen() {
       <SafeAreaView style={styles.loadingContainer} edges={['bottom']}>
         <ActivityIndicator size="large" color={Colors.dark.accent} />
         <Text style={styles.loadingText}>Finding entrepreneurs...</Text>
-        {isDebugMode && (
-          <Text style={styles.debugText}>Initial load in progress...</Text>
-        )}
+
       </SafeAreaView>
     );
   }
@@ -613,9 +596,7 @@ export default function DiscoverScreen() {
           loading={refreshing}
           variant="primary"
         />
-        {isDebugMode && (
-          <Text style={styles.debugText}>Error: {error}</Text>
-        )}
+
       </SafeAreaView>
     );
   }
@@ -647,11 +628,6 @@ export default function DiscoverScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Discover</Text>
-        {isDebugMode && (
-          <TouchableOpacity onPress={handleManualRefresh}>
-            <RefreshCw size={24} color={Colors.light.text} />
-          </TouchableOpacity>
-        )}
       </View>
 
       {/* Main content */}
@@ -800,20 +776,7 @@ const styles = StyleSheet.create({
     zIndex: 1,
     padding: 10
   },
-  debugContainer: {
-    position: 'absolute',
-    top: 40,
-    left: 10,
-    right: 10,
-    zIndex: 1000,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    padding: 10,
-    borderRadius: 5
-  },
-  debugText: {
-    color: '#fff',
-    fontSize: 10
-  },
+
   profileContent: {
     flex: 1,
     paddingTop: 60,

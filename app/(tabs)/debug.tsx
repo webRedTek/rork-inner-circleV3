@@ -17,7 +17,7 @@
  * - Fixed log display formatting
  * 
  * FILE INTERACTIONS:
- * - Imports from: usage-store, matches-store, auth-store, debug-store
+ * - Imports from: usage-store, matches-store, auth-store, debug-store, notification-store
  * - Components: None (uses native components)
  * - Dependencies: react-native, safe-area-context
  * - Data flow: Reads from all stores, displays state
@@ -27,12 +27,14 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Colors from '@/constants/colors';
+import { Button } from '@/components/Button';
 import { useUsageStore } from '@/store/usage-store';
 import { useMatchesStore } from '@/store/matches-store';
 import { useAuthStore } from '@/store/auth-store';
 import { useDebugStore } from '@/store/debug-store';
 import { MembershipTier, TierSettings } from '@/types/user';
 import type { DebugLogEntry } from '@/store/debug-store';
+import { useNotificationStore } from '@/store/notification-store';
 
 export default function DebugScreen() {
   const [refreshing, setRefreshing] = useState(false);
@@ -62,6 +64,8 @@ export default function DebugScreen() {
   // Get debug logs
   const { debugLog } = useDebugStore();
 
+  const { clearAllNotifications, notifications } = useNotificationStore();
+
   // Format timestamps
   const formatTime = (timestamp: number) => {
     return new Date(timestamp).toLocaleTimeString();
@@ -79,6 +83,11 @@ export default function DebugScreen() {
     setRefreshing(true);
     setLastRefresh(new Date());
     setRefreshing(false);
+  };
+
+  const handleClearNotifications = () => {
+    clearAllNotifications();
+    console.log('All notifications cleared');
   };
 
   return (
@@ -253,6 +262,26 @@ export default function DebugScreen() {
             </View>
           )}
         </View>
+
+        {/* Notifications Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Notifications Debug</Text>
+          <Text style={styles.text}>Active notifications: {notifications.length}</Text>
+          {notifications.length > 0 && (
+            <View style={styles.notificationsContainer}>
+              {notifications.map((notification, index) => (
+                <Text key={notification.id} style={styles.notificationItem}>
+                  {index + 1}. {notification.type} - {notification.displayStyle}: {notification.message}
+                </Text>
+              ))}
+            </View>
+          )}
+                     <Button
+             title="Clear All Notifications"
+             onPress={handleClearNotifications}
+             variant="danger"
+           />
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -329,5 +358,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.light.textSecondary,
     marginTop: 4
+  },
+  notificationsContainer: {
+    backgroundColor: Colors.dark.card,
+    padding: 12,
+    borderRadius: 8,
+    marginVertical: 8,
+  },
+  notificationItem: {
+    color: Colors.dark.text,
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  button: {
+    marginTop: 16,
+    alignSelf: 'center'
+  },
+  text: {
+    marginBottom: 8
   }
 }); 
