@@ -682,7 +682,130 @@ export const useMatchesStore = create<MatchesState>()(
 
       fetchPotentialMatches: async () => {
         logFunctionCall('fetchPotentialMatches');
-        // Implementation...
+        const state = get();
+        const { user } = useAuthStore.getState();
+        const notificationStore = useNotificationStore.getState();
+        
+        if (!user?.id) {
+          const error = 'User not authenticated for fetching matches';
+          logDebug('Error', { error });
+          set({ error });
+          throw new Error(error);
+        }
+
+        if (!isSupabaseConfigured() || !supabase) {
+          const error = 'Database is not configured';
+          logDebug('Error', { error });
+          set({ error });
+          throw new Error(error);
+        }
+
+        // Don't fetch if already loading
+        if (state.isLoading) {
+          logDebug('Skipping fetch - already loading');
+          return;
+        }
+
+        set({ isLoading: true, error: null });
+        logDebug('Starting potential matches fetch', { userId: user.id });
+
+        try {
+          await withNetworkCheck(async () => {
+            const result = await withRetry(
+              async () => await fetchPotentialMatchesFromSupabase(user.id, 10),
+              { maxRetries: 3 }
+            );
+
+            if (!result) {
+              throw new Error('No data returned from potential matches fetch');
+            }
+
+            logDataFlow('Received potential matches', result);
+
+            const newMatches = (result.matches || [])
+              .map((match: any) => convertToCamelCase(match) as UserProfile)
+              .filter((profile: UserProfile) => {
+                // Validate required fields
+                const isValid = profile && profile.id && profile.name;
+                if (!isValid) {
+                  logDebug('Filtered out invalid profile', { profile });
+                }
+                return isValid;
+              })
+              // Remove duplicates and already swiped users
+              .filter((profile: UserProfile) => {
+                const isDuplicate = state.potentialMatches.some(existing => existing.id === profile.id);
+                const isAlreadyPassed = state.passedUsers.some(passed => passed.id === profile.id && passed.expiresAt > Date.now());
+                const isPending = state.pendingLikes.has(profile.id);
+                
+                if (isDuplicate || isAlreadyPassed || isPending) {
+                  logDebug('Filtered out profile', { 
+                    profileId: profile.id, 
+                    reason: isDuplicate ? 'duplicate' : isAlreadyPassed ? 'passed' : 'pending'
+                  });
+                  return false;
+                }
+                return true;
+              });
+
+            // Warm up cache with new matches
+            enhancedProfileCache.warmup(newMatches);
+
+            // Update state with new matches
+            const updatedMatches = [...state.potentialMatches, ...newMatches];
+            
+            set({ 
+              potentialMatches: updatedMatches,
+              cachedMatches: updatedMatches,
+              isLoading: false,
+              noMoreProfiles: newMatches.length === 0 && state.potentialMatches.length === 0,
+              cacheStats: enhancedProfileCache.getStats()
+            });
+
+            logStateChange('fetchPotentialMatches', state, get());
+            logDebug('Successfully fetched potential matches', { 
+              newCount: newMatches.length,
+              totalCount: updatedMatches.length,
+              noMoreProfiles: newMatches.length === 0
+            });
+
+            // Show success notification
+            if (newMatches.length > 0) {
+              notificationStore.addNotification({
+                type: 'success',
+                message: `Found ${newMatches.length} new potential matches`,
+                displayStyle: 'toast',
+                duration: 3000
+              });
+            } else if (state.potentialMatches.length === 0) {
+              notificationStore.addNotification({
+                type: 'info',
+                message: 'No new matches found. Try expanding your search criteria.',
+                displayStyle: 'toast',
+                duration: 4000
+              });
+            }
+          });
+        } catch (error) {
+          const appError = handleError(error);
+          const errorMessage = getReadableError(error);
+          
+          logDebug('Error fetching potential matches', { error: errorMessage });
+          
+          set({ 
+            error: appError.userMessage,
+            isLoading: false
+          });
+
+          notificationStore.addNotification({
+            type: 'error',
+            message: `Failed to load matches: ${appError.userMessage}`,
+            displayStyle: 'toast',
+            duration: 5000
+          });
+
+          throw appError;
+        }
       },
 
       fetchMatches: async () => {
