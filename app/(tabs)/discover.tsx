@@ -1,841 +1,552 @@
 /**
  * FILE: app/(tabs)/discover.tsx
- * LAST UPDATED: 2025-01-03 12:00
- * 
- * INITIALIZATION ORDER:
- * 1. Initializes after auth-store confirms user session and initializes usage-store
- * 2. Requires matches-store to be initialized for profile fetching
- * 3. Requires notification-store for match alerts
- * 4. Usage-store is already initialized by auth-store
+ * LAST UPDATED: 2025-07-04 18:45
  * 
  * CURRENT STATE:
- * Discover screen for entrepreneur matching with tier-based features:
- * - Manual profile fetching with tier-based limits
- * - Premium features (global search, rewind) based on tier
- * - Usage tracking with tier-specific limits
- * - Enhanced UI feedback for tier limits and upgrades
- * - Centralized tier settings integration
+ * **UNIFIED LIMIT CHECKING** discover screen with single source of truth. Features:
+ * - USES: Unified usage-store limit checking system exclusively
+ * - ELIMINATED: Duplicate limit checking from matches-store
+ * - CONSISTENT: Same limit validation as profile cache and other components
+ * - REAL-TIME: Live limit status updates with proper error handling
+ * - STREAMLINED: Simplified swipe validation without redundant checks
  * 
  * RECENT CHANGES:
- * - Removed usage store initialization (moved to auth-store)
- * - Enhanced error handling for initialization
- * - Added more detailed debug logging
- * - Fixed timeline display
+ * - MAJOR REFACTOR: Integrated unified usage-store limit checking system
+ * - REMOVED: Dependencies on matches-store limit flags (swipeLimitReached, matchLimitReached)
+ * - UNIFIED: All limit validation now uses single source of truth
+ * - ENHANCED: Real-time limit status display with accurate counts
+ * - SIMPLIFIED: Swipe handlers without duplicate validation logic
  * 
  * FILE INTERACTIONS:
- * - Imports from: matches-store (swipes), auth-store (tier settings), usage-store (limits)
- * - Components: SwipeCards, EntrepreneurCard, Button
- * - Dependencies: expo-router, react-native, haptics
- * - Data flow: Uses tier settings for UI and limits
+ * - PRIMARY DATA: Gets limit status from usage-store (single source of truth)
+ * - PROFILE DATA: Uses matches-store for profile management only
+ * - NOTIFICATIONS: Integrated with notification system for limit alerts
+ * - SWIPE HANDLING: Simplified without redundant limit checks
+ * - CACHE VIEW: Now consistent with same data source
  * 
  * KEY FUNCTIONS:
- * - handleSwipeRight/Left: Tier-aware swipe actions
- * - handleManualRefresh: Refresh with tier limits
- * - handlePremiumFeature: Tier-gated feature access
- * - showTierLimits: Display current usage/limits
+ * - handleSwipeLeft/Right: Simplified swipe handling with unified limit checking
+ * - handleRefresh: Manual profile refresh with limit validation
+ * - Limit status display: Real-time updates from single source
+ * - SwipeCards integration: Streamlined without duplicate validation
  */
 
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { 
-  View, 
-  StyleSheet, 
-  ActivityIndicator, 
-  Text,
-  TouchableOpacity,
-  Modal,
-  Alert,
-  RefreshControl,
-  Platform,
-  ScrollView
-} from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useFocusEffect } from 'expo-router';
-import Colors from '@/constants/colors';
+import { useRouter } from 'expo-router';
 import { SwipeCards } from '@/components/SwipeCards';
-import { useMatchesStore } from '@/store/matches-store';
-import { useAuthStore } from '@/store/auth-store';
-import { UserProfile, MatchWithProfile } from '@/types/user';
 import { Button } from '@/components/Button';
-import * as Haptics from 'expo-haptics';
-import { ProfileDetailCard } from '@/components/ProfileDetailCard';
-import { X, ArrowLeft, RefreshCw, Crown, Rewind, Globe } from 'lucide-react-native';
-
-import { withErrorHandling, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
-import { useNotificationStore } from '@/store/notification-store';
-import { useUsageStore, startUsageSyncForDiscovery } from '@/store/usage-store';
+import { useMatchesStore } from '@/store/matches-store';
+import { useUsageStore, type LimitStatus } from '@/store/usage-store';
+import { useAuthStore } from '@/store/auth-store';
+import { useDebugStore } from '@/store/debug-store';
+import { UserProfile } from '@/types/user';
+import Colors from '@/constants/colors';
+import { supabase } from '@/lib/supabase';
+import { Heart, X, RotateCcw, AlertCircle, TrendingUp, Users, MessageCircle, Zap } from 'lucide-react-native';
+import { startUsageSyncForDiscovery } from '@/store/usage-store';
+import { notify } from '@/store/notification-store';
+import { handleError, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
 
 export default function DiscoverScreen() {
   const router = useRouter();
+  const { user } = useAuthStore();
+  const { profiles, isLoading, error, fetchPotentialMatches } = useMatchesStore();
   const { 
-    potentialMatches, 
-    fetchPotentialMatches, 
-    likeUser, 
-    passUser,
-    isLoading,
-    error,
-    newMatch,
-    clearNewMatch,
-    swipeLimitReached,
-    matchLimitReached,
-    noMoreProfiles
-  } = useMatchesStore();
-  
-  const { getTierSettings, user } = useAuthStore();
-  const { addNotification } = useNotificationStore();
-  const { getUsageStats, trackUsage } = useUsageStore();
-  
-  const [showMatchModal, setShowMatchModal] = useState(false);
-  const [matchedUser, setMatchedUser] = useState<UserProfile | null>(null);
-  const [selectedProfile, setSelectedProfile] = useState<UserProfile | null>(null);
-  const [showProfileDetail, setShowProfileDetail] = useState(false);
-  const [showLimitModal, setShowLimitModal] = useState(false);
-  const [initialLoad, setInitialLoad] = useState(true);
+    checkAllLimits, 
+    checkSwipeLimit, 
+    checkMatchLimit, 
+    checkLikeLimit,
+    updateUsage,
+    fetchDatabaseTotals,
+    databaseTotals 
+  } = useUsageStore();
+  const { isDebugMode } = useDebugStore();
+
   const [refreshing, setRefreshing] = useState(false);
-  const [hasInitialized, setHasInitialized] = useState(false);
-  const [usageStats, setUsageStats] = useState<any>(null);
+  const [limitStatus, setLimitStatus] = useState<{
+    swipe: LimitStatus;
+    match: LimitStatus;
+    like: LimitStatus;
+  } | null>(null);
 
-  // Enhanced haptic feedback function
-  const triggerHapticFeedback = useCallback((type: 'light' | 'medium' | 'heavy' | 'success' | 'error') => {
-    if (Platform.OS === 'web') return;
-    
-    switch (type) {
-      case 'light':
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        break;
-      case 'medium':
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        break;
-      case 'heavy':
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-        break;
-      case 'success':
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        break;
-      case 'error':
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        break;
-    }
-  }, []);
-
-  // DEBUG: Add debug logging helper
-  const addDebugInfo = useCallback((message: string, status: 'success' | 'error' | 'info' | 'warning' = 'info') => {
-    console.log(`[Discover] ${message} - Status: ${status}`);
-  }, []);
-
-  // Simplified initialization - NO automatic fetching
+  // Initialize usage sync and fetch limit status
   useEffect(() => {
-    if (hasInitialized) {
-      return;
-    }
-
     if (user?.id) {
-      setHasInitialized(true);
-      setInitialLoad(false);
-      addNotification({
-        type: 'info',
-        message: 'Ready to discover! Use the refresh button to load profiles.',
-        displayStyle: 'toast',
-        duration: 3000
-      });
-    }
-  }, [user?.id, hasInitialized, addNotification]);
-
-  // Trigger usage sync when discover tab is accessed
-  useFocusEffect(
-    useCallback(() => {
-      if (user?.id) {
-        addDebugInfo('Discover tab focused - triggering usage sync');
-        startUsageSyncForDiscovery();
+      if (isDebugMode) {
+        console.log('[DiscoverScreen] Initializing usage sync and fetching limits');
       }
-    }, [user?.id, addDebugInfo])
-  );
-
-  useEffect(() => {
-    // Check for new matches and display modal
-    const checkNewMatch = async () => {
-      if (newMatch) {
-        try {
-          setMatchedUser(newMatch.matched_user_profile);
-          setShowMatchModal(true);
-          
-          triggerHapticFeedback('success');
-          
-          addNotification({
-            type: 'success',
-            message: `It's a match with ${newMatch.matched_user_profile?.name}!`,
-            displayStyle: 'toast',
-            duration: 4000
-          });
-        } catch (err) {
-          console.error('[Discover] Error handling new match:', err);
-        } finally {
-          clearNewMatch(); // Clear the new match after processing
-        }
-      }
-    };
-
-    checkNewMatch();
-  }, [newMatch]);
-  
-  useEffect(() => {
-    // Show limit modal if swipe or match limit is reached
-    if (swipeLimitReached || matchLimitReached) {
-      setShowLimitModal(true);
-      triggerHapticFeedback('error');
       
-      addNotification({
-        type: 'warning',
-        message: swipeLimitReached ? 'Daily swipe limit reached' : 'Daily match limit reached',
-        displayStyle: 'toast',
-        duration: 5000
+      // Trigger usage sync for discovery
+      startUsageSyncForDiscovery();
+      
+      // Fetch current database totals and limit status
+      fetchDatabaseTotals(user.id).then(() => {
+        updateLimitStatus();
       });
     }
-  }, [swipeLimitReached, matchLimitReached, triggerHapticFeedback, addNotification]);
-  
-  useEffect(() => {
-    addDebugInfo(`Matches state updated - count: ${potentialMatches.length}, loading: ${isLoading}, error: ${error || 'none'}`);
-  }, [potentialMatches, isLoading, error, addDebugInfo]);
-  
-  // DEBUG: Add timeout to detect if loading takes too long
-  useEffect(() => {
-    if (isLoading && potentialMatches.length === 0) {
-      const timeout = setTimeout(() => {
-        addDebugInfo(`WARNING: Loading for more than 5 seconds - this might indicate an issue`);
-      }, 5000);
-      return () => clearTimeout(timeout);
-    }
-  }, [isLoading, potentialMatches.length, addDebugInfo]);
-  
-  // Add usage stats effect
-  useEffect(() => {
-    const updateUsageStats = async () => {
-      try {
-        const stats = await getUsageStats();
-        setUsageStats(stats);
-      } catch (err) {
-        console.error('[Discover] Error fetching usage stats:', err);
-      }
-    };
-    updateUsageStats();
-  }, [getUsageStats]);
-  
-  // Update premium feature handler to use tier settings directly
-  const handlePremiumFeature = useCallback((feature: string) => {
-    const tierSettings = getTierSettings();
-    if (!tierSettings) return false;
+  }, [user?.id, isDebugMode]);
 
-    switch (feature) {
-      case 'rewind':
-        return tierSettings.can_rewind_last_swipe;
-      case 'global':
-        return tierSettings.global_discovery;
-      default:
-        return false;
-    }
-  }, [getTierSettings]);
-  
-  // Simplified swipe handlers - let stores handle limits
-  const handleSwipeRight = useCallback(async (profile: UserProfile) => {
+  // Update limit status whenever usage data changes
+  useEffect(() => {
+    updateLimitStatus();
+  }, [databaseTotals]);
+
+  // Update limit status from unified source
+  const updateLimitStatus = useCallback(() => {
+    if (!user?.id) return;
+    
     try {
-      addDebugInfo(`Swiping right on profile: ${profile.id}`);
-      const match = await likeUser(profile.id);
+      const allLimits = checkAllLimits();
+      setLimitStatus({
+        swipe: allLimits.swipe,
+        match: allLimits.match,
+        like: allLimits.like
+      });
       
-      if (match) {
-        // It's a match!
-        setMatchedUser(profile);
-        setShowMatchModal(true);
-        triggerHapticFeedback('success');
-        
-        addNotification({
-          type: 'success',
-          message: `It's a match with ${profile.name}!`,
-          displayStyle: 'toast',
-          duration: 4000
-        });
-      } else {
-        // Just a like, no match yet
-        triggerHapticFeedback('medium');
-        
-        addNotification({
-          type: 'info',
-          message: `Liked ${profile.name}`,
-          displayStyle: 'toast',
-          duration: 2000
+      if (isDebugMode) {
+        console.log('[DiscoverScreen] Updated limit status:', {
+          swipe: allLimits.swipe,
+          match: allLimits.match,
+          like: allLimits.like
         });
       }
     } catch (error) {
-      console.error('[Discover] Error liking user:', error);
-      addDebugInfo(`Error liking user: ${error}`);
-      triggerHapticFeedback('error');
-      
-      addNotification({
-        type: 'error',
-        message: 'Failed to like profile. Please try again.',
-        displayStyle: 'toast',
-        duration: 4000
-      });
+      console.error('[DiscoverScreen] Error updating limit status:', error);
     }
-  }, [likeUser, triggerHapticFeedback, addNotification, addDebugInfo]);
-  
-  const handleSwipeLeft = useCallback(async (profile: UserProfile) => {
-    try {
-      addDebugInfo(`Swiping left on profile: ${profile.id}`);
-      await passUser(profile.id);
-      triggerHapticFeedback('light');
-    } catch (error) {
-      console.error('[Discover] Error passing user:', error);
-      addDebugInfo(`Error passing user: ${error}`);
-      triggerHapticFeedback('error');
-      
-      addNotification({
-        type: 'error',
-        message: 'Failed to pass on profile. Please try again.',
-        displayStyle: 'toast',
-        duration: 4000
-      });
-    }
-  }, [passUser, triggerHapticFeedback, addNotification, addDebugInfo]);
-  
-  const handleModalAction = useCallback((action: 'message' | 'close' | 'upgrade') => {
-    triggerHapticFeedback('light');
+  }, [user?.id, checkAllLimits, isDebugMode]);
+
+  // Handle refresh with limit validation
+  const handleRefresh = useCallback(async () => {
+    if (!user?.id) return;
     
-    switch (action) {
-      case 'message':
-        if (matchedUser) {
-          router.push(`/chat/${matchedUser.id}`);
-          setShowMatchModal(false);
-          setMatchedUser(null);
-          
-          addNotification({
-            type: 'success',
-            message: `Opening chat with ${matchedUser.name}`,
-            displayStyle: 'toast',
-            duration: 2000
-          });
-        }
-        break;
-      case 'close':
-        setShowMatchModal(false);
-        setShowLimitModal(false);
-        setMatchedUser(null);
-        break;
-      case 'upgrade':
-        router.push('/membership');
-        setShowLimitModal(false);
-        
-        addNotification({
-          type: 'info',
-          message: 'Redirecting to membership plans',
-          displayStyle: 'toast',
-          duration: 2000
-        });
-        break;
+    if (isDebugMode) {
+      console.log('[DiscoverScreen] Manual refresh triggered');
     }
-  }, [matchedUser, router, triggerHapticFeedback, addNotification]);
-  
-  const handleProfilePress = useCallback((profile: UserProfile) => {
-    triggerHapticFeedback('light');
-    setSelectedProfile(profile);
-    setShowProfileDetail(true);
-  }, [triggerHapticFeedback]);
-  
-  // MANUAL REFRESH ONLY - No automatic fetching
-  const handleManualRefresh = useCallback(async () => {
-    if (isLoading || refreshing) return;
     
-    addDebugInfo('Manual refresh triggered');
     setRefreshing(true);
-    triggerHapticFeedback('light');
     
     try {
-      await fetchPotentialMatches();
+      // Refresh database totals first
+      await fetchDatabaseTotals(user.id);
       
-      addNotification({
-        type: 'success',
-        message: 'Profiles refreshed',
-        displayStyle: 'toast',
-        duration: 2000
-      });
+      // Update limit status
+      updateLimitStatus();
+      
+      // Fetch new profiles
+      await fetchPotentialMatches(true);
+      
+      notify.success('Profiles refreshed successfully!');
+      
     } catch (error) {
-      console.error('[Discover] Error during manual refresh:', error);
-      addDebugInfo(`Manual refresh error: ${error}`);
-      
-      addNotification({
-        type: 'error',
-        message: 'Failed to refresh profiles',
-        displayStyle: 'toast',
-        duration: 4000
-      });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[DiscoverScreen] Error during refresh:', errorMessage);
+      notify.error(`Failed to refresh profiles: ${errorMessage}`);
     } finally {
       setRefreshing(false);
     }
-  }, [isLoading, refreshing, addDebugInfo, fetchPotentialMatches, triggerHapticFeedback, addNotification]);
-  
-  // Memoized SwipeCards props to prevent unnecessary re-renders
-  const swipeCardsProps = useMemo(() => ({
-    profiles: potentialMatches,
-    onSwipeLeft: handleSwipeLeft,
-    onSwipeRight: handleSwipeRight,
-    onProfilePress: handleProfilePress,
-    isLoading,
-    error,
-    onRetry: handleManualRefresh
-  }), [potentialMatches, handleSwipeLeft, handleSwipeRight, handleProfilePress, isLoading, error, handleManualRefresh]);
-  
-  // Update limit modal content
-  const renderLimitModal = () => (
-    <Modal
-      visible={showLimitModal}
-      transparent
-      animationType="fade"
-      onRequestClose={() => setShowLimitModal(false)}
-    >
-      <View style={styles.modalContainer}>
-        <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>
-            {swipeLimitReached ? 'Daily Swipe Limit Reached' : 'Daily Match Limit Reached'}
-          </Text>
-          
-          {usageStats && (
-            <View style={styles.statsContainer}>
-              <Text style={styles.statsText}>
-                {swipeLimitReached 
-                  ? `You've used ${usageStats.swipeCount}/${usageStats.swipeLimit} daily swipes`
-                  : `You've used ${usageStats.matchCount}/${usageStats.matchLimit} daily matches`
-                }
-              </Text>
-              <Text style={styles.resetText}>
-                Resets in: {formatTimeRemaining(usageStats.resetTimestamp - Date.now())}
-              </Text>
-            </View>
-          )}
+  }, [user?.id, fetchDatabaseTotals, updateLimitStatus, fetchPotentialMatches, isDebugMode]);
 
-          <View style={styles.buttonContainer}>
-            <Button
-              title="Upgrade Plan"
-              onPress={() => handleModalAction('upgrade')}
-              style={styles.upgradeButton}
-            />
-            <Button
-              title="Close"
-              onPress={() => handleModalAction('close')}
-              variant="secondary"
-            />
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-
-  // Add premium feature indicators
-  const renderPremiumFeatures = () => (
-    <View style={styles.premiumFeatures}>
-      <TouchableOpacity 
-        style={[
-          styles.premiumFeature,
-          !handlePremiumFeature('rewind') && styles.premiumFeatureDisabled
-        ]}
-        onPress={() => {
-          if (handlePremiumFeature('rewind')) {
-            // Handle rewind
-          } else {
-            handleModalAction('upgrade');
-          }
-        }}
-      >
-        <Rewind size={24} color={handlePremiumFeature('rewind') ? Colors.dark.primary : Colors.dark.textSecondary} />
-      </TouchableOpacity>
+  // Simplified swipe left handler with unified limit checking
+  const handleSwipeLeft = useCallback(async (profile: UserProfile) => {
+    if (!user?.id) return;
+    
+    if (isDebugMode) {
+      console.log('[DiscoverScreen] Swipe left (pass):', profile.id);
+    }
+    
+    try {
+      // Check swipe limit using unified system
+      const canSwipe = checkSwipeLimit();
+      if (!canSwipe) {
+        const swipeStatus = checkAllLimits().swipe;
+        notify.error(`Daily swipe limit reached (${swipeStatus.current}/${swipeStatus.limit}). Try again tomorrow!`);
+        return;
+      }
       
-      <TouchableOpacity 
-        style={[
-          styles.premiumFeature,
-          !handlePremiumFeature('global') && styles.premiumFeatureDisabled
-        ]}
-        onPress={() => {
-          if (handlePremiumFeature('global')) {
-            // Handle global search
-          } else {
-            handleModalAction('upgrade');
-          }
-        }}
-      >
-        <Globe size={24} color={handlePremiumFeature('global') ? Colors.dark.primary : Colors.dark.textSecondary} />
-      </TouchableOpacity>
-    </View>
-  );
+      // Process the swipe
+      const { error } = await supabase
+        .from('user_swipes')
+        .insert({
+          user_id: user.id,
+          swiped_user_id: profile.id,
+          direction: 'left',
+          created_at: new Date().toISOString()
+        });
+      
+      if (error) throw error;
+      
+      // Track usage
+      await updateUsage('swipe', 1);
+      
+      // Update limit status
+      updateLimitStatus();
+      
+      if (isDebugMode) {
+        console.log('[DiscoverScreen] Swipe left processed successfully');
+      }
+      
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[DiscoverScreen] Error processing swipe left:', errorMessage);
+      notify.error(`Failed to process swipe: ${errorMessage}`);
+    }
+  }, [user?.id, checkSwipeLimit, checkAllLimits, updateUsage, updateLimitStatus, isDebugMode]);
 
-  // Render match modal
-  const renderMatchModal = () => (
-    <Modal
-      visible={showMatchModal && !!matchedUser}
-      transparent
-      animationType="fade"
-      onRequestClose={() => setShowMatchModal(false)}
-    >
-      <View style={styles.modalContainer}>
-        <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>It's a Match!</Text>
-          <Text style={styles.modalSubtitle}>
-            You and {matchedUser?.name} have liked each other
-          </Text>
+  // Simplified swipe right handler with unified limit checking
+  const handleSwipeRight = useCallback(async (profile: UserProfile) => {
+    if (!user?.id) return;
+    
+    if (isDebugMode) {
+      console.log('[DiscoverScreen] Swipe right (like):', profile.id);
+    }
+    
+    try {
+      // Check both swipe and like limits using unified system
+      const canSwipe = checkSwipeLimit();
+      const canLike = checkLikeLimit();
+      
+      if (!canSwipe) {
+        const swipeStatus = checkAllLimits().swipe;
+        notify.error(`Daily swipe limit reached (${swipeStatus.current}/${swipeStatus.limit}). Try again tomorrow!`);
+        return;
+      }
+      
+      if (!canLike) {
+        const likeStatus = checkAllLimits().like;
+        notify.error(`Daily like limit reached (${likeStatus.current}/${likeStatus.limit}). Upgrade your plan for more!`);
+        return;
+      }
+      
+      // Process the like
+      const { error } = await supabase
+        .from('user_swipes')
+        .insert({
+          user_id: user.id,
+          swiped_user_id: profile.id,
+          direction: 'right',
+          created_at: new Date().toISOString()
+        });
+      
+      if (error) throw error;
+      
+      // Track usage for both swipe and like
+      await updateUsage('swipe', 1);
+      await updateUsage('like', 1);
+      
+      // Check for mutual like (match)
+      const { data: mutualLike, error: mutualError } = await supabase
+        .from('user_swipes')
+        .select('*')
+        .eq('user_id', profile.id)
+        .eq('swiped_user_id', user.id)
+        .eq('direction', 'right')
+        .single();
+      
+      if (mutualError && mutualError.code !== 'PGRST116') {
+        throw mutualError;
+      }
+      
+      if (mutualLike) {
+        // Check match limit
+        const canMatch = checkMatchLimit();
+        if (!canMatch) {
+          const matchStatus = checkAllLimits().match;
+          notify.warning(`Daily match limit reached (${matchStatus.current}/${matchStatus.limit}). This like was saved but won't create a match until tomorrow.`);
+        } else {
+          // Create match
+          const { error: matchError } = await supabase
+            .from('matches')
+            .insert({
+              user1_id: user.id,
+              user2_id: profile.id,
+              created_at: new Date().toISOString()
+            });
           
-          <View style={styles.buttonContainer}>
-            <Button
-              title="Send Message"
-              onPress={() => handleModalAction('message')}
-              style={styles.messageButton}
-            />
-            <Button
-              title="Keep Browsing"
-              onPress={() => handleModalAction('close')}
-              variant="secondary"
-            />
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-
-  // Render profile detail modal
-  const renderProfileDetailModal = () => (
-    <Modal
-      visible={showProfileDetail && !!selectedProfile}
-      transparent
-      animationType="slide"
-      onRequestClose={() => setShowProfileDetail(false)}
-    >
-      <View style={styles.modalContainer}>
-        <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>{selectedProfile?.name}</Text>
+          if (matchError) throw matchError;
           
-          <ScrollView style={styles.profileDetails}>
-            <Text style={styles.profileText}>{selectedProfile?.bio}</Text>
-            <Text style={styles.profileLabel}>Industry</Text>
-            <Text style={styles.profileText}>
-              {selectedProfile?.industryFocus || selectedProfile?.businessField || "Not specified"}
-            </Text>
-            <Text style={styles.profileLabel}>Business Stage</Text>
-            <Text style={styles.profileText}>
-              {selectedProfile?.businessStage || "Not specified"}
-            </Text>
-          </ScrollView>
+          // Track match usage
+          await updateUsage('match', 1);
+          
+          notify.success(`It's a match with ${profile.name}! 🎉`);
+        }
+      } else {
+        notify.info(`You liked ${profile.name}! 💖`);
+      }
+      
+      // Update limit status
+      updateLimitStatus();
+      
+      if (isDebugMode) {
+        console.log('[DiscoverScreen] Swipe right processed successfully');
+      }
+      
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[DiscoverScreen] Error processing swipe right:', errorMessage);
+      notify.error(`Failed to process like: ${errorMessage}`);
+    }
+  }, [user?.id, checkSwipeLimit, checkLikeLimit, checkMatchLimit, checkAllLimits, updateUsage, updateLimitStatus, isDebugMode]);
 
-          <View style={styles.buttonContainer}>
-            <Button
-              title="Close"
-              onPress={() => setShowProfileDetail(false)}
-              variant="secondary"
-            />
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
+  // Handle profile press
+  const handleProfilePress = useCallback((profile: UserProfile) => {
+    if (isDebugMode) {
+      console.log('[DiscoverScreen] Profile pressed:', profile.id);
+    }
+    router.push(`/profile/${profile.id}`);
+  }, [router, isDebugMode]);
 
-  if (isLoading && potentialMatches.length === 0 && initialLoad) {
-    return (
-      <SafeAreaView style={styles.loadingContainer} edges={['bottom']}>
-        <ActivityIndicator size="large" color={Colors.dark.accent} />
-        <Text style={styles.loadingText}>Finding entrepreneurs...</Text>
-
-      </SafeAreaView>
+  // Handle empty profiles
+  const handleEmpty = useCallback(() => {
+    if (isDebugMode) {
+      console.log('[DiscoverScreen] No more profiles to show');
+    }
+    
+    Alert.alert(
+      'No More Profiles',
+      'You\'ve seen all available profiles. Try refreshing or adjusting your discovery settings.',
+      [
+        {
+          text: 'Refresh',
+          onPress: handleRefresh,
+          style: 'default'
+        },
+        {
+          text: 'Settings',
+          onPress: () => router.push('/profile'),
+          style: 'default'
+        },
+        {
+          text: 'OK',
+          style: 'cancel'
+        }
+      ]
     );
-  }
-  
-  if (error && !noMoreProfiles) {
+  }, [handleRefresh, router, isDebugMode]);
+
+  // Render limit status indicators
+  const renderLimitStatus = () => {
+    if (!limitStatus) return null;
+    
     return (
-      <SafeAreaView style={styles.errorContainer} edges={['bottom']}>
+      <View style={styles.limitStatusContainer}>
+        <View style={styles.limitStatusRow}>
+          <View style={[styles.limitIndicator, limitStatus.swipe.isReached && styles.limitReached]}>
+            <Heart size={16} color={limitStatus.swipe.isReached ? Colors.dark.error : Colors.dark.success} />
+            <Text style={[styles.limitText, limitStatus.swipe.isReached && styles.limitTextReached]}>
+              Swipes: {limitStatus.swipe.current}/{limitStatus.swipe.limit}
+            </Text>
+          </View>
+          
+          <View style={[styles.limitIndicator, limitStatus.like.isReached && styles.limitReached]}>
+            <Zap size={16} color={limitStatus.like.isReached ? Colors.dark.error : Colors.dark.success} />
+            <Text style={[styles.limitText, limitStatus.like.isReached && styles.limitTextReached]}>
+              Likes: {limitStatus.like.current}/{limitStatus.like.limit}
+            </Text>
+          </View>
+          
+          <View style={[styles.limitIndicator, limitStatus.match.isReached && styles.limitReached]}>
+            <Users size={16} color={limitStatus.match.isReached ? Colors.dark.error : Colors.dark.success} />
+            <Text style={[styles.limitText, limitStatus.match.isReached && styles.limitTextReached]}>
+              Matches: {limitStatus.match.current}/{limitStatus.match.limit}
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  // Render error state
+  const renderError = () => {
+    if (!error) return null;
+    
+    return (
+      <View style={styles.errorContainer}>
+        <AlertCircle size={48} color={Colors.dark.error} />
+        <Text style={styles.errorTitle}>Unable to Load Profiles</Text>
         <Text style={styles.errorText}>{error}</Text>
         <Button 
           title="Try Again" 
-          onPress={handleManualRefresh}
-          loading={refreshing}
-          variant="primary"
+          onPress={handleRefresh}
+          style={styles.retryButton}
         />
+      </View>
+    );
+  };
 
-      </SafeAreaView>
-    );
-  }
-  
-  if (noMoreProfiles && potentialMatches.length === 0) {
+  // Render empty state
+  const renderEmpty = () => {
+    if (isLoading || profiles.length > 0) return null;
+    
     return (
-      <SafeAreaView style={styles.container} edges={['bottom']}>
-        <View style={styles.noMoreContainer}>
-          <Text style={styles.noMoreText}>No More Profiles</Text>
-          <Text style={styles.noMoreSubtext}>
-            We've shown you all available entrepreneurs in your area.
-          </Text>
-          <Text style={styles.noMoreSubtext}>
-            Check back later for new matches.
-          </Text>
-          <Button 
-            title="Refresh" 
-            onPress={handleManualRefresh}
-            loading={refreshing}
-            variant="primary"
-            style={styles.refreshButton}
-          />
-        </View>
-      </SafeAreaView>
+      <View style={styles.emptyContainer}>
+        <Heart size={64} color={Colors.dark.textSecondary} />
+        <Text style={styles.emptyTitle}>No Profiles Available</Text>
+        <Text style={styles.emptyText}>
+          Try refreshing to see new profiles or adjust your discovery settings
+        </Text>
+        <Button 
+          title="Refresh Profiles" 
+          onPress={handleRefresh}
+          style={styles.refreshButton}
+        />
+      </View>
     );
-  }
-  
+  };
+
+  // Main render
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Discover</Text>
-      </View>
-
-      {/* Main content */}
-      {isLoading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.light.tint} />
-          <Text style={styles.loadingText}>Loading profiles...</Text>
-        </View>
-      ) : error ? (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error}</Text>
-          <Button onPress={handleManualRefresh} title="Try Again" />
-        </View>
-      ) : potentialMatches.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>
-            {noMoreProfiles ? 'No more profiles available.' : 'No profiles loaded.'}
+      <ScrollView
+        style={styles.scrollView}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={Colors.dark.primary}
+            colors={[Colors.dark.primary]}
+          />
+        }
+      >
+        <View style={styles.header}>
+          <Text style={styles.title}>Discover</Text>
+          <Text style={styles.subtitle}>
+            Find your next co-founder or business partner
           </Text>
-          <Button onPress={handleManualRefresh} title="Refresh" />
         </View>
-      ) : (
-        <SwipeCards
-          profiles={potentialMatches}
-          onSwipeRight={handleSwipeRight}
-          onSwipeLeft={handleSwipeLeft}
-          onProfilePress={handleProfilePress}
-          isLoading={isLoading}
-          error={error}
-          onRetry={handleManualRefresh}
-          onRefresh={handleManualRefresh}
-          refreshing={false}
-        />
-      )}
 
-      {/* Modals */}
-      {renderMatchModal()}
-      {renderLimitModal()}
-      {renderProfileDetailModal()}
-      {renderPremiumFeatures()}
+        {renderLimitStatus()}
+
+        <View style={styles.content}>
+          {error ? renderError() : (
+            <>
+              {profiles.length === 0 ? renderEmpty() : (
+                <SwipeCards
+                  profiles={profiles}
+                  onSwipeLeft={handleSwipeLeft}
+                  onSwipeRight={handleSwipeRight}
+                  onEmpty={handleEmpty}
+                  onProfilePress={handleProfilePress}
+                  isLoading={isLoading}
+                  error={error}
+                  onRefresh={handleRefresh}
+                  refreshing={refreshing}
+                />
+              )}
+            </>
+          )}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
-// Helper function for formatting time
-const formatTimeRemaining = (ms: number) => {
-  const hours = Math.floor(ms / (1000 * 60 * 60));
-  const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
-  return `${hours}h ${minutes}m`;
-};
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.dark.background
+    backgroundColor: Colors.dark.background,
+  },
+  scrollView: {
+    flex: 1,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10
+    padding: 20,
+    paddingBottom: 10,
   },
   title: {
-    color: Colors.dark.text,
-    fontSize: 24,
+    fontSize: 32,
     fontWeight: 'bold',
-    marginRight: 10
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  loadingText: {
     color: Colors.dark.text,
-    marginTop: 10
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: Colors.dark.textSecondary,
+  },
+  limitStatusContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 15,
+  },
+  limitStatusRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  limitIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.dark.surface,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    minWidth: 100,
+  },
+  limitReached: {
+    borderColor: Colors.dark.error,
+    backgroundColor: Colors.dark.error + '20',
+  },
+  limitText: {
+    fontSize: 12,
+    color: Colors.dark.textSecondary,
+    marginLeft: 6,
+    fontWeight: '600',
+  },
+  limitTextReached: {
+    color: Colors.dark.error,
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 20,
   },
   errorContainer: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    padding: 20
+    justifyContent: 'center',
+    padding: 40,
+  },
+  errorTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: Colors.dark.text,
+    marginTop: 16,
+    marginBottom: 8,
   },
   errorText: {
-    color: Colors.dark.error,
-    marginBottom: 20,
-    textAlign: 'center'
-  },
-  noMoreContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20
-  },
-  noMoreText: {
-    color: Colors.dark.text,
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 10
-  },
-  noMoreSubtext: {
-    color: Colors.dark.textSecondary,
-    marginBottom: 20,
-    textAlign: 'center'
-  },
-  refreshButton: {
-    marginTop: 10
-  },
-  matchModalContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.8)'
-  },
-  matchModal: {
-    backgroundColor: Colors.dark.card,
-    borderRadius: 20,
-    padding: 20,
-    width: '80%',
-    alignItems: 'center'
-  },
-  matchTitle: {
-    color: Colors.dark.text,
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 10
-  },
-  matchSubtitle: {
+    fontSize: 16,
     color: Colors.dark.textSecondary,
     textAlign: 'center',
-    marginBottom: 20
+    lineHeight: 24,
+    marginBottom: 24,
   },
-  messageButton: {
-    marginBottom: 10,
-    width: '100%'
-  },
-  keepBrowsingButton: {
-    width: '100%'
-  },
-  profileDetailContainer: {
-    flex: 1,
-    backgroundColor: Colors.dark.background
-  },
-  closeButton: {
-    position: 'absolute',
-    top: 40,
-    left: 20,
-    zIndex: 1,
-    padding: 10
-  },
-
-  profileContent: {
-    flex: 1,
-    paddingTop: 60,
-    paddingBottom: 20
-  },
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.8)'
-  },
-  modalContent: {
-    backgroundColor: Colors.dark.card,
-    borderRadius: 20,
-    padding: 20,
-    width: '80%',
-    alignItems: 'center'
-  },
-  modalTitle: {
-    color: Colors.dark.text,
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 10
-  },
-  modalSubtitle: {
-    color: Colors.dark.textSecondary,
-    textAlign: 'center',
-    marginBottom: 20
-  },
-  statsContainer: {
-    marginVertical: 16,
-    alignItems: 'center'
-  },
-  statsText: {
-    fontSize: 16,
-    color: Colors.dark.text,
-    marginBottom: 8
-  },
-  resetText: {
-    fontSize: 14,
-    color: Colors.dark.textSecondary
-  },
-  buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    width: '100%'
-  },
-  upgradeButton: {
-    width: '40%'
-  },
-  premiumFeatures: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    padding: 8
-  },
-  premiumFeature: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: Colors.dark.cardBackground
-  },
-  premiumFeatureDisabled: {
-    opacity: 0.5
-  },
-  usageBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 8,
-    backgroundColor: Colors.dark.background,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.dark.border
-  },
-  usageStat: {
-    alignItems: 'center'
-  },
-  usageLabel: {
-    fontSize: 12,
-    color: Colors.dark.textSecondary
-  },
-  usageValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.dark.text
+  retryButton: {
+    backgroundColor: Colors.dark.primary,
+    minWidth: 120,
   },
   emptyContainer: {
     flex: 1,
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center'
+    padding: 40,
+  },
+  emptyTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: Colors.dark.text,
+    marginTop: 16,
+    marginBottom: 8,
   },
   emptyText: {
-    color: Colors.dark.text,
-    marginBottom: 20
-  },
-  profileDetails: {
-    flex: 1,
-    padding: 20
-  },
-  profileText: {
-    color: Colors.dark.text,
-    marginBottom: 10
-  },
-  profileLabel: {
+    fontSize: 16,
     color: Colors.dark.textSecondary,
-    fontWeight: 'bold',
-    marginBottom: 5
-  }
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 24,
+  },
+  refreshButton: {
+    backgroundColor: Colors.dark.primary,
+    minWidth: 160,
+  },
 });
