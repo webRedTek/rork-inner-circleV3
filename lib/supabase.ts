@@ -966,12 +966,13 @@ export const fetchPotentialMatches = async (
   return retryOperation(async () => {
     console.log('[Enhanced Supabase] Making RPC call to fetch_potential_matches');
     
+    // Use the RPC method - match the exact parameter order from the error message
     const { data, error } = await client.rpc('fetch_potential_matches', {
-      p_user_id: userId,
-      p_max_distance: maxDistance,
       p_is_global_discovery: isGlobalDiscovery,
       p_limit: limit,
-      p_offset: 0
+      p_max_distance: maxDistance,
+      p_offset: 0,
+      p_user_id: userId
     });
     
     console.log('[Enhanced Supabase] RPC response:', {

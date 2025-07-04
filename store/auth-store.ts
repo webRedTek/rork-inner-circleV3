@@ -205,9 +205,8 @@ export const useAuthStore = create<AuthState>()(
           // Reset affiliate data
           useAffiliateStore.getState().resetAffiliateCache();
           
-          // Fetch fresh data
+          // Fetch fresh data (removed fetchPotentialMatches to avoid duplicates)
           await Promise.all([
-            useMatchesStore.getState().fetchPotentialMatches(),
             useGroupsStore.getState().fetchGroups(),
             useMessagesStore.getState().fetchMessages(),
             useUsageStore.getState().initializeUsage(newUserId),
