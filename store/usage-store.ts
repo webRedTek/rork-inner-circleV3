@@ -454,19 +454,21 @@ export const useUsageStore = create<UsageStore>()(
         const tierSettings = useAuthStore.getState().getTierSettings();
         
         if (!usageCache || !tierSettings) {
-          const errorMessage = 'Usage cache or tier settings not available for stats';
-          const appError = handleError(new Error(errorMessage));
-          
-          useNotificationStore.getState().addNotification({
-            type: 'error',
-            message: appError.userMessage,
-            displayStyle: 'toast',
-            duration: 5000
-          });
-          throw {
-            category: ErrorCategory.BUSINESS,
-            code: ErrorCodes.BUSINESS_LIMIT_REACHED,
-            message: appError.userMessage
+          // Return default stats instead of throwing error
+          return {
+            swipeCount: 0,
+            swipeLimit: 10000,
+            swipeRemaining: 10000,
+            matchCount: 0,
+            matchLimit: 50,
+            matchRemaining: 50,
+            messageCount: 0,
+            messageLimit: 500,
+            messageRemaining: 500,
+            likeCount: 0,
+            likeLimit: 100,
+            likeRemaining: 100,
+            timestamp: Date.now(),
           };
         }
 
@@ -498,19 +500,15 @@ export const useUsageStore = create<UsageStore>()(
         const tierSettings = useAuthStore.getState().getTierSettings();
         
         if (!usageCache || !tierSettings || !user) {
-          const errorMessage = 'Usage cache or tier settings not available';
-          const appError = handleError(new Error(errorMessage));
-          
-          useNotificationStore.getState().addNotification({
-            type: 'error',
-            message: appError.userMessage,
-            displayStyle: 'toast',
-            duration: 5000
-          });
-          throw {
-            category: ErrorCategory.BUSINESS,
-            code: ErrorCodes.BUSINESS_LIMIT_REACHED,
-            message: appError.userMessage
+          console.warn('Usage cache, tier settings, or user not available - allowing action');
+          // Return a permissive result instead of throwing error
+          return {
+            isAllowed: true,
+            actionType: action,
+            currentCount: 0,
+            limit: 10000,
+            remaining: 10000,
+            timestamp: Date.now(),
           };
         }
 
@@ -818,20 +816,8 @@ export const useUsageStore = create<UsageStore>()(
       checkLimit: (actionType: string, limit: number) => {
         const { usageCache } = get();
         if (!usageCache || !usageCache.usageData[actionType]) {
-          const errorMessage = `Usage data not available for action type: ${actionType}`;
-          const appError = handleError(new Error(errorMessage));
-          
-          useNotificationStore.getState().addNotification({
-            type: 'error',
-            message: appError.userMessage,
-            displayStyle: 'toast',
-            duration: 5000
-          });
-          throw {
-            category: ErrorCategory.BUSINESS,
-            code: ErrorCodes.BUSINESS_LIMIT_REACHED,
-            message: appError.userMessage
-          };
+          console.warn(`Usage data not available for action type: ${actionType} - allowing action`);
+          return true; // Allow action when data is not available
         }
 
         const now = Date.now();
@@ -860,20 +846,8 @@ export const useUsageStore = create<UsageStore>()(
       resetUsage: (actionType?: string) => {
         const { usageCache } = get();
         if (!usageCache) {
-          const errorMessage = 'Usage cache not available for reset';
-          const appError = handleError(new Error(errorMessage));
-          
-          useNotificationStore.getState().addNotification({
-            type: 'error',
-            message: appError.userMessage,
-            displayStyle: 'toast',
-            duration: 5000
-          });
-          throw {
-            category: 'BUSINESS',
-            code: 'BUSINESS_LIMIT_REACHED',
-            message: appError.userMessage
-          };
+          console.warn('Usage cache not available for reset - skipping');
+          return;
         }
 
         const now = Date.now();

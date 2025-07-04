@@ -122,52 +122,22 @@ export default function DiscoverScreen() {
     console.log(`[Discover] ${message} - Status: ${status}`);
   }, []);
 
-  // Update initialization effect
+  // Simplified initialization - NO automatic fetching
   useEffect(() => {
-    let isMounted = true;
-    
-    const initializeDiscoverScreen = async () => {
-      if (hasInitialized) {
-        addDebugInfo(`Skipping init - already initialized`);
-        return;
-      }
+    if (hasInitialized) {
+      return;
+    }
 
-      addDebugInfo('Starting initialization');
+    if (user?.id) {
       setHasInitialized(true);
-
-      try {
-        if (!user?.id) {
-          throw new Error('No user ID available');
-        }
-
-        // Usage store is already initialized in auth-store after login
-
-        // Then fetch matches
-        if (isMounted) {
-          addDebugInfo('Fetching potential matches');
-          await fetchPotentialMatches();
-          setInitialLoad(false);
-          addDebugInfo('Initial fetch completed successfully');
-        }
-      } catch (error) {
-        if (isMounted) {
-          console.error('[Discover] Error during initialization:', error);
-          addDebugInfo(`Initialization error: ${error}`);
-          addNotification({
-            type: 'error',
-            message: 'Failed to initialize. Please try again.',
-            displayStyle: 'toast',
-            duration: 5000
-          });
-        }
-      }
-    };
-
-    initializeDiscoverScreen();
-    
-    return () => {
-      isMounted = false;
-    };
+      setInitialLoad(false);
+      addNotification({
+        type: 'info',
+        message: 'Ready to discover! Use the refresh button to load profiles.',
+        displayStyle: 'toast',
+        duration: 3000
+      });
+    }
   }, [user?.id]);
 
   // Trigger usage sync when discover tab is accessed

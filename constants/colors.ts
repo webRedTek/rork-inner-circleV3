@@ -68,7 +68,7 @@ export default {
     text: '#FFFFFF',
     textSecondary: '#B0B0B0', // Enhanced for better readability
     textDim: '#808080', // Enhanced for better contrast
-    background: '#000000',
+    background: '#000000', // Pure black background
     card: '#1C1C1C', // Enhanced for better depth
     cardBackground: '#0F0F0F', // Enhanced for better contrast
     cardAlt: '#2C2C2C', // Enhanced for better visual hierarchy

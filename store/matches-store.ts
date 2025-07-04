@@ -701,7 +701,7 @@ export const useMatchesStore = create<MatchesState>()(
         try {
           await withNetworkCheck(async () => {
             const result = await withRetry(
-              async () => await fetchPotentialMatchesFromSupabase(user.id, 10),
+              async () => await fetchPotentialMatchesFromSupabase(user.id, 10, 50, false),
               { maxRetries: 3 }
             );
 
