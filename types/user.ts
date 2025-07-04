@@ -238,6 +238,10 @@ export interface TierSettings {
   has_virtual_meeting_room: boolean;
   has_custom_branding: boolean;
   has_dedicated_support: boolean;
+  
+  // Additional limit fields
+  direct_intro_limit: number;
+  virtual_meetings_limit: number;
 }
 
 export interface AuditLogEntry {
@@ -392,7 +396,15 @@ export interface DatabaseTotals {
   match_count: number;
   message_count: number;
   like_count: number;
-  daily_reset_at: string;
+  direct_intro_count: number;
+  groups_joined_count: number;
+  groups_created_count: number;
+  events_created_count: number;
+  featured_portfolio_count: number;
+  virtual_meetings_hosted: number;
+  boost_minutes_used: number;
+  boost_uses_count: number;
+  daily_reset_at?: string;
 }
 
 export interface UsageStore {
@@ -405,14 +417,24 @@ export interface UsageStore {
   rateLimits: RateLimits;
   cacheConfig: CacheConfig;
   retryStrategy: RetryStrategy;
+  
+  // Unified limit checking functions
+  checkAllLimits: () => any; // Returns AllLimitsStatus
+  checkSpecificLimit: (limitType: string) => any; // Returns LimitStatus
+  checkSwipeLimit: () => boolean;
+  checkMatchLimit: () => boolean;
+  checkLikeLimit: () => boolean;
+  checkMessageLimit: () => boolean;
+  
+  // Core functions
   initializeUsage: (userId: string) => Promise<void>;
   fetchDatabaseTotals: (userId: string) => Promise<DatabaseTotals | undefined>;
-  syncUsageData: (force?: boolean) => Promise<void>;
-  getUsageStats: () => Promise<UsageStats>;
-  queueBatchUpdate: (action: string, count: number) => void;
+  syncUsageData: (userId: string, force?: boolean) => Promise<void>;
+  getUsageStats: (userId: string) => Promise<UsageStats | null>;
+  queueBatchUpdate: (update: BatchUpdate) => void;
   resetUsage: (actionType?: string) => void;
   clearError: () => void;
-  updateUsage: (action: string) => Promise<UsageResult>;
-  trackUsage: (options: UsageTrackingOptions) => Promise<UsageResult>;
+  updateUsage: (action: string, count?: number, force?: boolean) => Promise<void>;
+  trackUsage: (actionType: string, count?: number) => Promise<UsageResult>;
   resetUsageCache: () => Promise<void>;
 }

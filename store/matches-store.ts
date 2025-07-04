@@ -83,7 +83,7 @@ class EnhancedProfileCache {
   private cache: Map<string, CacheEntry>;
   private config: CacheConfig;
   private stats: CacheStats;
-  private cleanupInterval: NodeJS.Timeout | null = null;
+  private cleanupInterval: any = null;
 
   constructor() {
     logger.logFunctionCall('EnhancedProfileCache.constructor');
@@ -318,33 +318,73 @@ export const useMatchesStore = create<MatchesStore>()(
         try {
           logger.logDebug('Fetching potential matches from database');
           
+          if (!supabase) {
+            throw new Error('Supabase client not initialized');
+          }
+          
           // Call the simplified database function
           const { data: matchesData, error: supabaseError } = await supabase
             .rpc('fetch_potential_matches', {
               p_user_id: guard.user.id,
               p_is_global_discovery: true, // Simplified to global discovery
-              p_limit: 50,
+              p_limit: 10, // Reduced to 10 profiles for better UX
               p_offset: 0
             });
 
           if (supabaseError) {
+            logger.logDebug('Supabase RPC error', { error: supabaseError });
             throw supabaseError;
           }
 
-          if (!matchesData || matchesData.length === 0) {
-            logger.logDebug('No matches found from database');
-            set({ profiles: [], isLoading: false });
+          logger.logDebug('RPC response received', { 
+            matchesData: matchesData,
+            type: typeof matchesData,
+            isArray: Array.isArray(matchesData),
+            length: matchesData?.length || 'N/A'
+          });
+
+          // Validate that we got an array response
+          if (!matchesData) {
+            logger.logDebug('No data returned from RPC call');
+            set({ profiles: [], isLoading: false, error: null });
             notify.info('No new profiles found. Try adjusting your discovery settings.');
             return;
           }
 
-          logger.logDebug('Raw matches data received', { count: matchesData.length });
+          // Ensure matchesData is an array
+          let matchesArray: any[] = [];
+          if (Array.isArray(matchesData)) {
+            matchesArray = matchesData;
+          } else if (matchesData && typeof matchesData === 'object') {
+            // If it's a single object, wrap it in an array
+            matchesArray = [matchesData];
+          } else {
+            logger.logDebug('Unexpected data format from RPC', { 
+              type: typeof matchesData,
+              data: matchesData 
+            });
+            throw new Error(`Unexpected data format: expected array, got ${typeof matchesData}`);
+          }
+
+          if (matchesArray.length === 0) {
+            logger.logDebug('Empty matches array received');
+            set({ profiles: [], isLoading: false, error: null });
+            notify.info('No new profiles found. Try adjusting your discovery settings.');
+            return;
+          }
+
+          logger.logDebug('Processing matches array', { count: matchesArray.length });
 
           // Process and cache profiles
           const processedProfiles: UserProfile[] = [];
           
-          matchesData.forEach((match: any) => {
+          matchesArray.forEach((match: any, index: number) => {
             try {
+              logger.logDebug(`Processing match ${index + 1}/${matchesArray.length}`, { 
+                matchId: match?.id || match?.user_id || 'unknown',
+                matchKeys: match ? Object.keys(match) : []
+              });
+
               const profile: UserProfile = {
                 id: match.id || match.user_id,
                 name: match.name || match.full_name || 'Unknown',
@@ -371,10 +411,11 @@ export const useMatchesStore = create<MatchesStore>()(
               };
 
               // Validate essential fields
-              if (!profile.id || !profile.name) {
+              if (!profile.id || !profile.name || profile.name === 'Unknown') {
                 logger.logDebug('Skipping profile with missing essential fields', {
                   id: profile.id,
-                  name: profile.name
+                  name: profile.name,
+                  originalMatch: match
                 });
                 return;
               }
@@ -383,14 +424,23 @@ export const useMatchesStore = create<MatchesStore>()(
               cache.set(profile.id, profile);
               processedProfiles.push(profile);
 
+              logger.logDebug(`Successfully processed profile ${index + 1}`, {
+                id: profile.id,
+                name: profile.name
+              });
+
             } catch (error) {
-              logger.logDebug('Error processing profile', { error: safeStringifyError(error) });
+              logger.logDebug(`Error processing profile ${index + 1}`, { 
+                error: safeStringifyError(error),
+                match: match
+              });
             }
           });
 
-          logger.logDebug('Processed profiles', { 
+          logger.logDebug('Profiles processing complete', { 
             processed: processedProfiles.length,
-            cached: cache.getStats().size
+            cached: cache.getStats().size,
+            originalCount: matchesArray.length
           });
 
           set({ 
@@ -402,12 +452,16 @@ export const useMatchesStore = create<MatchesStore>()(
           if (processedProfiles.length > 0) {
             notify.success(`Found ${processedProfiles.length} new profiles!`);
           } else {
-            notify.info('No new profiles found. Try refreshing later.');
+            notify.info('No valid profiles found. Try refreshing later.');
           }
 
         } catch (error) {
           const errorMessage = safeStringifyError(error);
-          logger.logDebug('Error fetching potential matches', { error: errorMessage });
+          logger.logDebug('Error in fetchPotentialMatches', { 
+            error: errorMessage,
+            errorType: typeof error,
+            errorStack: error instanceof Error ? error.stack : undefined
+          });
           
           set({ 
             isLoading: false, 
@@ -415,6 +469,9 @@ export const useMatchesStore = create<MatchesStore>()(
           });
           
           notify.error(`Failed to fetch profiles: ${errorMessage}`);
+          
+          // Re-throw to ensure calling code knows there was an error
+          throw error;
         }
       },
 

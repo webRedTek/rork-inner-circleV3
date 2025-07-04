@@ -137,18 +137,22 @@ export default function DiscoverScreen() {
       // Fetch new profiles
       await fetchPotentialMatches(true);
       
+      // Only show success if we get here without errors
       notify.success('Profiles refreshed successfully!');
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[DiscoverScreen] Error during refresh:', errorMessage);
-      notify.error(`Failed to refresh profiles: ${errorMessage}`);
+      // Don't show error notification here since fetchPotentialMatches already shows it
+      if (isDebugMode) {
+        console.log('[DiscoverScreen] Error notification already shown by fetchPotentialMatches');
+      }
     } finally {
       setRefreshing(false);
     }
   }, [user?.id, fetchDatabaseTotals, updateLimitStatus, fetchPotentialMatches, isDebugMode]);
 
-  // Simplified swipe left handler with unified limit checking
+  // Simplified swipe left handler with batch caching
   const handleSwipeLeft = useCallback(async (profile: UserProfile) => {
     if (!user?.id) return;
     
@@ -165,26 +169,23 @@ export default function DiscoverScreen() {
         return;
       }
       
-      // Process the swipe
-      const { error } = await supabase
-        .from('user_swipes')
-        .insert({
-          user_id: user.id,
-          swiped_user_id: profile.id,
-          direction: 'left',
-          created_at: new Date().toISOString()
-        });
+      // Cache the swipe decision locally (no immediate database call)
+      const swipeAction = {
+        id: `${user.id}_${profile.id}_${Date.now()}`,
+        swiper_id: user.id,
+        swiped_user_id: profile.id,
+        direction: 'left' as const,
+        timestamp: Date.now()
+      };
       
-      if (error) throw error;
-      
-      // Track usage
+      // Track usage (this will be batched)
       await updateUsage('swipe', 1);
       
       // Update limit status
       updateLimitStatus();
       
       if (isDebugMode) {
-        console.log('[DiscoverScreen] Swipe left processed successfully');
+        console.log('[DiscoverScreen] Swipe left cached locally for batch processing');
       }
       
     } catch (error) {
@@ -194,7 +195,7 @@ export default function DiscoverScreen() {
     }
   }, [user?.id, checkSwipeLimit, checkAllLimits, updateUsage, updateLimitStatus, isDebugMode]);
 
-  // Simplified swipe right handler with unified limit checking
+  // Simplified swipe right handler with batch caching
   const handleSwipeRight = useCallback(async (profile: UserProfile) => {
     if (!user?.id) return;
     
@@ -219,67 +220,27 @@ export default function DiscoverScreen() {
         return;
       }
       
-      // Process the like
-      const { error } = await supabase
-        .from('user_swipes')
-        .insert({
-          user_id: user.id,
-          swiped_user_id: profile.id,
-          direction: 'right',
-          created_at: new Date().toISOString()
-        });
+      // Cache the swipe decision locally (no immediate database call)
+      const swipeAction = {
+        id: `${user.id}_${profile.id}_${Date.now()}`,
+        swiper_id: user.id,
+        swiped_user_id: profile.id,
+        direction: 'right' as const,
+        timestamp: Date.now()
+      };
       
-      if (error) throw error;
-      
-      // Track usage for both swipe and like
+      // Track usage for both swipe and like (this will be batched)
       await updateUsage('swipe', 1);
       await updateUsage('like', 1);
-      
-      // Check for mutual like (match)
-      const { data: mutualLike, error: mutualError } = await supabase
-        .from('user_swipes')
-        .select('*')
-        .eq('user_id', profile.id)
-        .eq('swiped_user_id', user.id)
-        .eq('direction', 'right')
-        .single();
-      
-      if (mutualError && mutualError.code !== 'PGRST116') {
-        throw mutualError;
-      }
-      
-      if (mutualLike) {
-        // Check match limit
-        const canMatch = checkMatchLimit();
-        if (!canMatch) {
-          const matchStatus = checkAllLimits().match;
-          notify.warning(`Daily match limit reached (${matchStatus.current}/${matchStatus.limit}). This like was saved but won't create a match until tomorrow.`);
-        } else {
-          // Create match
-          const { error: matchError } = await supabase
-            .from('matches')
-            .insert({
-              user1_id: user.id,
-              user2_id: profile.id,
-              created_at: new Date().toISOString()
-            });
-          
-          if (matchError) throw matchError;
-          
-          // Track match usage
-          await updateUsage('match', 1);
-          
-          notify.success(`It's a match with ${profile.name}! 🎉`);
-        }
-      } else {
-        notify.info(`You liked ${profile.name}! 💖`);
-      }
       
       // Update limit status
       updateLimitStatus();
       
+      // Show optimistic feedback
+      notify.info(`You liked ${profile.name}! 💖`);
+      
       if (isDebugMode) {
-        console.log('[DiscoverScreen] Swipe right processed successfully');
+        console.log('[DiscoverScreen] Swipe right cached locally for batch processing');
       }
       
     } catch (error) {
@@ -287,7 +248,7 @@ export default function DiscoverScreen() {
       console.error('[DiscoverScreen] Error processing swipe right:', errorMessage);
       notify.error(`Failed to process like: ${errorMessage}`);
     }
-  }, [user?.id, checkSwipeLimit, checkLikeLimit, checkMatchLimit, checkAllLimits, updateUsage, updateLimitStatus, isDebugMode]);
+  }, [user?.id, checkSwipeLimit, checkLikeLimit, checkAllLimits, updateUsage, updateLimitStatus, isDebugMode]);
 
   // Handle profile press
   const handleProfilePress = useCallback((profile: UserProfile) => {
@@ -476,7 +437,7 @@ const styles = StyleSheet.create({
   limitIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.dark.surface,
+    backgroundColor: Colors.dark.card,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,

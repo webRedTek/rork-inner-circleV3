@@ -72,6 +72,20 @@ interface AllLimitsStatus {
   boostUses: LimitStatus;
 }
 
+// Swipe cache for batching
+interface SwipeAction {
+  id: string;
+  swiper_id: string;
+  swiped_user_id: string;
+  direction: 'left' | 'right';
+  timestamp: number;
+}
+
+interface SwipeCache {
+  pendingSwipes: SwipeAction[];
+  lastSyncTimestamp: number;
+}
+
 // Default usage cache
 const defaultUsageCache: UsageCache = {
   lastSyncTimestamp: 0,
@@ -136,6 +150,12 @@ export const useUsageStore = create<UsageStore>()(
       rateLimits: defaultRateLimits,
       cacheConfig: defaultCacheConfig,
       retryStrategy: defaultRetryStrategy,
+      
+      // Add swipe cache to state
+      swipeCache: {
+        pendingSwipes: [],
+        lastSyncTimestamp: 0
+      } as SwipeCache,
 
       // **UNIFIED LIMIT CHECKING SYSTEM** - Single source of truth for all limit validation
       checkAllLimits: (): AllLimitsStatus => {
@@ -503,8 +523,90 @@ export const useUsageStore = create<UsageStore>()(
           batchUpdates: [],
           isSyncing: false,
           lastSyncError: null,
-          databaseTotals: null
+          databaseTotals: null,
+          swipeCache: {
+            pendingSwipes: [],
+            lastSyncTimestamp: 0
+          }
         });
+      },
+      
+      // **SWIPE CACHING FUNCTIONS** - Cache swipes locally and batch process
+      cacheSwipe: (swipeAction: SwipeAction) => {
+        logger.logFunctionCall('cacheSwipe', { direction: swipeAction.direction, targetUserId: swipeAction.swiped_user_id });
+        
+        set(state => ({
+          swipeCache: {
+            ...state.swipeCache,
+            pendingSwipes: [...state.swipeCache.pendingSwipes, swipeAction]
+          }
+        }));
+        
+        // Auto-trigger batch if we have many pending swipes
+        const { swipeCache } = get();
+        if (swipeCache.pendingSwipes.length >= 5) {
+          get().syncSwipeData();
+        }
+      },
+      
+      syncSwipeData: async () => {
+        logger.logFunctionCall('syncSwipeData');
+        
+        const guard = guardStoreOperation('syncSwipeData');
+        if (!guard) return;
+        
+        const { swipeCache, isSyncing } = get();
+        
+        if (isSyncing || swipeCache.pendingSwipes.length === 0) {
+          return;
+        }
+        
+        const pendingSwipes = [...swipeCache.pendingSwipes];
+        
+        try {
+          set({ isSyncing: true });
+          
+          // Batch insert swipes
+          const { error: swipeError } = await supabase
+            .from('user_swipes')
+            .insert(
+              pendingSwipes.map(swipe => ({
+                user_id: swipe.swiper_id,
+                swiped_user_id: swipe.swiped_user_id,
+                direction: swipe.direction,
+                created_at: new Date(swipe.timestamp).toISOString()
+              }))
+            );
+            
+          if (swipeError) {
+            logger.logDebug('Error syncing swipes', { error: safeStringifyError(swipeError) });
+            throw swipeError;
+          }
+          
+          // Clear synced swipes
+          set(state => ({
+            swipeCache: {
+              ...state.swipeCache,
+              pendingSwipes: [],
+              lastSyncTimestamp: Date.now()
+            }
+          }));
+          
+          logger.logDebug('Swipes synced successfully', { count: pendingSwipes.length });
+          
+        } catch (error) {
+          const errorMessage = safeStringifyError(error);
+          logger.logDebug('Error syncing swipe data', { error: errorMessage });
+          set({ lastSyncError: errorMessage });
+        } finally {
+          set({ isSyncing: false });
+        }
+      },
+      
+      // Get pending swipe count for UI
+      getPendingSwipeCount: (): number => {
+        const { swipeCache } = get();
+        return swipeCache.pendingSwipes.length;
       }
     })) as StateCreator<
       UsageStore,
