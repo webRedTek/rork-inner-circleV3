@@ -175,3 +175,10 @@ rules:
       - "git push origin main"
       - "git status"
     auto_commit: true
+
+  - name: "8. Stay On Task"
+    description: "Complete only the specific task requested"
+    patterns:
+      - ".*"
+    action: "info"
+    message: "Only implement the specific task requested. Do not make additional changes or refactor unrelated code."
