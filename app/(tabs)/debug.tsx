@@ -1,240 +1,307 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
-import { useDebugStore } from '@/store/debug-store';
-import { useAuthStore } from '@/store/auth-store';
-import { useUsageStore } from '@/store/usage-store';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Colors from '@/constants/colors';
-
-
+import { useUsageStore } from '@/store/usage-store';
+import { useMatchesStore } from '@/store/matches-store';
+import { useAuthStore } from '@/store/auth-store';
+import { useDebugStore } from '@/store/debug-store';
+import { MembershipTier, TierSettings } from '@/types/user';
 
 export default function DebugScreen() {
-  const { isDebugMode, debugLog, clearDebugLog } = useDebugStore();
-  const { allTierSettings, tierSettingsTimestamp, user, getTierSettings } = useAuthStore();
-  const { usageCache } = useUsageStore();
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState(new Date());
+  
+  // Get store states
+  const { 
+    usageCache, 
+    batchUpdates, 
+    isSyncing, 
+    lastSyncError,
+    databaseTotals 
+  } = useUsageStore();
+  
+  const {
+    potentialMatches,
+    matches,
+    isLoading,
+    error,
+    swipeLimitReached,
+    matchLimitReached,
+    cacheStats
+  } = useMatchesStore();
 
-  // Add current state info to debug log when component mounts
-  useEffect(() => {
-    if (isDebugMode) {
-      // Add current state snapshot
-      const debugStore = useDebugStore.getState();
-      
-      // Check current state
-      if (allTierSettings) {
-        debugStore.addDebugLog({
-          event: 'Current State: allTierSettings',
-          status: 'success',
-          details: `Currently loaded: ${Object.keys(allTierSettings).length} tier settings`,
-          data: Object.keys(allTierSettings),
-          source: 'debug-screen'
-        });
-      }
-      
-      if (user) {
-        debugStore.addDebugLog({
-          event: 'Current State: User',
-          status: 'success',
-          details: `User: ${user.name} (${user.membershipTier})`,
-          data: { id: user.id, membershipTier: user.membershipTier },
-          source: 'debug-screen'
-        });
-      }
-    }
-  }, [isDebugMode, allTierSettings, user]);
+  const { user, allTierSettings } = useAuthStore();
 
-  if (!isDebugMode) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.title}>Debug Mode</Text>
-        <Text style={styles.message}>Debug mode is disabled. Enable it in admin settings to view debugging information.</Text>
-      </View>
-    );
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'success': return '#4CAF50';
-      case 'error': return '#F44336';
-      case 'info': return '#2196F3';
-      case 'warning': return '#FF9800';
-      default: return Colors.dark.textSecondary;
-    }
+  // Format timestamps
+  const formatTime = (timestamp: number) => {
+    return new Date(timestamp).toLocaleTimeString();
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'success': return '✅';
-      case 'error': return '❌';
-      case 'info': return 'ℹ️';
-      case 'warning': return '⚠️';
-      default: return '•';
-    }
+  // Format durations
+  const formatDuration = (ms: number) => {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    setLastRefresh(new Date());
+    setRefreshing(false);
   };
 
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.title}>Tier Settings Debug</Text>
-      
-      <View style={styles.summary}>
-        <Text style={styles.summaryTitle}>Summary</Text>
-        <Text style={styles.summaryText}>
-          • User: {user ? `${user.name} (${user.membershipTier})` : 'Not logged in'}
-        </Text>
-        <Text style={styles.summaryText}>
-          • Tier Settings: {allTierSettings ? `${Object.keys(allTierSettings).length} loaded` : 'Not loaded'}
-        </Text>
-        <Text style={styles.summaryText}>
-          • Usage Cache: {usageCache ? 'Loaded' : 'Not loaded'}
-        </Text>
-      </View>
+    <SafeAreaView style={styles.container}>
+      <ScrollView 
+        style={styles.scrollView}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+          />
+        }
+      >
+        <Text style={styles.title}>Debug Information</Text>
+        <Text style={styles.subtitle}>Last Updated: {lastRefresh.toLocaleTimeString()}</Text>
 
-      <Text style={styles.sectionTitle}>Debug Log</Text>
-      
-      {debugLog.map((log, index) => (
-        <View key={log.id} style={styles.logEntry}>
-          <View style={styles.logHeader}>
-            <Text style={styles.logIcon}>{getStatusIcon(log.status)}</Text>
-            <Text style={[styles.logStatus, { color: getStatusColor(log.status) }]}>
-              {log.status.toUpperCase()}
+        {/* Usage Store Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Usage Store</Text>
+          
+          <View style={styles.infoBlock}>
+            <Text style={styles.label}>Cache Status:</Text>
+            <Text style={styles.value}>
+              {usageCache ? 'Initialized' : 'Not Initialized'}
             </Text>
-            <Text style={styles.logTimestamp}>
-              {new Date(log.timestamp).toLocaleTimeString()}
-            </Text>
-            <Text style={styles.logSource}>[{log.source}]</Text>
           </View>
-          
-          <Text style={styles.logEvent}>{log.event}</Text>
-          <Text style={styles.logDetails}>{log.details}</Text>
-          
-          {log.data && (
-            <View style={styles.logData}>
-              <Text style={styles.logDataTitle}>Data:</Text>
-              <Text style={styles.logDataText}>
-                {typeof log.data === 'object' ? JSON.stringify(log.data, null, 2) : String(log.data)}
+
+          {usageCache && (
+            <>
+              <View style={styles.infoBlock}>
+                <Text style={styles.label}>Last Sync:</Text>
+                <Text style={styles.value}>
+                  {formatTime(usageCache.lastSyncTimestamp)}
+                </Text>
+              </View>
+
+              <View style={styles.infoBlock}>
+                <Text style={styles.label}>Premium Features:</Text>
+                <Text style={styles.value}>
+                  Boost Minutes: {usageCache.premiumFeatures.boostMinutesRemaining}{'\n'}
+                  Boost Uses: {usageCache.premiumFeatures.boostUsesRemaining}
+                </Text>
+              </View>
+
+              <View style={styles.infoBlock}>
+                <Text style={styles.label}>Analytics:</Text>
+                <Text style={styles.value}>
+                  Profile Views: {usageCache.analytics.profileViews}{'\n'}
+                  Search Appearances: {usageCache.analytics.searchAppearances}
+                </Text>
+              </View>
+            </>
+          )}
+
+          <View style={styles.infoBlock}>
+            <Text style={styles.label}>Sync Status:</Text>
+            <Text style={styles.value}>
+              {isSyncing ? 'Syncing...' : 'Idle'}{'\n'}
+              {lastSyncError ? `Error: ${lastSyncError}` : 'No Errors'}
+            </Text>
+          </View>
+
+          <View style={styles.infoBlock}>
+            <Text style={styles.label}>Batch Updates:</Text>
+            <Text style={styles.value}>
+              Pending: {batchUpdates.length}
+            </Text>
+          </View>
+
+          {databaseTotals && (
+            <View style={styles.infoBlock}>
+              <Text style={styles.label}>Database Totals:</Text>
+              <Text style={styles.value}>
+                {JSON.stringify(databaseTotals, null, 2)}
               </Text>
             </View>
           )}
         </View>
-      ))}
 
-      <TouchableOpacity 
-        style={styles.refreshButton}
-        onPress={clearDebugLog}
-      >
-        <Text style={styles.refreshButtonText}>Clear Debug Log</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        {/* Matches Store Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Matches Store</Text>
+
+          <View style={styles.infoBlock}>
+            <Text style={styles.label}>Cache Stats:</Text>
+            <Text style={styles.value}>
+              Size: {cacheStats.size}{'\n'}
+              Hit Rate: {(cacheStats.hitRate * 100).toFixed(1)}%{'\n'}
+              Average Age: {formatDuration(cacheStats.averageAge)}{'\n'}
+              Memory Usage: {(cacheStats.memoryUsage / 1024).toFixed(2)} KB{'\n'}
+              Compression Ratio: {cacheStats.compressionRatio.toFixed(2)}{'\n'}
+              Eviction Count: {cacheStats.evictionCount}
+            </Text>
+          </View>
+
+          <View style={styles.infoBlock}>
+            <Text style={styles.label}>Match Counts:</Text>
+            <Text style={styles.value}>
+              Potential: {potentialMatches.length}{'\n'}
+              Matches: {matches.length}{'\n'}
+              Loading: {isLoading ? 'Yes' : 'No'}{'\n'}
+              Error: {error || 'None'}{'\n'}
+              Swipe Limit: {swipeLimitReached ? 'Reached' : 'Available'}{'\n'}
+              Match Limit: {matchLimitReached ? 'Reached' : 'Available'}
+            </Text>
+          </View>
+        </View>
+
+        {/* Auth Store Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Auth Store</Text>
+
+          <View style={styles.infoBlock}>
+            <Text style={styles.label}>User:</Text>
+            <Text style={styles.value}>
+              ID: {user?.id || 'Not logged in'}{'\n'}
+              Tier: {user?.membershipTier || 'None'}
+            </Text>
+          </View>
+
+          {allTierSettings && (
+            <View style={styles.infoBlock}>
+              <Text style={styles.label}>Tier Settings:</Text>
+              <Text style={styles.value}>
+                {(Object.keys(allTierSettings) as MembershipTier[]).map(tier => (
+                  `${tier}:\n${JSON.stringify(allTierSettings[tier], null, 2)}\n`
+                ))}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Timeline Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Operation Timeline</Text>
+          <View style={styles.timelineContainer}>
+            {useDebugStore.getState().debugLog
+              .filter(log => ['matches-store', 'usage-store', 'discover-screen'].includes(log.source))
+              .sort((a, b) => b.timestamp - a.timestamp)
+              .map((log, index) => (
+                <View key={log.id} style={styles.timelineEntry}>
+                  <View style={styles.timelineDot} />
+                  <View style={styles.timelineContent}>
+                    <Text style={styles.timelineTime}>
+                      {new Date(log.timestamp).toLocaleTimeString()}
+                    </Text>
+                    <Text style={[
+                      styles.timelineStatus,
+                      { color: log.status === 'error' ? Colors.dark.error :
+                              log.status === 'warning' ? Colors.dark.warning :
+                              log.status === 'success' ? Colors.dark.success :
+                              Colors.dark.info }
+                    ]}>
+                      [{log.source}] {log.status.toUpperCase()}
+                    </Text>
+                    <Text style={styles.timelineEvent}>{log.event}</Text>
+                    <Text style={styles.timelineDetails}>{log.details}</Text>
+                  </View>
+                </View>
+              ))
+            }
+          </View>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.dark.background,
-    padding: 16,
+    backgroundColor: Colors.dark.background
+  },
+  scrollView: {
+    flex: 1,
+    padding: 16
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     color: Colors.dark.text,
-    marginBottom: 16,
+    marginBottom: 8
   },
-  message: {
-    fontSize: 16,
+  subtitle: {
+    fontSize: 14,
     color: Colors.dark.textSecondary,
-    textAlign: 'center',
-    marginTop: 50,
+    marginBottom: 16
   },
-  summary: {
-    backgroundColor: Colors.dark.card,
+  section: {
+    marginBottom: 24,
     padding: 16,
-    borderRadius: 8,
-    marginBottom: 20,
+    backgroundColor: Colors.dark.card,
+    borderRadius: 12
   },
-  summaryTitle: {
+  sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: Colors.dark.text,
-    marginBottom: 8,
+    marginBottom: 16
   },
-  summaryText: {
+  infoBlock: {
+    marginBottom: 12
+  },
+  label: {
     fontSize: 14,
     color: Colors.dark.textSecondary,
-    marginBottom: 4,
+    marginBottom: 4
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+  value: {
+    fontSize: 14,
     color: Colors.dark.text,
-    marginBottom: 12,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace'
   },
-  logEntry: {
-    backgroundColor: Colors.dark.card,
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12,
+  timelineContainer: {
+    paddingLeft: 20,
   },
-  logHeader: {
+  timelineEntry: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 16,
   },
-  logIcon: {
-    fontSize: 16,
-    marginRight: 8,
+  timelineDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: Colors.dark.accent,
+    marginRight: 12,
+    marginTop: 4,
   },
-  logStatus: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    marginRight: 8,
+  timelineContent: {
+    flex: 1,
+    borderLeftWidth: 1,
+    borderLeftColor: Colors.dark.border,
+    paddingLeft: 12,
+    marginLeft: -6,
   },
-  logTimestamp: {
+  timelineTime: {
     fontSize: 12,
     color: Colors.dark.textSecondary,
+    marginBottom: 2,
   },
-  logSource: {
-    fontSize: 10,
-    color: Colors.dark.textSecondary,
-    fontStyle: 'italic',
-    marginLeft: 'auto',
-  },
-  logEvent: {
-    fontSize: 16,
+  timelineStatus: {
+    fontSize: 12,
     fontWeight: 'bold',
-    color: Colors.dark.text,
-    marginBottom: 4,
+    marginBottom: 2,
   },
-  logDetails: {
+  timelineEvent: {
     fontSize: 14,
-    color: Colors.dark.textSecondary,
-    marginBottom: 8,
-  },
-  logData: {
-    backgroundColor: Colors.dark.background,
-    padding: 8,
-    borderRadius: 4,
-  },
-  logDataTitle: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: Colors.dark.textSecondary,
-    marginBottom: 4,
-  },
-  logDataText: {
-    fontSize: 12,
-    color: Colors.dark.textSecondary,
-    fontFamily: 'monospace',
-  },
-  refreshButton: {
-    backgroundColor: Colors.dark.primary,
-    padding: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 40,
-  },
-  refreshButtonText: {
     color: Colors.dark.text,
-    fontSize: 16,
-    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  timelineDetails: {
+    fontSize: 12,
+    color: Colors.dark.textSecondary,
   },
 }); 
