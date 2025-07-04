@@ -17,6 +17,10 @@
  * - Removed redundant auth checks (now handled by auth store)
  * - Updated to process swipes/likes immediately instead of batching
  * - Fixed updateUsage calls to use correct signature
+ * - Added comprehensive debug logging system
+ * - Enhanced state change tracking
+ * - Added function call tracing
+ * - Added data flow logging
  * 
  * FILE INTERACTIONS:
  * - Imports from: auth-store (user data), usage-store (limits, batch processing), notification-store (alerts)
@@ -51,6 +55,38 @@ import { useUsageStore } from './usage-store';
 import { handleError, withErrorHandling, withRetry, withCircuitBreaker, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
 import { withNetworkCheck, checkNetworkStatus } from '@/utils/network-utils';
 import type { StoreApi, StateCreator } from 'zustand';
+
+// Debug logging configuration
+const DEBUG_PREFIX = '[MatchesStore]';
+const logDebug = (message: string, data?: any) => {
+  const timestamp = new Date().toISOString();
+  const logMessage = `${timestamp} ${DEBUG_PREFIX} ${message}`;
+  if (data) {
+    console.log(logMessage, JSON.stringify(data, null, 2));
+  } else {
+    console.log(logMessage);
+  }
+};
+
+const logStateChange = (action: string, prevState: any, nextState: any) => {
+  logDebug(`State Change - ${action}`, {
+    prev: prevState,
+    next: nextState,
+    changes: Object.keys(nextState).filter(key => prevState[key] !== nextState[key])
+  });
+};
+
+const logFunctionCall = (name: string, args?: any) => {
+  logDebug(`Function Call - ${name}`, args);
+};
+
+const logDataFlow = (operation: string, data: any) => {
+  logDebug(`Data Flow - ${operation}`, data);
+};
+
+const logCacheOperation = (operation: string, data: any) => {
+  logDebug(`Cache Operation - ${operation}`, data);
+};
 
 // Enhanced PassedUser interface with expiration
 interface PassedUser {
@@ -122,6 +158,7 @@ class EnhancedProfileCache {
   private isInitialized = false;
 
   constructor() {
+    logFunctionCall('EnhancedProfileCache.constructor');
     this.cache = new Map();
     this.config = {
       maxAge: 1000 * 60 * 45, // 45 minutes
@@ -145,17 +182,20 @@ class EnhancedProfileCache {
   }
 
   private async initialize(): Promise<void> {
+    logFunctionCall('EnhancedProfileCache.initialize');
     try {
       await this.loadFromPersistence();
       this.startCleanupTimer();
       this.startPersistenceTimer();
       this.isInitialized = true;
+      logDebug('Cache initialized successfully');
     } catch (error) {
-      console.error('[EnhancedProfileCache] Initialization failed:', error);
+      logDebug('Cache initialization failed', { error });
     }
   }
 
   private async loadFromPersistence(): Promise<void> {
+    logFunctionCall('EnhancedProfileCache.loadFromPersistence');
     try {
       const stored = await AsyncStorage.getItem(this.config.persistenceKey);
       if (stored) {
@@ -167,14 +207,17 @@ class EnhancedProfileCache {
               this.cache.set(key, entry);
             }
           });
-          console.log(`[EnhancedProfileCache] Loaded ${this.cache.size} profiles from persistence`);
+          logCacheOperation('loaded', { size: this.cache.size });
         } else {
-          console.log('[EnhancedProfileCache] Cache version mismatch, starting fresh');
+          logCacheOperation('version_mismatch', { 
+            expected: this.config.version, 
+            found: data.version 
+          });
           await AsyncStorage.removeItem(this.config.persistenceKey);
         }
       }
     } catch (error) {
-      console.error('[EnhancedProfileCache] Failed to load from persistence:', error);
+      logDebug('Failed to load from persistence', { error });
     }
   }
 
@@ -621,529 +664,541 @@ const formatTimeRemaining = (ms: number): string => {
   return `${minutes}m`;
 };
 
-export const useMatchesStore = create<MatchesState>((set, get) => ({
-  // Initial state
-  ...initialState,
+export const useMatchesStore = create<MatchesState>()(
+  persist(
+    ((set: StoreApi<MatchesState>['setState'], get: StoreApi<MatchesState>['getState']) => ({
+      // Initial state
+      ...initialState,
 
-  // Methods
-  fetchPotentialMatches: async () => {
-    const debugStore = useDebugStore.getState();
-    const notificationStore = useNotificationStore.getState();
-    const callId = `fetch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-    if (debugStore.isDebugMode) {
-      console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] fetchPotentialMatches CALLED`, {
-        networkState: get().networkState,
-        cacheStats: get().cacheStats,
-        timestamp: new Date().toISOString()
-      });
-    }
-    
-    return await withErrorHandling(async () => {
-      set({ isLoading: true, error: null });
-      
-      try {
-        const { 
-          passedUsers, 
-          pendingLikes, 
-          potentialMatches, 
-          batchSize,
-          networkState: currentNetworkState
-        } = get();
+      // Methods
+      fetchPotentialMatches: async () => {
+        logFunctionCall('fetchPotentialMatches');
+        const debugStore = useDebugStore.getState();
+        const notificationStore = useNotificationStore.getState();
+        const callId = `fetch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
-        const seenIds = new Set([
-          ...passedUsers.map(p => p.id),
-          ...Array.from(pendingLikes)
-        ]);
-
         if (debugStore.isDebugMode) {
-          console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] Current state`, {
-            currentMatches: potentialMatches.length,
-            passedUsers: passedUsers.length,
-            pendingLikes: pendingLikes.size,
-            seenIds: seenIds.size,
-            batchSize,
-            networkQuality: currentNetworkState.connectionQuality
+          console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] fetchPotentialMatches CALLED`, {
+            networkState: get().networkState,
+            cacheStats: get().cacheStats,
+            timestamp: new Date().toISOString()
           });
         }
-
-        // Check network state before making request
-        if (!currentNetworkState.isOnline) {
-          throw {
-            category: ErrorCategory.NETWORK,
-            code: ErrorCodes.NETWORK_OFFLINE,
-            message: 'No internet connection available'
-          };
-        }
-
-        if (debugStore.isDebugMode) {
-          console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] Calling Supabase fetchPotentialMatches`, {
-            userId: useAuthStore.getState().user!.id,
-            limit: batchSize,
-            networkQuality: currentNetworkState.connectionQuality
-          });
-        }
-
-        // Fetch exactly 10 new potential matches
-        const result = await withCircuitBreaker(
-          () => fetchPotentialMatchesFromSupabase(
-            useAuthStore.getState().user!.id,
-            undefined,
-            undefined,
-            batchSize // Always 10
-          ),
-          'fetch_potential_matches'
-        );
-
-        if (debugStore.isDebugMode) {
-          console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] Supabase response`, {
-            hasResult: !!result,
-            matchesLength: result?.matches?.length || 0,
-            count: result?.count
-          });
-        }
-
-        // Handle case where no matches are returned
-        if (!result || !result.matches || result.matches.length === 0) {
-          if (debugStore.isDebugMode) {
-            console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] No matches found - setting noMoreProfiles`);
-          }
+        
+        return await withErrorHandling(async () => {
+          set({ isLoading: true, error: null });
           
-          set({ 
-            isLoading: false,
-            error: null,
-            noMoreProfiles: true
-          });
-          
-          notificationStore.addNotification({
-            type: 'info',
-            message: 'No more profiles available at this time.',
-            displayStyle: 'toast',
-            duration: 4000
-          });
-          
-          return;
-        }
-          
-        // Process profiles with caching
-        const validMatches = result.matches
-          .filter((match: any): match is UserProfile => {
-            const isValid = match && 
-              typeof match === 'object' && 
-              match.id &&
-              match.name;
-
-            const isNotSeen = !seenIds.has(match.id);
+          try {
+            const { 
+              passedUsers, 
+              pendingLikes, 
+              potentialMatches, 
+              batchSize,
+              networkState: currentNetworkState
+            } = get();
             
-            return isValid && isNotSeen;
-          })
-          .map((match: any) => supabaseToUserProfile(match));
+            const seenIds = new Set([
+              ...passedUsers.map(p => p.id),
+              ...Array.from(pendingLikes)
+            ]);
 
-        if (debugStore.isDebugMode) {
-          console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] Match processing complete`, {
-            rawMatches: result.matches.length,
-            validMatches: validMatches.length,
-            cached: validMatches.length
-          });
-        }
-
-        // Warmup cache with new profiles
-        enhancedProfileCache.warmup(validMatches);
-
-        // Update state with new matches (replace on refresh, append otherwise)
-        const newPotentialMatches = validMatches;
-        
-        set(state => ({
-          potentialMatches: newPotentialMatches,
-          isLoading: false,
-          error: null,
-          noMoreProfiles: validMatches.length === 0,
-          cacheStats: enhancedProfileCache.getStats()
-        }));
-        
-        if (debugStore.isDebugMode) {
-          console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] SUCCESS - State updated`, {
-            totalMatches: newPotentialMatches.length,
-            newMatches: validMatches.length,
-            cacheSize: enhancedProfileCache.getStats().size
-          });
-        }
-        
-        // Show success notification for manual refreshes
-        if (validMatches.length > 0) {
-          notificationStore.addNotification({
-            type: 'success',
-            message: `Found ${validMatches.length} new profiles`,
-            displayStyle: 'toast',
-            duration: 3000
-          });
-        }
-      } catch (error) {
-        const errorDetails = {
-          originalError: error,
-          networkState: get().networkState,
-          cacheStats: get().cacheStats
-        };
-        
-        if (debugStore.isDebugMode) {
-          console.error(`🔍 [SIMPLIFIED-MATCHES][${callId}] ERROR CAUGHT`, errorDetails);
-        }
-        
-        const appError = handleError(error);
-        const readableError = getReadableError(error);
-
-        set({ 
-          error: appError.userMessage,
-          isLoading: false,
-          noMoreProfiles: true
-        });
-        
-        notificationStore.addNotification({
-          type: 'error',
-          message: `Failed to load matches: ${appError.userMessage}`,
-          displayStyle: 'toast',
-          duration: 6000
-        });
-        
-        throw appError;
-      }
-    }, {
-      rethrow: true,
-      silent: false
-    });
-  },
-
-  fetchMatches: async () => {
-    return await withErrorHandling(async () => {
-      const notificationStore = useNotificationStore.getState();
-      
-      set({ matchesLoading: true, error: null });
-      
-      try {
-        await withNetworkCheck(async () => {
-          if (!isSupabaseConfigured() || !supabase) {
-            throw {
-              category: ErrorCategory.DATABASE,
-              code: ErrorCodes.DB_CONNECTION_ERROR,
-              message: 'Database is not configured'
-            };
-          }
-          
-          // Fetch matches with enhanced retry logic
-          const { data: matchesData, error: matchesError } = await withRateLimitAndRetry(
-            async () => {
-              if (!supabase) throw new Error('Supabase client is not initialized');
-              return await supabase
-                .from('matches')
-                .select(`
-                  *,
-                  matched_user:users!matches_matched_user_id_fkey(*)
-                `)
-                .or(`user_id.eq.${useAuthStore.getState().user!.id},matched_user_id.eq.${useAuthStore.getState().user!.id}`)
-                .order('created_at', { ascending: false });
+            if (debugStore.isDebugMode) {
+              console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] Current state`, {
+                currentMatches: potentialMatches.length,
+                passedUsers: passedUsers.length,
+                pendingLikes: pendingLikes.size,
+                seenIds: seenIds.size,
+                batchSize,
+                networkQuality: currentNetworkState.connectionQuality
+              });
             }
-          );
-          
-          if (matchesError) {
-            const readableError = getReadableError(matchesError);
+
+            // Check network state before making request
+            if (!currentNetworkState.isOnline) {
+              throw {
+                category: ErrorCategory.NETWORK,
+                code: ErrorCodes.NETWORK_OFFLINE,
+                message: 'No internet connection available'
+              };
+            }
+
+            if (debugStore.isDebugMode) {
+              console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] Calling Supabase fetchPotentialMatches`, {
+                userId: useAuthStore.getState().user!.id,
+                limit: batchSize,
+                networkQuality: currentNetworkState.connectionQuality
+              });
+            }
+
+            // Fetch exactly 10 new potential matches
+            const result = await withCircuitBreaker(
+              () => fetchPotentialMatchesFromSupabase(
+                useAuthStore.getState().user!.id,
+                undefined,
+                undefined,
+                batchSize // Always 10
+              ),
+              'fetch_potential_matches'
+            );
+
+            if (debugStore.isDebugMode) {
+              console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] Supabase response`, {
+                hasResult: !!result,
+                matchesLength: result?.matches?.length || 0,
+                count: result?.count
+              });
+            }
+
+            // Handle case where no matches are returned
+            if (!result || !result.matches || result.matches.length === 0) {
+              if (debugStore.isDebugMode) {
+                console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] No matches found - setting noMoreProfiles`);
+              }
+              
+              set({ 
+                isLoading: false,
+                error: null,
+                noMoreProfiles: true
+              });
+              
+              notificationStore.addNotification({
+                type: 'info',
+                message: 'No more profiles available at this time.',
+                displayStyle: 'toast',
+                duration: 4000
+              });
+              
+              return;
+            }
+              
+            // Process profiles with caching
+            const validMatches = result.matches
+              .filter((match: any): match is UserProfile => {
+                const isValid = match && 
+                  typeof match === 'object' && 
+                  match.id &&
+                  match.name;
+
+                const isNotSeen = !seenIds.has(match.id);
+                
+                return isValid && isNotSeen;
+              })
+              .map((match: any) => supabaseToUserProfile(match));
+
+            if (debugStore.isDebugMode) {
+              console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] Match processing complete`, {
+                rawMatches: result.matches.length,
+                validMatches: validMatches.length,
+                cached: validMatches.length
+              });
+            }
+
+            // Warmup cache with new profiles
+            enhancedProfileCache.warmup(validMatches);
+
+            // Update state with new matches (replace on refresh, append otherwise)
+            const newPotentialMatches = validMatches;
+            
+            set(state => ({
+              potentialMatches: newPotentialMatches,
+              isLoading: false,
+              error: null,
+              noMoreProfiles: validMatches.length === 0,
+              cacheStats: enhancedProfileCache.getStats()
+            }));
+            
+            if (debugStore.isDebugMode) {
+              console.log(`🔍 [SIMPLIFIED-MATCHES][${callId}] SUCCESS - State updated`, {
+                totalMatches: newPotentialMatches.length,
+                newMatches: validMatches.length,
+                cacheSize: enhancedProfileCache.getStats().size
+              });
+            }
+            
+            // Show success notification for manual refreshes
+            if (validMatches.length > 0) {
+              notificationStore.addNotification({
+                type: 'success',
+                message: `Found ${validMatches.length} new profiles`,
+                displayStyle: 'toast',
+                duration: 3000
+              });
+            }
+          } catch (error) {
+            const errorDetails = {
+              originalError: error,
+              networkState: get().networkState,
+              cacheStats: get().cacheStats
+            };
+            
+            if (debugStore.isDebugMode) {
+              console.error(`🔍 [SIMPLIFIED-MATCHES][${callId}] ERROR CAUGHT`, errorDetails);
+            }
+            
+            const appError = handleError(error);
+            const readableError = getReadableError(error);
+
+            set({ 
+              error: appError.userMessage,
+              isLoading: false,
+              noMoreProfiles: true
+            });
+            
             notificationStore.addNotification({
               type: 'error',
-              message: `Failed to load matches: ${readableError}`,
+              message: `Failed to load matches: ${appError.userMessage}`,
               displayStyle: 'toast',
-              duration: 5000
+              duration: 6000
             });
-            throw {
-              category: ErrorCategory.DATABASE,
-              code: ErrorCodes.DB_QUERY_ERROR,
-              message: readableError
-            };
+            
+            throw appError;
           }
+        }, {
+          rethrow: true,
+          silent: false
+        });
+      },
+
+      fetchMatches: async () => {
+        logFunctionCall('fetchMatches');
+        return await withErrorHandling(async () => {
+          const notificationStore = useNotificationStore.getState();
           
-          // Convert to MatchWithProfile format with enhanced caching
-          const typedMatches: MatchWithProfile[] = (matchesData || []).map((match: any) => {
-            const isCurrentUserFirst = match.user_id === useAuthStore.getState().user!.id;
-            const matchedUserId = isCurrentUserFirst ? match.matched_user_id : match.user_id;
-            
-            // Cache the matched user profile
-            const matchedUserProfile = match.matched_user ? supabaseToUserProfile(match.matched_user) : null;
-            
-            return {
-              match_id: String(match.id || ''),
-              user_id: String(match.user_id || ''),
-              matched_user_id: String(match.matched_user_id || ''),
-              matched_user_profile: matchedUserProfile,
-              created_at: Number(match.created_at || Date.now()),
-              last_message_at: match.last_message_at ? Number(match.last_message_at) : undefined,
-              is_active: Boolean(match.is_active !== false)
-            } as MatchWithProfile;
-          }).filter((match: MatchWithProfile) => {
-            return match.matched_user_profile && 
-                   match.matched_user_profile.id && 
-                   match.matched_user_profile.name;
+          set({ matchesLoading: true, error: null });
+          
+          try {
+            await withNetworkCheck(async () => {
+              if (!isSupabaseConfigured() || !supabase) {
+                throw {
+                  category: ErrorCategory.DATABASE,
+                  code: ErrorCodes.DB_CONNECTION_ERROR,
+                  message: 'Database is not configured'
+                };
+              }
+              
+              // Fetch matches with enhanced retry logic
+              const { data: matchesData, error: matchesError } = await withRateLimitAndRetry(
+                async () => {
+                  if (!supabase) throw new Error('Supabase client is not initialized');
+                  return await supabase
+                    .from('matches')
+                    .select(`
+                      *,
+                      matched_user:users!matches_matched_user_id_fkey(*)
+                    `)
+                    .or(`user_id.eq.${useAuthStore.getState().user!.id},matched_user_id.eq.${useAuthStore.getState().user!.id}`)
+                    .order('created_at', { ascending: false });
+                }
+              );
+              
+              if (matchesError) {
+                const readableError = getReadableError(matchesError);
+                notificationStore.addNotification({
+                  type: 'error',
+                  message: `Failed to load matches: ${readableError}`,
+                  displayStyle: 'toast',
+                  duration: 5000
+                });
+                throw {
+                  category: ErrorCategory.DATABASE,
+                  code: ErrorCodes.DB_QUERY_ERROR,
+                  message: readableError
+                };
+              }
+              
+              // Convert to MatchWithProfile format with enhanced caching
+              const typedMatches: MatchWithProfile[] = (matchesData || []).map((match: any) => {
+                const isCurrentUserFirst = match.user_id === useAuthStore.getState().user!.id;
+                const matchedUserId = isCurrentUserFirst ? match.matched_user_id : match.user_id;
+                
+                // Cache the matched user profile
+                const matchedUserProfile = match.matched_user ? supabaseToUserProfile(match.matched_user) : null;
+                
+                return {
+                  match_id: String(match.id || ''),
+                  user_id: String(match.user_id || ''),
+                  matched_user_id: String(match.matched_user_id || ''),
+                  matched_user_profile: matchedUserProfile,
+                  created_at: Number(match.created_at || Date.now()),
+                  last_message_at: match.last_message_at ? Number(match.last_message_at) : undefined,
+                  is_active: Boolean(match.is_active !== false)
+                } as MatchWithProfile;
+              }).filter((match: MatchWithProfile) => {
+                return match.matched_user_profile && 
+                       match.matched_user_profile.id && 
+                       match.matched_user_profile.name;
+              });
+                
+                set({ 
+                matches: typedMatches, 
+                matchesLoading: false,
+                cacheStats: enhancedProfileCache.getStats()
+              });
+                
+                if (typedMatches.length > 0) {
+                  notificationStore.addNotification({
+                    type: 'success',
+                    message: `Loaded ${typedMatches.length} matches`,
+                    displayStyle: 'toast',
+                    duration: 2000
+                  });
+                }
+              });
+            } catch (error) {
+              const appError = handleError(error);
+              const readableError = getReadableError(error);
+              
+                set({ 
+                error: appError.userMessage,
+                matchesLoading: false
+              });
+              
+              notificationStore.addNotification({
+                type: 'error',
+                message: `Failed to load matches: ${readableError}`,
+                displayStyle: 'toast',
+                duration: 5000
+              });
+              
+              throw appError;
+            }
           });
+        });
+      },
+
+      likeUser: async (userId: string) => {
+        logFunctionCall('likeUser', { userId });
+        return await withErrorHandling(async () => {
+          const notificationStore = useNotificationStore.getState();
+          const swipeStartTime = Date.now();
           
+          set({ isLoading: true, error: null });
+        
+          try {
+            // Check usage limits
+            const swipeResult = await useUsageStore.getState().updateUsage('swipe');
+            if (!swipeResult.isAllowed) {
+              set({ swipeLimitReached: true, isLoading: false });
+              notificationStore.addNotification({
+                type: 'warning',
+                message: `Daily swipe limit reached. You can swipe again in ${swipeResult.remaining} hours`,
+                displayStyle: 'toast',
+                duration: 5000
+              });
+              throw {
+                category: ErrorCategory.BUSINESS,
+                code: ErrorCodes.BUSINESS_LIMIT_REACHED,
+                message: 'Daily swipe limit reached'
+              };
+            }
+
+            const likeResult = await useUsageStore.getState().updateUsage('like');
+            if (!likeResult.isAllowed) {
+              set({ swipeLimitReached: true, isLoading: false });
+              notificationStore.addNotification({
+                type: 'warning',
+                message: `Daily like limit reached. You can like again in ${likeResult.remaining} hours`,
+                displayStyle: 'toast',
+                duration: 5000
+              });
+              throw {
+                category: ErrorCategory.BUSINESS,
+                code: ErrorCodes.BUSINESS_LIMIT_REACHED,
+                message: 'Daily like limit reached'
+              };
+            }
+
+            // Optimistic update - immediately update UI
+            set(state => ({
+              pendingLikes: new Set([...state.pendingLikes, userId]),
+              optimisticUpdates: new Map([...state.optimisticUpdates, [userId, 'like']]),
+              potentialMatches: state.potentialMatches.filter(u => u.id !== userId),
+              lastSwipeTime: swipeStartTime
+            }));
+
+            // Process the like action immediately
+            const result = await withCircuitBreaker(
+              () => processSwipeBatchFromSupabase([{
+                swiper_id: useAuthStore.getState().user!.id,
+                swipee_id: userId,
+                direction: 'right',
+                swipe_timestamp: swipeStartTime
+              }]),
+              'like_processing'
+            );
+
+            if (!result) throw new Error('No result from like processing');
+
+            // Process any new matches
+            if (result.new_matches && result.new_matches.length > 0) {
+              const newMatch = result.new_matches[0];
+              set({ newMatch });
+              
+              notificationStore.addNotification({
+                type: 'success',
+                message: `New match! You matched with ${newMatch.matched_user_profile?.name || 'someone'}`,
+                displayStyle: 'toast',
+                duration: 4000
+              });
+            }
+
+            set({ isLoading: false });
+            return result.new_matches?.[0] || null;
+          } catch (error) {
+            // Rollback optimistic update on error
+            get().rollbackOptimisticUpdate(userId);
+            
+            const appError = handleError(error);
+            const readableError = getReadableError(error);
+            
             set({ 
-            matches: typedMatches, 
-            matchesLoading: false,
-            cacheStats: enhancedProfileCache.getStats()
-          });
-          
-          if (typedMatches.length > 0) {
-            notificationStore.addNotification({
-              type: 'success',
-              message: `Loaded ${typedMatches.length} matches`,
-              displayStyle: 'toast',
-              duration: 2000
+              error: appError.userMessage,
+              isLoading: false 
             });
+              
+            notificationStore.addNotification({
+              type: 'error',
+              message: `Failed to like profile: ${readableError}`,
+              displayStyle: 'toast',
+              duration: 4000
+            });
+            
+            throw appError;
           }
         });
-      } catch (error) {
-        const appError = handleError(error);
-        const readableError = getReadableError(error);
-        
-          set({ 
-          error: appError.userMessage,
-          matchesLoading: false
-        });
-        
-        notificationStore.addNotification({
-          type: 'error',
-          message: `Failed to load matches: ${readableError}`,
-          displayStyle: 'toast',
-          duration: 5000
-        });
-        
-        throw appError;
-      }
-    });
-  },
+      },
 
-  likeUser: async (userId: string) => {
-    return await withErrorHandling(async () => {
-      const notificationStore = useNotificationStore.getState();
-      const swipeStartTime = Date.now();
+      passUser: async (userId: string) => {
+        logFunctionCall('passUser', { userId });
+        return await withErrorHandling(async () => {
+          const notificationStore = useNotificationStore.getState();
+          const swipeStartTime = Date.now();
+          const { user } = useAuthStore.getState();
+        
+          set({ isLoading: true, error: null });
+        
+          try {
+            // Check swipe limits
+            const result = await useUsageStore.getState().updateUsage('swipe');
+            if (!result.isAllowed) {
+              set({ swipeLimitReached: true, isLoading: false });
+              notificationStore.addNotification({
+                type: 'warning',
+                message: `Daily swipe limit reached. You can swipe again in ${result.remaining} hours.`,
+                displayStyle: 'toast',
+                duration: 5000
+              });
+              throw {
+                category: ErrorCategory.BUSINESS,
+                code: ErrorCodes.BUSINESS_LIMIT_REACHED,
+                message: 'Daily swipe limit reached'
+              };
+            }
+            
+            // Enhanced passed user with expiration
+            const passedUser: PassedUser = {
+              id: userId,
+              timestamp: swipeStartTime,
+              reason: 'manual',
+              expiresAt: swipeStartTime + (PASS_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
+            };
+              
+            // Optimistic update
+            set(state => ({
+              passedUsers: [...state.passedUsers, passedUser],
+              optimisticUpdates: new Map([...state.optimisticUpdates, [userId, 'pass']]),
+              potentialMatches: state.potentialMatches.filter(u => u.id !== userId),
+              lastSwipeTime: swipeStartTime
+            }));
+
+            // Process the pass action immediately
+            await withCircuitBreaker(
+              () => processSwipeBatchFromSupabase([{
+                swiper_id: user!.id,
+                swipee_id: userId,
+                direction: 'left',
+                swipe_timestamp: swipeStartTime
+              }]),
+              'pass_processing'
+            );
+            
+            set({ isLoading: false });
+          } catch (error) {
+            // Rollback optimistic update on error
+            get().rollbackOptimisticUpdate(userId);
+            
+            const appError = handleError(error);
+            const readableError = getReadableError(error);
+            
+            set({ 
+              error: appError.userMessage,
+              isLoading: false 
+            });
+            
+            notificationStore.addNotification({
+              type: 'error',
+              message: `Failed to pass on profile: ${readableError}`,
+              displayStyle: 'toast',
+              duration: 4000
+            });
+            
+            throw appError;
+          }
+        });
+      },
+
+      clearError: () => set({ error: null }),
       
-      set({ isLoading: true, error: null });
-    
-      try {
-        // Check usage limits
-        const swipeResult = await useUsageStore.getState().updateUsage('swipe');
-        if (!swipeResult.isAllowed) {
-          set({ swipeLimitReached: true, isLoading: false });
-          notificationStore.addNotification({
-            type: 'warning',
-            message: `Daily swipe limit reached. You can swipe again in ${swipeResult.remaining} hours`,
-            displayStyle: 'toast',
-            duration: 5000
-          });
-          throw {
-            category: ErrorCategory.BUSINESS,
-            code: ErrorCodes.BUSINESS_LIMIT_REACHED,
-            message: 'Daily swipe limit reached'
-          };
-        }
+      clearNewMatch: () => set({ newMatch: null }),
 
-        const likeResult = await useUsageStore.getState().updateUsage('like');
-        if (!likeResult.isAllowed) {
-          set({ swipeLimitReached: true, isLoading: false });
-          notificationStore.addNotification({
-            type: 'warning',
-            message: `Daily like limit reached. You can like again in ${likeResult.remaining} hours`,
-            displayStyle: 'toast',
-            duration: 5000
-          });
-          throw {
-            category: ErrorCategory.BUSINESS,
-            code: ErrorCodes.BUSINESS_LIMIT_REACHED,
-            message: 'Daily like limit reached'
-          };
-        }
-
-        // Optimistic update - immediately update UI
-        set(state => ({
-          pendingLikes: new Set([...state.pendingLikes, userId]),
-          optimisticUpdates: new Map([...state.optimisticUpdates, [userId, 'like']]),
-          potentialMatches: state.potentialMatches.filter(u => u.id !== userId),
-          lastSwipeTime: swipeStartTime
-        }));
-
-        // Process the like action immediately
-        const result = await withCircuitBreaker(
-          () => processSwipeBatchFromSupabase([{
-            swiper_id: useAuthStore.getState().user!.id,
-            swipee_id: userId,
-            direction: 'right',
-            swipe_timestamp: swipeStartTime
-          }]),
-          'like_processing'
-        );
-
-        if (!result) throw new Error('No result from like processing');
-
-        // Process any new matches
-        if (result.new_matches && result.new_matches.length > 0) {
-          const newMatch = result.new_matches[0];
-          set({ newMatch });
+      resetCacheAndState: async () => {
+        return await withErrorHandling(async () => {
+          // Clear enhanced cache
+          enhancedProfileCache.clear();
           
-          notificationStore.addNotification({
-            type: 'success',
-            message: `New match! You matched with ${newMatch.matched_user_profile?.name || 'someone'}`,
-            displayStyle: 'toast',
-            duration: 4000
+          set((state: MatchesState) => ({
+            potentialMatches: [],
+            cachedMatches: [],
+            matches: [],
+            isLoading: false,
+            error: null,
+            newMatch: null,
+            swipeLimitReached: false,
+            matchLimitReached: false,
+            noMoreProfiles: false,
+            optimisticUpdates: new Map(),
+            cacheStats: enhancedProfileCache.getStats()
+          }));
+        });
+      },
+
+      cleanupExpiredPasses: async () => {
+        return await withErrorHandling(async () => {
+          const state = get();
+          const now = Date.now();
+          const updatedPasses = state.passedUsers.filter((pass: PassedUser) => {
+            return now < pass.expiresAt;
           });
-        }
-
-        set({ isLoading: false });
-        return result.new_matches?.[0] || null;
-      } catch (error) {
-        // Rollback optimistic update on error
-        get().rollbackOptimisticUpdate(userId);
-        
-        const appError = handleError(error);
-        const readableError = getReadableError(error);
-        
-        set({ 
-          error: appError.userMessage,
-          isLoading: false 
-        });
           
-        notificationStore.addNotification({
-          type: 'error',
-          message: `Failed to like profile: ${readableError}`,
-          displayStyle: 'toast',
-          duration: 4000
+          if (updatedPasses.length !== state.passedUsers.length) {
+            set((state: MatchesState) => ({ passedUsers: updatedPasses }));
+            console.log(`[MatchesStore] Cleaned up ${state.passedUsers.length - updatedPasses.length} expired passes`);
+          }
         });
-        
-        throw appError;
+      },
+
+      getNetworkState: () => networkState,
+      getCacheStats: () => enhancedProfileCache.getStats(),
+      warmupCache: (profiles: UserProfile[]) => enhancedProfileCache.warmup(profiles),
+      rollbackOptimisticUpdate: (userId: string) => {
+        const state = get();
+        const updatedOptimisticUpdates = new Map(state.optimisticUpdates);
+        updatedOptimisticUpdates.delete(userId);
+        set({ optimisticUpdates: updatedOptimisticUpdates });
       }
-    });
-  },
-
-  passUser: async (userId: string) => {
-    return await withErrorHandling(async () => {
-      const notificationStore = useNotificationStore.getState();
-      const swipeStartTime = Date.now();
-      const { user } = useAuthStore.getState();
-    
-      set({ isLoading: true, error: null });
-    
-      try {
-        // Check swipe limits
-        const result = await useUsageStore.getState().updateUsage('swipe');
-        if (!result.isAllowed) {
-          set({ swipeLimitReached: true, isLoading: false });
-          notificationStore.addNotification({
-            type: 'warning',
-            message: `Daily swipe limit reached. You can swipe again in ${result.remaining} hours.`,
-            displayStyle: 'toast',
-            duration: 5000
-          });
-          throw {
-            category: ErrorCategory.BUSINESS,
-            code: ErrorCodes.BUSINESS_LIMIT_REACHED,
-            message: 'Daily swipe limit reached'
-          };
-        }
-        
-        // Enhanced passed user with expiration
-        const passedUser: PassedUser = {
-          id: userId,
-          timestamp: swipeStartTime,
-          reason: 'manual',
-          expiresAt: swipeStartTime + (PASS_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
-        };
-          
-        // Optimistic update
-        set(state => ({
-          passedUsers: [...state.passedUsers, passedUser],
-          optimisticUpdates: new Map([...state.optimisticUpdates, [userId, 'pass']]),
-          potentialMatches: state.potentialMatches.filter(u => u.id !== userId),
-          lastSwipeTime: swipeStartTime
-        }));
-
-        // Process the pass action immediately
-        await withCircuitBreaker(
-          () => processSwipeBatchFromSupabase([{
-            swiper_id: user!.id,
-            swipee_id: userId,
-            direction: 'left',
-            swipe_timestamp: swipeStartTime
-          }]),
-          'pass_processing'
-        );
-        
-        set({ isLoading: false });
-      } catch (error) {
-        // Rollback optimistic update on error
-        get().rollbackOptimisticUpdate(userId);
-        
-        const appError = handleError(error);
-        const readableError = getReadableError(error);
-        
-        set({ 
-          error: appError.userMessage,
-          isLoading: false 
-        });
-        
-        notificationStore.addNotification({
-          type: 'error',
-          message: `Failed to pass on profile: ${readableError}`,
-          displayStyle: 'toast',
-          duration: 4000
-        });
-        
-        throw appError;
-      }
-    });
-  },
-
-  clearError: () => set({ error: null }),
-  
-  clearNewMatch: () => set({ newMatch: null }),
-
-  resetCacheAndState: async () => {
-    return await withErrorHandling(async () => {
-      // Clear enhanced cache
-      enhancedProfileCache.clear();
-      
-      set((state: MatchesState) => ({
-        potentialMatches: [],
-        cachedMatches: [],
-        matches: [],
-        isLoading: false,
-        error: null,
-        newMatch: null,
-        swipeLimitReached: false,
-        matchLimitReached: false,
-        noMoreProfiles: false,
-        optimisticUpdates: new Map(),
-        cacheStats: enhancedProfileCache.getStats()
-      }));
-    });
-  },
-
-  cleanupExpiredPasses: async () => {
-    return await withErrorHandling(async () => {
-      const state = get();
-      const now = Date.now();
-      const updatedPasses = state.passedUsers.filter((pass: PassedUser) => {
-        return now < pass.expiresAt;
-      });
-      
-      if (updatedPasses.length !== state.passedUsers.length) {
-        set((state: MatchesState) => ({ passedUsers: updatedPasses }));
-        console.log(`[MatchesStore] Cleaned up ${state.passedUsers.length - updatedPasses.length} expired passes`);
-      }
-    });
-  },
-
-  getNetworkState: () => networkState,
-  getCacheStats: () => enhancedProfileCache.getStats(),
-  warmupCache: (profiles: UserProfile[]) => enhancedProfileCache.warmup(profiles),
-  rollbackOptimisticUpdate: (userId: string) => {
-    const state = get();
-    const updatedOptimisticUpdates = new Map(state.optimisticUpdates);
-    updatedOptimisticUpdates.delete(userId);
-    set({ optimisticUpdates: updatedOptimisticUpdates });
-  }
-}));
+    })), {
+      name: 'matches-store',
+      storage: createJSONStorage(() => AsyncStorage),
+    }
+  )
+);

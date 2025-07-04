@@ -26,6 +26,10 @@ import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory } 
  * - Improved user feedback through notification system
  * - Better error categorization and messages
  * - Enhanced database operations with error recovery
+ * - Added comprehensive debug logging system
+ * - Enhanced state change tracking
+ * - Added function call tracing
+ * - Added data flow logging
  * 
  * FILE INTERACTIONS:
  * - Imports from: auth-store (tier settings)
@@ -54,6 +58,34 @@ import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory } 
  * 3. Sets up sync intervals
  * 4. Starts background sync
  */
+
+// Debug logging configuration
+const DEBUG_PREFIX = '[UsageStore]';
+const logDebug = (message: string, data?: any) => {
+  const timestamp = new Date().toISOString();
+  const logMessage = `${timestamp} ${DEBUG_PREFIX} ${message}`;
+  if (data) {
+    console.log(logMessage, JSON.stringify(data, null, 2));
+  } else {
+    console.log(logMessage);
+  }
+};
+
+const logStateChange = (action: string, prevState: any, nextState: any) => {
+  logDebug(`State Change - ${action}`, {
+    prev: prevState,
+    next: nextState,
+    changes: Object.keys(nextState).filter(key => prevState[key] !== nextState[key])
+  });
+};
+
+const logFunctionCall = (name: string, args?: any) => {
+  logDebug(`Function Call - ${name}`, args);
+};
+
+const logDataFlow = (operation: string, data: any) => {
+  logDebug(`Data Flow - ${operation}`, data);
+};
 
 // Default usage cache
 const defaultUsageCache: UsageCache = {
@@ -155,15 +187,19 @@ export const useUsageStore = create<UsageStore>()(
       retryStrategy: defaultRetryStrategy,
 
       fetchDatabaseTotals: async (userId: string) => {
+        logFunctionCall('fetchDatabaseTotals', { userId });
+        
         if (!userId || !isSupabaseConfigured() || !supabase) {
-          console.log('Cannot fetch database totals: Invalid user ID or Supabase not configured');
+          const error = 'Cannot fetch database totals: Invalid user ID or Supabase not configured';
+          logDebug('Error', { error });
           return;
         }
 
         try {
-          // Get today's date in YYYY-MM-DD format
           const today = new Date().toISOString().split('T')[0];
+          logDebug('Fetching totals for date', { date: today });
           
+          const prevState = get();
           const { data, error } = await supabase
             .from('user_daily_usage')
             .select('swipe_count, match_count, message_count, like_count, daily_reset_at')
@@ -172,21 +208,10 @@ export const useUsageStore = create<UsageStore>()(
             .maybeSingle();
 
           if (error) {
-            const errorMessage = safeStringifyError(error);
-            console.error('Failed to fetch database totals:', errorMessage);
-            
-            // Use error handler to show user-friendly error
-            const appError = handleError(error);
-            useNotificationStore.getState().addNotification({
-              type: 'error',
-              message: `Failed to fetch usage data: ${appError.userMessage}`,
-              displayStyle: 'toast',
-              duration: 5000
-            });
-            throw new Error(`Failed to fetch database totals: ${appError.userMessage}`);
+            logDebug('Database Error', { error });
+            throw error;
           }
 
-          // If no record exists for today, return default values
           if (!data) {
             const defaultTotals: DatabaseTotals = {
               swipe_count: 0,
@@ -195,50 +220,40 @@ export const useUsageStore = create<UsageStore>()(
               like_count: 0,
               daily_reset_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
             };
+            logDataFlow('Using default totals', defaultTotals);
             set({ databaseTotals: defaultTotals });
+            logStateChange('setDefaultTotals', prevState, get());
             return defaultTotals;
           }
 
+          logDataFlow('Received database totals', data);
           set({ databaseTotals: data });
+          logStateChange('setDatabaseTotals', prevState, get());
           return data;
         } catch (error) {
-          const appError = handleError(error);
-          const errorMessage = safeStringifyError(error);
-          console.error('Error fetching database totals:', errorMessage);
+          logDebug('Error in fetchDatabaseTotals', { error });
+          const prevState = get();
           set({ databaseTotals: null });
-          
-          useNotificationStore.getState().addNotification({
-            type: 'error',
-            message: `Database error: ${appError.userMessage}`,
-            displayStyle: 'toast',
-            duration: 5000
-          });
+          logStateChange('clearDatabaseTotals', prevState, get());
+          throw error;
         }
       },
 
       initializeUsage: async (userId: string) => {
+        logFunctionCall('initializeUsage', { userId });
+        
         if (!userId || !isSupabaseConfigured() || !supabase) {
-          const errorMessage = 'Cannot initialize usage: Invalid user ID or Supabase not configured';
-          console.log('Skipping usage initialization:', errorMessage);
-          
-          const appError = handleError(new Error(errorMessage));
-          useNotificationStore.getState().addNotification({
-            type: 'error',
-            message: appError.userMessage,
-            displayStyle: 'toast',
-            duration: 5000
-          });
-          throw new Error(errorMessage);
+          const error = 'Cannot initialize usage: Invalid user ID or Supabase not configured';
+          logDebug('Initialization Error', { error });
+          throw new Error(error);
         }
 
         try {
-          console.log('Initializing usage data for user:', userId);
+          logDebug('Starting usage initialization');
           const now = Date.now();
-          
-          // Get today's date in YYYY-MM-DD format
           const today = new Date().toISOString().split('T')[0];
           
-          // First try to find any existing record for this user for today
+          logDebug('Checking existing usage record');
           const { data: existingData, error: findError } = await supabase
             .from('user_daily_usage')
             .select('*')
@@ -247,18 +262,11 @@ export const useUsageStore = create<UsageStore>()(
             .maybeSingle();
 
           if (findError) {
-            const appError = handleError(findError);
-            const errorMessage = safeStringifyError(findError);
-            console.error('Error finding existing usage record:', errorMessage);
-            
-            useNotificationStore.getState().addNotification({
-              type: 'error',
-              message: `Failed to check usage record: ${appError.userMessage}`,
-              displayStyle: 'toast',
-              duration: 5000
-            });
-            throw new Error(`Failed to check for existing usage record: ${appError.userMessage}`);
+            logDebug('Error finding existing record', { error: findError });
+            throw findError;
           }
+
+          logDataFlow('Existing usage data', existingData);
 
           // If record exists, update it (including resetting if expired)
           if (existingData) {
@@ -332,6 +340,7 @@ export const useUsageStore = create<UsageStore>()(
 
             console.log('Updated existing usage record:', usageCache);
             set({ usageCache });
+            logStateChange('setUsageCache', get(), { usageCache });
             return;
           }
 
@@ -406,15 +415,15 @@ export const useUsageStore = create<UsageStore>()(
 
           console.log('Created new usage record:', usageCache);
           set({ usageCache });
+          logStateChange('setUsageCache', get(), { usageCache });
         } catch (error) {
-          const appError = handleError(error);
-          const errorMessage = safeStringifyError(error);
-          console.error('Error initializing usage:', errorMessage);
-          set({ lastSyncError: appError.userMessage });
+          logDebug('Error in initializeUsage', { error });
+          const prevState = get();
+          set({ lastSyncError: safeStringifyError(error) });
           
           useNotificationStore.getState().addNotification({
             type: 'error',
-            message: `Usage initialization failed: ${appError.userMessage}`,
+            message: `Usage initialization failed: ${safeStringifyError(error)}`,
             displayStyle: 'toast',
             duration: 5000
           });

@@ -12,9 +12,38 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth-store';
+import { useUsageStore } from '@/store/usage-store';
 import Colors from '@/constants/colors';
 import { Button } from '@/components/Button';
 import { RefreshCw, X, Heart } from 'lucide-react-native';
+
+// Debug logging configuration
+const DEBUG_PREFIX = '[Discovery]';
+const logDebug = (message: string, data?: any) => {
+  const timestamp = new Date().toISOString();
+  const logMessage = `${timestamp} ${DEBUG_PREFIX} ${message}`;
+  if (data) {
+    console.log(logMessage, JSON.stringify(data, null, 2));
+  } else {
+    console.log(logMessage);
+  }
+};
+
+const logLifecycle = (phase: string, data?: any) => {
+  logDebug(`Lifecycle - ${phase}`, data);
+};
+
+const logDataFlow = (operation: string, data: any) => {
+  logDebug(`Data Flow - ${operation}`, data);
+};
+
+const logStateChange = (action: string, prevState: any, nextState: any) => {
+  logDebug(`State Change - ${action}`, {
+    prev: prevState,
+    next: nextState,
+    changes: Object.keys(nextState).filter(key => prevState[key] !== nextState[key])
+  });
+};
 
 const { width: screenWidth } = Dimensions.get('window');
 const CARD_WIDTH = screenWidth - 40;
@@ -43,9 +72,13 @@ export default function DiscoveryScreen() {
   const [noMoreProfiles, setNoMoreProfiles] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuthStore();
+  const { usageCache, initializeUsage } = useUsageStore();
 
   const fetchUsers = async () => {
+    logDebug('Starting fetchUsers');
+    
     if (!user?.id || !supabase) {
+      logDebug('Fetch aborted - missing user or supabase', { userId: user?.id });
       setError('User not authenticated');
       setLoading(false);
       setRefreshing(false);
@@ -54,7 +87,24 @@ export default function DiscoveryScreen() {
 
     try {
       setError(null);
-      console.log('Calling fetch_potential_matches function with user:', user.id);
+      logDebug('Checking usage cache status', { 
+        hasUsageCache: !!usageCache,
+        userId: user.id 
+      });
+
+      // Initialize usage if not already done
+      if (!usageCache) {
+        logDebug('Usage cache not found, initializing');
+        await initializeUsage(user.id);
+        logDebug('Usage cache initialized');
+      }
+
+      logDebug('Calling fetch_potential_matches', { 
+        userId: user.id,
+        limit: 15,
+        maxDistance: 50,
+        isGlobalDiscovery: false
+      });
       
       const { data, error } = await supabase.rpc('fetch_potential_matches', {
         p_user_id: user.id,
@@ -64,54 +114,83 @@ export default function DiscoveryScreen() {
       });
 
       if (error) {
-        console.error('Error fetching users:', error);
+        logDebug('RPC Error', { error });
         setError(`Error fetching users: ${error.message || 'Unknown error'}`);
         return;
       }
 
-      console.log('Received data:', data);
+      logDataFlow('Received potential matches', {
+        matchCount: data?.matches?.length || 0
+      });
       
       if (data && data.matches && data.matches.length > 0) {
+        const prevUsers = users;
         setUsers(data.matches);
+        logStateChange('setUsers', prevUsers, data.matches);
+        
+        const prevIndex = currentIndex;
         setCurrentIndex(0);
+        logStateChange('setCurrentIndex', prevIndex, 0);
+        
         setNoMoreProfiles(false);
       } else {
         setUsers([]);
         setNoMoreProfiles(true);
+        logDebug('No profiles available');
       }
     } catch (error) {
-      console.error('Error in fetchUsers:', error);
+      logDebug('Error in fetchUsers', { error });
       setError(`Error fetching users: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
       setRefreshing(false);
+      logDebug('Fetch completed', { 
+        loading: false, 
+        refreshing: false,
+        error: error,
+        userCount: users.length
+      });
     }
   };
 
   useEffect(() => {
+    logLifecycle('Mount');
     fetchUsers();
+    return () => {
+      logLifecycle('Unmount');
+    };
   }, []);
 
   const handleRefresh = () => {
+    logDebug('Refresh requested');
     setRefreshing(true);
     fetchUsers();
   };
 
   const handlePass = () => {
+    logDebug('Pass action', { userId: users[currentIndex]?.id });
     if (currentIndex < users.length - 1) {
+      const prevIndex = currentIndex;
       setCurrentIndex(currentIndex + 1);
+      logStateChange('setCurrentIndex', prevIndex, currentIndex + 1);
     } else {
       setNoMoreProfiles(true);
+      logDebug('No more profiles after pass');
     }
   };
 
   const handleConnect = () => {
-    // TODO: Implement connect logic
-    console.log('Connect with user:', users[currentIndex]?.name);
+    logDebug('Connect action', { 
+      userId: users[currentIndex]?.id,
+      userName: users[currentIndex]?.name 
+    });
     if (currentIndex < users.length - 1) {
+      const prevIndex = currentIndex;
       setCurrentIndex(currentIndex + 1);
+      logStateChange('setCurrentIndex', prevIndex, currentIndex + 1);
     } else {
       setNoMoreProfiles(true);
+      logDebug('No more profiles after connect');
     }
   };
 
