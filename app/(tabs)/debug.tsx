@@ -104,6 +104,33 @@ export default function DebugScreen() {
         <Text style={styles.title}>Debug Information</Text>
         <Text style={styles.subtitle}>Last Updated: {lastRefresh.toLocaleTimeString()}</Text>
 
+        {/* CRITICAL: Debug Mode Status - Always Visible */}
+        <View style={[styles.section, { backgroundColor: isDebugMode ? Colors.light.success + '20' : Colors.light.error + '20' }]}>
+          <Text style={[styles.sectionTitle, { color: isDebugMode ? Colors.light.success : Colors.light.error }]}>
+            🚨 DEBUG MODE STATUS
+          </Text>
+          <View style={styles.infoBlock}>
+            <Text style={[styles.value, { fontSize: 18, fontWeight: 'bold' }]}>
+              {isDebugMode ? '✅ DEBUG MODE ENABLED' : '❌ DEBUG MODE DISABLED'}
+            </Text>
+            <Text style={styles.label}>
+              {isDebugMode 
+                ? 'All systems are logging. Operation timeline will populate.' 
+                : 'NO LOGS GENERATED - This is why operation timeline is blank and cards may not show!'}
+            </Text>
+          </View>
+          <Button
+            title={isDebugMode ? 'Disable Debug Mode' : 'ENABLE DEBUG MODE NOW'}
+            onPress={toggleDebugMode}
+            variant={isDebugMode ? 'danger' : 'primary'}
+          />
+          {!isDebugMode && (
+            <Text style={styles.warningText}>
+              ⚠️ IMPORTANT: Enable debug mode to see what's happening with your profiles and SwipeCards!
+            </Text>
+          )}
+        </View>
+
         {/* Debug Mode Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Debug Mode</Text>
