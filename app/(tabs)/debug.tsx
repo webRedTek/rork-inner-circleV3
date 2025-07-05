@@ -59,7 +59,7 @@ export default function DebugScreen() {
     fetchPotentialMatches
   } = useMatchesStore();
 
-  const { user, allTierSettings } = useAuthStore();
+  const { user, allTierSettings, tierSettingsTimestamp } = useAuthStore();
 
   // Get debug logs
   const { debugLog } = useDebugStore();
@@ -245,13 +245,37 @@ export default function DebugScreen() {
             </Text>
           </View>
 
-          {allTierSettings && (
+          <View style={styles.infoBlock}>
+            <Text style={styles.label}>Tier Settings Cache:</Text>
+            <Text style={styles.value}>
+              {allTierSettings ? (
+                <>
+                  Status: Cached{'\n'}
+                  Tiers Available: {Object.keys(allTierSettings).join(', ')}{'\n'}
+                                     Cache Age: {formatDuration(Date.now() - (tierSettingsTimestamp || 0))}{'\n'}
+                   Cache Valid: {(() => {
+                     if (!tierSettingsTimestamp) return 'No';
+                     const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+                     const isValid = (Date.now() - tierSettingsTimestamp) < CACHE_TTL;
+                     const expiresIn = tierSettingsTimestamp + CACHE_TTL - Date.now();
+                     return isValid ? `Yes (expires in ${formatDuration(expiresIn)})` : 'No (expired)';
+                   })()}
+                </>
+              ) : (
+                'Not cached - will fetch on next request'
+              )}
+            </Text>
+          </View>
+
+          {allTierSettings && user?.membershipTier && (
             <View style={styles.infoBlock}>
-              <Text style={styles.label}>Tier Settings:</Text>
+              <Text style={styles.label}>Current User Tier Settings:</Text>
               <Text style={styles.value}>
-                {(Object.keys(allTierSettings) as MembershipTier[]).map(tier => (
-                  `${tier}:\n${JSON.stringify(allTierSettings[tier], null, 2)}\n`
-                ))}
+                {(() => {
+                  const userTier = allTierSettings[user.membershipTier];
+                  if (!userTier) return 'No settings found for current tier';
+                  return `Swipe Limit: ${userTier.daily_swipe_limit}${'\n'}Match Limit: ${userTier.daily_match_limit}${'\n'}Like Limit: ${userTier.daily_like_limit}${'\n'}Message Limit: ${userTier.message_sending_limit}`;
+                })()}
               </Text>
             </View>
           )}
@@ -353,22 +377,35 @@ export default function DebugScreen() {
           <View style={styles.debugSubsection}>
             <Text style={styles.debugSubtitle}>Database Query Debug</Text>
             <Text style={styles.debugText}>
-              Last Database Query: {formatTime(Date.now())}{'\n'}
+              RPC Function: fetch_potential_matches{'\n'}
               Query Parameters:{'\n'}
               - User ID: {user?.id || 'Not available'}{'\n'}
               - Global Discovery: true{'\n'}
               - Limit: 50{'\n'}
               - Offset: 0{'\n'}
-              
+              {'\n'}
+              Expected Response Flow:{'\n'}
+              1. Database RPC execution{'\n'}
+              2. Raw profile results returned{'\n'}
+              3. Profile validation & processing{'\n'}
+              4. Cache population{'\n'}
+              5. UI update with new profiles{'\n'}
+              {'\n'}
               {databaseTotals && (
                 <>
-                  Database Totals:{'\n'}
+                  Current Database Totals:{'\n'}
                   - Swipes: {databaseTotals.swipe_count}{'\n'}
                   - Matches: {databaseTotals.match_count}{'\n'}
                   - Likes: {databaseTotals.like_count}{'\n'}
                   - Messages: {databaseTotals.message_count}{'\n'}
+                  {'\n'}
                 </>
               )}
+              Check timeline below for:{'\n'}
+              - RPC response details (count, timing){'\n'}
+              - Profile processing results{'\n'}
+              - Rejection reasons if profiles excluded{'\n'}
+              - Cache population success/failure
             </Text>
           </View>
 
@@ -416,12 +453,19 @@ export default function DebugScreen() {
               4. Error state: {error || 'No errors'}{'\n'}
               5. Loading state: {isLoading ? 'Currently loading' : 'Not loading'}{'\n'}
               6. Sync status: {isSyncing ? 'Currently syncing' : 'Not syncing'}{'\n'}
+              7. Tier settings: {allTierSettings ? 'Cached' : 'Not cached'}{'\n'}
               
               If profiles not showing:{'\n'}
-              - Check if fetch_potential_matches returns data{'\n'}
-              - Verify profile validation passes{'\n'}
-              - Ensure cache is being populated{'\n'}
-              - Check for errors in RPC call{'\n'}
+              - Check timeline for RPC response count{'\n'}
+              - Look for profile processing rejections{'\n'}
+              - Verify cache population completed{'\n'}
+              - Check for database query errors{'\n'}
+              - Ensure profile validation criteria met{'\n'}
+              
+              Performance optimizations:{'\n'}
+              - Tier settings now cached (24hr TTL){'\n'}
+              - Debug logs only in debug mode{'\n'}
+              - Detailed timeline shows exact failure points
             </Text>
           </View>
 
