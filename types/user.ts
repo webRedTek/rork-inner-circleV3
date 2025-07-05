@@ -410,6 +410,7 @@ export interface UsageStore {
   getCurrentUsage: (type: string) => number;
   
   // Core functions
+  loadRateLimits: (userId: string) => Promise<void>;
   initializeUsage: (userId: string) => Promise<void>;
   fetchDatabaseTotals: (userId: string) => Promise<void>;
   syncUsageData: (userId: string, force?: boolean) => Promise<void>;

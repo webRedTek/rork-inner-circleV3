@@ -70,10 +70,10 @@ export const useUsageStore = create<UsageStore>()(
       databaseTotals: null,
       saveStrategy: 'IMMEDIATE',
       rateLimits: {
-        dailySwipeLimit: 10000,
-        dailyMatchLimit: 100,
-        dailyLikeLimit: 50,
-        dailyMessageLimit: 500,
+        dailySwipeLimit: 0,
+        dailyMatchLimit: 0,
+        dailyLikeLimit: 0,
+        dailyMessageLimit: 0,
       },
       cacheConfig: {
         maxAge: 300000, // 5 minutes
@@ -145,6 +145,28 @@ export const useUsageStore = create<UsageStore>()(
         return databaseTotals.message_count < rateLimits.dailyMessageLimit;
       },
 
+      // Load rate limits from user's tier settings
+      loadRateLimits: async (userId: string) => {
+        try {
+          const { useAuthStore } = require('@/store/auth-store');
+          const { getTierSettings } = useAuthStore.getState();
+          
+          const tierSettings = await getTierSettings();
+          if (tierSettings) {
+            set({
+              rateLimits: {
+                dailySwipeLimit: tierSettings.daily_swipe_limit || 0,
+                dailyMatchLimit: tierSettings.daily_match_limit || 0,
+                dailyLikeLimit: tierSettings.daily_like_limit || 0,
+                dailyMessageLimit: tierSettings.message_sending_limit || 0,
+              }
+            });
+          }
+        } catch (error) {
+          logger.logDebug('Failed to load rate limits:', { error });
+        }
+      },
+
       // Core functions
       initializeUsage: async (userId: string) => {
         logger.logDebug('Initializing usage for user:', { userId });
@@ -187,6 +209,10 @@ export const useUsageStore = create<UsageStore>()(
             },
           });
           
+          // Load rate limits from tier settings first
+          await get().loadRateLimits(userId);
+          
+          // Then fetch database totals
           await get().fetchDatabaseTotals(userId);
           
           logger.logDebug('Usage initialization completed');
