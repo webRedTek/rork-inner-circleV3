@@ -32,20 +32,44 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
     tier: false,
   });
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Cache store data to prevent setState during render
+  const [cachedUsageData, setCachedUsageData] = useState<any>(null);
+  const [cachedTierSettings, setCachedTierSettings] = useState<any>(null);
+  const [cachedUsageCache, setCachedUsageCache] = useState<any>(null);
+
+  // Load data once when modal opens, not during every render
+  useEffect(() => {
+    if (visible) {
+      setCachedUsageCache(getUsageCache());
+      setCachedTierSettings(getTierSettings());
+      setCachedUsageData({
+        swipe: getCurrentUsage('swipe'),
+        match: getCurrentUsage('match'),
+        like: getCurrentUsage('like'),
+        message: getCurrentUsage('message'),
+        boost_minutes: getCurrentUsage('boost_minutes'),
+        boost_uses: getCurrentUsage('boost_uses'),
+        groups_joined: getCurrentUsage('groups_joined'),
+        groups_created: getCurrentUsage('groups_created'),
+        events_created: getCurrentUsage('events_created'),
+        direct_intro: getCurrentUsage('direct_intro'),
+      });
+    }
+  }, [visible, getUsageCache, getTierSettings, getCurrentUsage]);
 
   const getDailyLimit = (type: string) => {
-    const settings = getTierSettings();
-    if (!settings) return 'N/A';
+    if (!cachedTierSettings) return 'N/A';
     
     switch (type) {
       case 'swipe':
-        return settings.daily_swipe_limit || 'N/A';
+        return cachedTierSettings.daily_swipe_limit || 'N/A';
       case 'match':
-        return settings.daily_match_limit || 'N/A';
+        return cachedTierSettings.daily_match_limit || 'N/A';
       case 'like':
-        return settings.daily_like_limit || 'N/A';
+        return cachedTierSettings.daily_like_limit || 'N/A';
       case 'message':
-        return settings.message_sending_limit || 'N/A';
+        return cachedTierSettings.message_sending_limit || 'N/A';
       default:
         return 'N/A';
     }
@@ -65,14 +89,10 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
   };
 
   const handleCopyToClipboard = () => {
-    const cache = getUsageCache();
-    const totals = getDatabaseTotals();
-    const settings = getTierSettings();
-    
     const cacheData = {
-      usageCache: cache,
-      databaseTotals: totals,
-      tierSettings: settings,
+      usageCache: cachedUsageCache,
+      usageData: cachedUsageData,
+      tierSettings: cachedTierSettings,
       timestamp: new Date().toISOString(),
     };
     
@@ -92,8 +112,7 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
   };
 
   const renderUsageData = () => {
-    const cache = getUsageCache();
-    if (!cache) return <Text style={styles.noDataText}>No usage data available</Text>;
+    if (!cachedUsageCache || !cachedUsageData) return <Text style={styles.noDataText}>No usage data available</Text>;
 
     const usageTypes = [
       { type: 'swipe', label: 'Swipe' },
@@ -103,7 +122,7 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
     ];
     
     return usageTypes.map(({ type, label }) => {
-      const currentCount = getCurrentUsage(type);
+      const currentCount = cachedUsageData[type] || 0;
       const limit = getDailyLimit(type);
       const isCloseToLimit = typeof limit === 'number' && currentCount >= limit * 0.8;
 
@@ -117,7 +136,7 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
             Daily Reset
           </Text>
           <Text style={styles.cell}>
-            {formatTimestamp(cache.lastSyncTimestamp ?? null)}
+            {formatTimestamp(cachedUsageCache.lastSyncTimestamp ?? null)}
           </Text>
         </View>
       );
@@ -125,9 +144,10 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
   };
 
   const renderPremiumFeatures = () => {
-    const boostMinutesUsed = getCurrentUsage('boost_minutes');
-    const boostUsesCount = getCurrentUsage('boost_uses');
-    const cache = getUsageCache();
+    if (!cachedUsageData || !cachedUsageCache) return <Text style={styles.noDataText}>No premium data available</Text>;
+    
+    const boostMinutesUsed = cachedUsageData.boost_minutes || 0;
+    const boostUsesCount = cachedUsageData.boost_uses || 0;
     
     return (
       <>
@@ -135,24 +155,25 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
           <Text style={styles.cell}>Boost Minutes Used</Text>
           <Text style={styles.cell}>{boostMinutesUsed}</Text>
           <Text style={styles.cell}>Daily Reset</Text>
-          <Text style={styles.cell}>{formatTimestamp(cache?.lastSyncTimestamp ?? null)}</Text>
+          <Text style={styles.cell}>{formatTimestamp(cachedUsageCache.lastSyncTimestamp ?? null)}</Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.cell}>Boost Uses</Text>
           <Text style={styles.cell}>{boostUsesCount}</Text>
           <Text style={styles.cell}>Daily Reset</Text>
-          <Text style={styles.cell}>{formatTimestamp(cache?.lastSyncTimestamp ?? null)}</Text>
+          <Text style={styles.cell}>{formatTimestamp(cachedUsageCache.lastSyncTimestamp ?? null)}</Text>
         </View>
       </>
     );
   };
 
   const renderAnalytics = () => {
-    const groupsJoined = getCurrentUsage('groups_joined');
-    const groupsCreated = getCurrentUsage('groups_created');
-    const eventsCreated = getCurrentUsage('events_created');
-    const directIntros = getCurrentUsage('direct_intro');
-    const cache = getUsageCache();
+    if (!cachedUsageData || !cachedUsageCache) return <Text style={styles.noDataText}>No analytics data available</Text>;
+    
+    const groupsJoined = cachedUsageData.groups_joined || 0;
+    const groupsCreated = cachedUsageData.groups_created || 0;
+    const eventsCreated = cachedUsageData.events_created || 0;
+    const directIntros = cachedUsageData.direct_intro || 0;
     
     return (
       <>
@@ -160,57 +181,56 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
           <Text style={styles.cell}>Groups Joined</Text>
           <Text style={styles.cell}>{groupsJoined}</Text>
           <Text style={styles.cell}>Daily Reset</Text>
-          <Text style={styles.cell}>{formatTimestamp(cache?.lastSyncTimestamp ?? null)}</Text>
+          <Text style={styles.cell}>{formatTimestamp(cachedUsageCache.lastSyncTimestamp ?? null)}</Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.cell}>Groups Created</Text>
           <Text style={styles.cell}>{groupsCreated}</Text>
           <Text style={styles.cell}>Daily Reset</Text>
-          <Text style={styles.cell}>{formatTimestamp(cache?.lastSyncTimestamp ?? null)}</Text>
+          <Text style={styles.cell}>{formatTimestamp(cachedUsageCache.lastSyncTimestamp ?? null)}</Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.cell}>Events Created</Text>
           <Text style={styles.cell}>{eventsCreated}</Text>
           <Text style={styles.cell}>Daily Reset</Text>
-          <Text style={styles.cell}>{formatTimestamp(cache?.lastSyncTimestamp ?? null)}</Text>
+          <Text style={styles.cell}>{formatTimestamp(cachedUsageCache.lastSyncTimestamp ?? null)}</Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.cell}>Direct Intros</Text>
           <Text style={styles.cell}>{directIntros}</Text>
           <Text style={styles.cell}>Daily Reset</Text>
-          <Text style={styles.cell}>{formatTimestamp(cache?.lastSyncTimestamp ?? null)}</Text>
+          <Text style={styles.cell}>{formatTimestamp(cachedUsageCache.lastSyncTimestamp ?? null)}</Text>
         </View>
       </>
     );
   };
 
   const renderTierSettings = () => {
-    const settings = getTierSettings();
-    if (!settings) return <Text style={styles.noDataText}>No tier settings available</Text>;
+    if (!cachedTierSettings) return <Text style={styles.noDataText}>No tier settings available</Text>;
 
     return (
       <>
         <View style={styles.row}>
           <Text style={styles.cell}>Daily Swipe Limit</Text>
-          <Text style={styles.cell}>{settings.daily_swipe_limit}</Text>
+          <Text style={styles.cell}>{cachedTierSettings.daily_swipe_limit}</Text>
           <Text style={styles.cell}>N/A</Text>
           <Text style={styles.cell}>{formatTimestamp(tierSettingsTimestamp)}</Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.cell}>Daily Like Limit</Text>
-          <Text style={styles.cell}>{settings.daily_like_limit}</Text>
+          <Text style={styles.cell}>{cachedTierSettings.daily_like_limit}</Text>
           <Text style={styles.cell}>N/A</Text>
           <Text style={styles.cell}>{formatTimestamp(tierSettingsTimestamp)}</Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.cell}>Daily Match Limit</Text>
-          <Text style={styles.cell}>{settings.daily_match_limit}</Text>
+          <Text style={styles.cell}>{cachedTierSettings.daily_match_limit}</Text>
           <Text style={styles.cell}>N/A</Text>
           <Text style={styles.cell}>{formatTimestamp(tierSettingsTimestamp)}</Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.cell}>Message Sending Limit</Text>
-          <Text style={styles.cell}>{settings.message_sending_limit}</Text>
+          <Text style={styles.cell}>{cachedTierSettings.message_sending_limit}</Text>
           <Text style={styles.cell}>N/A</Text>
           <Text style={styles.cell}>{formatTimestamp(tierSettingsTimestamp)}</Text>
         </View>
