@@ -87,6 +87,13 @@ export const EntrepreneurCard: FC<EntrepreneurCardProps> = ({
     if (profile?.id) {
       setImageLoading(true);
       setImageError(false);
+      
+      // Fallback timeout to prevent infinite loading
+      const timeout = setTimeout(() => {
+        setImageLoading(false);
+      }, 10000); // 10 second timeout
+      
+      return () => clearTimeout(timeout);
     }
   }, [profile?.id]);
   
@@ -130,14 +137,6 @@ export const EntrepreneurCard: FC<EntrepreneurCardProps> = ({
   
   return (
     <View style={styles.cardContainer}>
-      {/* Enhanced image loading indicator */}
-      {imageLoading && !imageError && (
-        <View style={[styles.imageLoadingContainer, styles.absoluteFill]}>
-          <ActivityIndicator size="large" color={Colors.dark.accent} />
-          <Text style={styles.imageLoadingText}>Loading image...</Text>
-        </View>
-      )}
-      
       {/* Enhanced image with fallback */}
       {imageError ? (
         <View style={[styles.image, styles.imageFallback]}>
@@ -145,18 +144,26 @@ export const EntrepreneurCard: FC<EntrepreneurCardProps> = ({
           <Text style={styles.fallbackText}>No Photo</Text>
         </View>
       ) : (
-        <Image
-          source={{
-            uri: profile.photoUrl || 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?q=80&w=2787&auto=format&fit=crop'
-          }}
-          style={styles.image}
-          onLoadStart={() => setImageLoading(true)}
-          onLoadEnd={() => setImageLoading(false)}
-          onError={() => {
-            setImageLoading(false);
-            setImageError(true);
-          }}
-        />
+        <View style={styles.imageContainer}>
+          <Image
+            source={{
+              uri: profile.photoUrl || 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?q=80&w=2787&auto=format&fit=crop'
+            }}
+            style={styles.image}
+            onLoadStart={() => setImageLoading(true)}
+            onLoadEnd={() => setImageLoading(false)}
+            onError={() => {
+              setImageLoading(false);
+              setImageError(true);
+            }}
+          />
+          {/* Simplified loading indicator */}
+          {imageLoading && (
+            <View style={styles.imageLoadingOverlay}>
+              <ActivityIndicator size="large" color={Colors.dark.accent} />
+            </View>
+          )}
+        </View>
       )}
       
       {/* Enhanced gradient overlay */}
@@ -303,6 +310,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  imageContainer: {
+    position: 'relative',
+    width: '100%',
+    height: '100%',
+  },
   image: {
     width: '100%',
     height: '100%',
@@ -319,23 +331,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
   },
-  imageLoadingContainer: {
-    backgroundColor: Colors.dark.card,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  imageLoadingText: {
-    marginTop: 16,
-    color: Colors.dark.textSecondary,
-    fontSize: 14,
-  },
-  absoluteFill: {
+  imageLoadingOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    zIndex: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
   },
   gradient: {
     position: 'absolute',
