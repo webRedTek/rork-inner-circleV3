@@ -889,21 +889,9 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
           )}
         </View>
       ) : (
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          refreshControl={
-            onRefresh ? (
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor={Colors.dark.primary}
-              />
-            ) : undefined
-          }
-        >
+        <View style={styles.cardsContainer}>
           {renderCards()}
-        </ScrollView>
+        </View>
       )}
     </View>
   );
@@ -914,6 +902,13 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  cardsContainer: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingTop: 20,
   },
   cardStyle: {
     position: 'absolute',
