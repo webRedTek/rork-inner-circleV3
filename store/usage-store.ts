@@ -251,24 +251,11 @@ export const useUsageStore = create<UsageStore>()(
         } catch (error) {
           logger.logDebug('Usage initialization failed:', { error });
           set({ lastSyncError: error instanceof Error ? error.message : 'Unknown error' });
+          // Don't re-throw to avoid blocking login
         }
       },
 
       fetchDatabaseTotals: async (userId: string) => {
-        // Only log to debug system when debug mode is enabled
-        const { useDebugStore } = require('@/store/debug-store');
-        const { isDebugMode, addDebugLog } = useDebugStore.getState();
-        
-        if (isDebugMode) {
-          addDebugLog({
-            event: 'fetchDatabaseTotals started',
-            status: 'info',
-            details: `Fetching database totals for user ${userId}`,
-            source: 'usage-store',
-            data: { userId }
-          });
-        }
-        
         try {
           if (!userId) {
             throw new Error('User ID is required');
@@ -283,14 +270,8 @@ export const useUsageStore = create<UsageStore>()(
           // Query for today's usage record
           const today = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
           
-          if (isDebugMode) {
-            addDebugLog({
-              event: 'Querying user_daily_usage table',
-              status: 'info',
-              details: `Executing query on user_daily_usage table for user ${userId} on date ${today}`,
-              source: 'usage-store'
-            });
-          }
+          console.log(`Querying user_daily_usage for user ${userId} on date ${today}`);
+          
           const { data, error } = await supabase
             .from('user_daily_usage')
             .select('*')
@@ -316,68 +297,67 @@ export const useUsageStore = create<UsageStore>()(
                 boost_uses_count: 0,
               };
               
-              if (isDebugMode) {
-                addDebugLog({
-                  event: 'No usage stats found, using defaults',
-                  status: 'warning',
-                  details: 'No user_daily_usage record found, creating default totals',
-                  source: 'usage-store',
-                  data: { defaultTotals }
-                });
+              console.log('No user_daily_usage record found, creating default totals');
+              set({ databaseTotals: defaultTotals });
+              
+              // Optional debug logging (non-blocking)
+              try {
+                const { useDebugStore } = require('@/store/debug-store');
+                const { isDebugMode, addDebugLog } = useDebugStore.getState();
+                
+                if (isDebugMode) {
+                  addDebugLog({
+                    event: 'No usage stats found, using defaults',
+                    status: 'warning',
+                    details: 'No user_daily_usage record found, creating default totals',
+                    source: 'usage-store',
+                    data: { defaultTotals }
+                  });
+                }
+              } catch (debugError) {
+                // Debug logging failure shouldn't block functionality
+                console.warn('Debug logging failed in fetchDatabaseTotals:', debugError);
               }
               
-              set({ databaseTotals: defaultTotals });
               return;
             }
             
-            if (isDebugMode) {
-              addDebugLog({
-                event: 'Database query error',
-                status: 'error',
-                details: `Failed to fetch user daily usage: ${error.message}`,
-                source: 'usage-store',
-                data: { error, errorCode: error.code }
-              });
-            }
-            
+            console.error(`Failed to fetch user daily usage: ${error.message}`);
             throw error;
           }
           
-          if (isDebugMode) {
-            addDebugLog({
-              event: 'Database totals fetched successfully',
-              status: 'success',
-              details: `Retrieved user daily usage from database`,
-              source: 'usage-store',
-              data: { 
-                totals: data,
-                swipeCount: data.swipe_count,
-                matchCount: data.match_count,
-                likeCount: data.like_count,
-                messageCount: data.message_count
-              }
-            });
-          }
-          
+          console.log('Database totals fetched successfully:', data);
           set({ databaseTotals: data });
+          
+          // Optional debug logging (non-blocking)
+          try {
+            const { useDebugStore } = require('@/store/debug-store');
+            const { isDebugMode, addDebugLog } = useDebugStore.getState();
+            
+            if (isDebugMode) {
+              addDebugLog({
+                event: 'Database totals fetched successfully',
+                status: 'success',
+                details: `Retrieved user daily usage from database`,
+                source: 'usage-store',
+                data: { 
+                  totals: data,
+                  swipeCount: data.swipe_count,
+                  matchCount: data.match_count,
+                  likeCount: data.like_count,
+                  messageCount: data.message_count
+                }
+              });
+            }
+          } catch (debugError) {
+            // Debug logging failure shouldn't block functionality
+            console.warn('Debug logging failed in fetchDatabaseTotals:', debugError);
+          }
           
         } catch (error) {
           logger.logDebug('Failed to fetch database totals:', { error });
-          
-          if (isDebugMode) {
-            addDebugLog({
-              event: 'fetchDatabaseTotals failed',
-              status: 'error',
-              details: `Critical error fetching database totals: ${error instanceof Error ? error.message : 'Unknown error'}`,
-              source: 'usage-store',
-              data: { 
-                error: error instanceof Error ? error.message : 'Unknown error',
-                stack: error instanceof Error ? error.stack : undefined
-              }
-            });
-          }
-          
           set({ lastSyncError: error instanceof Error ? error.message : 'Unknown error' });
+          // Don't re-throw to avoid blocking other operations
         }
       },
 
