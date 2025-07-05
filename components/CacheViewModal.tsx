@@ -75,11 +75,11 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
   };
 
   const handleRefresh = async () => {
-    if (user) {
-      await fetchAllTierSettings();
-      await syncUsageData(true);
-      await fetchDatabaseTotals(user.id);
-    }
+          if (user?.id) {
+        await fetchAllTierSettings();
+        await syncUsageData(user.id, true);
+        await fetchDatabaseTotals(user.id);
+      }
   };
 
   const handleCopyToClipboard = () => {

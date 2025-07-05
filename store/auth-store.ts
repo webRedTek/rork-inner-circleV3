@@ -58,7 +58,7 @@ import { isSupabaseConfigured, supabase, initSupabase, convertToCamelCase, conve
 import { Platform } from 'react-native';
 import { useNotificationStore } from './notification-store';
 import NetInfo from '@react-native-community/netinfo';
-import { useUsageStore, startUsageSync, stopUsageSync, startUsageSyncOnce } from './usage-store';
+import { useUsageStore, startUsageSync, stopUsageSync } from './usage-store';
 import { handleError, withErrorHandling, withRetry, ErrorCodes, ErrorCategory, showError } from '@/utils/error-utils';
 import { checkNetworkStatus, withNetworkCheck } from '@/utils/network-utils';
 import { useMatchesStore } from './matches-store';
@@ -285,7 +285,10 @@ export const useAuthStore = create<AuthState>()(
             // Initialize usage store AFTER successful authentication (non-blocking)
             try {
               await useUsageStore.getState().initializeUsage(userId);
-              startUsageSyncOnce(); // Run sync once after 60 seconds
+              // Start sync once after 60 seconds - call directly from usage store
+              setTimeout(async () => {
+                await useUsageStore.getState().syncUsageData(userId);
+              }, 60 * 1000);
             } catch (error) {
               console.warn('Usage store initialization failed, but continuing with login:', error);
               // Don't block authentication if usage store fails
@@ -739,7 +742,10 @@ export const useAuthStore = create<AuthState>()(
             // Initialize usage tracking AFTER successful authentication (non-blocking)
             try {
               await useUsageStore.getState().initializeUsage(userProfile.id);
-              startUsageSyncOnce(); // Run sync once after 60 seconds
+              // Start sync once after 60 seconds - call directly from usage store
+              setTimeout(async () => {
+                await useUsageStore.getState().syncUsageData(userProfile.id);
+              }, 60 * 1000);
             } catch (error) {
               console.warn('Usage store initialization failed, but continuing with session:', error);
               // Don't block authentication if usage store fails

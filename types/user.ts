@@ -260,64 +260,49 @@ export interface SwipeAction {
 }
 
 export interface UsageCache {
+  counts: DatabaseTotals;
+  timestamp: number;
   lastSyncTimestamp: number;
-  usageData: {
-    [actionType: string]: {
-      currentCount: number;
-      firstActionTimestamp: number;
-      lastActionTimestamp: number;
-      resetTimestamp: number;
-    };
-  };
-  premiumFeatures: {
-    boostMinutesRemaining: number;
-    boostUsesRemaining: number;
-  };
-  analytics: {
-    profileViews: number;
-    searchAppearances: number;
-  };
 }
 
 export interface BatchUpdate {
   userId: string;
-  action: string;
-  count: number;
+  actionType: string;
+  countChange: number;
   timestamp: number;
 }
 
-export interface SyncStrategy {
-  critical: {
-    interval: number;
-    features: string[];
-  };
-  standard: {
-    interval: number;
-    features: string[];
-  };
-  analytics: {
-    interval: number;
-    features: string[];
-  };
-}
-
+/**
+ * Rate limits for usage tracking
+ */
 export interface RateLimits {
-  reads: { perSecond: number; perMinute: number };
-  writes: { perSecond: number; perMinute: number };
+  dailySwipeLimit: number;
+  dailyMatchLimit: number;
+  dailyLikeLimit: number;
+  dailyMessageLimit: number;
 }
 
+/**
+ * Sync strategy for usage data
+ */
+export type SyncStrategy = 'IMMEDIATE' | 'BATCH' | 'DELAYED';
+
+/**
+ * Cache configuration for usage data
+ */
 export interface CacheConfig {
-  standardTTL: number;
-  criticalTTL: number;
-  maxCacheAge: number;
+  maxAge: number;
+  syncInterval: number;
+  batchSize: number;
 }
 
+/**
+ * Retry strategy for failed operations
+ */
 export interface RetryStrategy {
   maxRetries: number;
-  backoffMultiplier: number;
-  initialDelay: number;
+  baseDelay: number;
   maxDelay: number;
-  criticalActions: string[];
 }
 
 export interface ConnectionPool {
@@ -363,12 +348,7 @@ export interface UsageTrackingOptions {
  * Result of a usage tracking operation
  */
 export interface UsageResult {
-  isAllowed: boolean;
-  actionType: string;
-  currentCount: number;
-  limit: number;
-  remaining: number;
-  timestamp: number;
+  success: boolean;
   error?: string;
 }
 
@@ -376,19 +356,13 @@ export interface UsageResult {
  * Comprehensive usage stats for a user
  */
 export interface UsageStats {
-  swipeCount: number;
-  swipeLimit: number;
-  swipeRemaining: number;
-  matchCount: number;
-  matchLimit: number;
-  matchRemaining: number;
-  messageCount: number;
-  messageLimit: number;
-  messageRemaining: number;
-  likeCount: number;
-  likeLimit: number;
-  likeRemaining: number;
-  timestamp: number;
+  dailyStats: DatabaseTotals;
+  limits: {
+    dailySwipeLimit: number;
+    dailyMatchLimit: number;
+    dailyLikeLimit: number;
+    dailyMessageLimit: number;
+  };
 }
 
 export interface DatabaseTotals {
@@ -417,6 +391,10 @@ export interface UsageStore {
   rateLimits: RateLimits;
   cacheConfig: CacheConfig;
   retryStrategy: RetryStrategy;
+  swipeCache: {
+    pendingSwipes: any[];
+    lastSyncTimestamp: number;
+  };
   
   // Unified limit checking functions
   checkAllLimits: () => any; // Returns AllLimitsStatus
@@ -428,13 +406,18 @@ export interface UsageStore {
   
   // Core functions
   initializeUsage: (userId: string) => Promise<void>;
-  fetchDatabaseTotals: (userId: string) => Promise<DatabaseTotals | undefined>;
+  fetchDatabaseTotals: (userId: string) => Promise<void>;
   syncUsageData: (userId: string, force?: boolean) => Promise<void>;
   getUsageStats: (userId: string) => Promise<UsageStats | null>;
   queueBatchUpdate: (update: BatchUpdate) => void;
-  resetUsage: (actionType?: string) => void;
+  resetUsage: () => void;
   clearError: () => void;
   updateUsage: (action: string, count?: number, force?: boolean) => Promise<void>;
   trackUsage: (actionType: string, count?: number) => Promise<UsageResult>;
-  resetUsageCache: () => Promise<void>;
+  resetUsageCache: () => void;
+  
+  // Swipe caching functions
+  cacheSwipe: (swipeAction: any) => void;
+  syncSwipeData: () => Promise<void>;
+  getPendingSwipeCount: () => number;
 }

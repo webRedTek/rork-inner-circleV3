@@ -263,6 +263,10 @@ export interface MatchesStore {
   error: string | null;
   cache: EnhancedProfileCache;
   optimisticUpdates: Map<string, OptimisticUpdate>;
+  lastFetch: number;
+  cacheTimeout: number;
+  retryCount: number;
+  maxRetries: number;
   
   // Core match management without duplicate limit checking
   fetchPotentialMatches: (force?: boolean) => Promise<void>;
@@ -282,6 +286,12 @@ export interface MatchesStore {
   reset: () => void;
   refreshCache: () => void;
   getCacheStats: () => CacheStats;
+  clearMatches: () => void;
+  resetCacheAndState: () => void;
+  clearError: () => void;
+  getMatchesCount: () => number;
+  isMatchesCacheValid: () => boolean;
+  getLastFetchTime: () => number;
 }
 
 export const useMatchesStore = create<MatchesStore>()(
@@ -294,6 +304,10 @@ export const useMatchesStore = create<MatchesStore>()(
       error: null,
       cache: new EnhancedProfileCache(),
       optimisticUpdates: new Map(),
+      lastFetch: 0,
+      cacheTimeout: 0,
+      retryCount: 0,
+      maxRetries: 0,
 
       fetchPotentialMatches: async (force = false) => {
         logger.logFunctionCall('fetchPotentialMatches', { force });
@@ -617,6 +631,52 @@ export const useMatchesStore = create<MatchesStore>()(
           cache: new EnhancedProfileCache(),
           optimisticUpdates: new Map()
         });
+      },
+
+      clearMatches: () => {
+        logger.logFunctionCall('clearMatches');
+        set({ matches: [] });
+      },
+
+      resetCacheAndState: () => {
+        logger.logFunctionCall('resetCacheAndState');
+        set({
+          profiles: [],
+          matches: [],
+          currentProfile: null,
+          isLoading: false,
+          error: null,
+          cache: new EnhancedProfileCache(),
+          optimisticUpdates: new Map(),
+          lastFetch: 0,
+          cacheTimeout: 0,
+          retryCount: 0,
+          maxRetries: 0
+        });
+      },
+
+      clearError: () => {
+        logger.logFunctionCall('clearError');
+        set({ error: null });
+      },
+
+      getMatchesCount: () => {
+        logger.logFunctionCall('getMatchesCount');
+        const { matches } = get();
+        return matches.length;
+      },
+
+      isMatchesCacheValid: () => {
+        logger.logFunctionCall('isMatchesCacheValid');
+        const { lastFetch, cacheTimeout } = get();
+        const now = Date.now();
+        return now - lastFetch < cacheTimeout;
+      },
+
+      getLastFetchTime: () => {
+        logger.logFunctionCall('getLastFetchTime');
+        const { lastFetch } = get();
+        return lastFetch;
       }
     }),
     {

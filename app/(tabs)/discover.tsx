@@ -38,7 +38,7 @@ import { useRouter } from 'expo-router';
 import { SwipeCards } from '@/components/SwipeCards';
 import { Button } from '@/components/Button';
 import { useMatchesStore } from '@/store/matches-store';
-import { useUsageStore, type LimitStatus } from '@/store/usage-store';
+import { useUsageStore } from '@/store/usage-store';
 import { useAuthStore } from '@/store/auth-store';
 import { useDebugStore } from '@/store/debug-store';
 import { UserProfile } from '@/types/user';
@@ -66,9 +66,9 @@ export default function DiscoverScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
   const [limitStatus, setLimitStatus] = useState<{
-    swipe: LimitStatus;
-    match: LimitStatus;
-    like: LimitStatus;
+    swipe: { isAllowed: boolean };
+    match: { isAllowed: boolean };
+    like: { isAllowed: boolean };
   } | null>(null);
 
   // Initialize usage sync and fetch limit status
@@ -79,7 +79,10 @@ export default function DiscoverScreen() {
       }
       
       // Trigger usage sync for discovery
-      startUsageSyncForDiscovery();
+      const { user } = useAuthStore.getState();
+      if (user?.id) {
+        startUsageSyncForDiscovery(user.id);
+      }
       
       // Fetch current database totals and limit status
       fetchDatabaseTotals(user.id).then(() => {
