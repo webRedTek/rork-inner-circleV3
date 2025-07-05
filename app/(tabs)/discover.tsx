@@ -121,40 +121,150 @@ export default function DiscoverScreen() {
   const handleRefresh = useCallback(async () => {
     if (!user?.id) return;
     
+    // Only log to debug system when debug mode is enabled
+    const { addDebugLog } = useDebugStore.getState();
+    
     if (isDebugMode) {
-      console.log('[DiscoverScreen] Manual refresh triggered');
+      addDebugLog({
+        event: 'Profile refresh started',
+        status: 'info',
+        details: `User ${user.id} initiated manual refresh`,
+        source: 'discover-screen',
+        data: {
+          userId: user.id,
+          currentProfileCount: profiles.length,
+          isCurrentlyLoading: isLoading,
+          hasError: !!error
+        }
+      });
     }
     
     setRefreshing(true);
     
     try {
+      // Log database totals fetch
+      if (isDebugMode) {
+        addDebugLog({
+          event: 'Fetching database totals',
+          status: 'info',
+          details: 'Refreshing usage limits and totals',
+          source: 'discover-screen'
+        });
+      }
+      
       // Refresh database totals first
       await fetchDatabaseTotals(user.id);
+      
+      if (isDebugMode) {
+        addDebugLog({
+          event: 'Database totals fetched',
+          status: 'success',
+          details: 'Usage limits and totals refreshed successfully',
+          source: 'discover-screen',
+          data: databaseTotals
+        });
+      }
       
       // Update limit status
       updateLimitStatus();
       
+      if (isDebugMode) {
+        addDebugLog({
+          event: 'Limit status updated',
+          status: 'success',
+          details: 'Refresh limit checking completed',
+          source: 'discover-screen',
+          data: limitStatus
+        });
+      }
+      
+      // Log before profile fetch
+      if (isDebugMode) {
+        addDebugLog({
+          event: 'Starting profile fetch',
+          status: 'info',
+          details: 'Calling fetchPotentialMatches with force=true',
+          source: 'discover-screen',
+          data: {
+            force: true,
+            currentProfileCount: profiles.length
+          }
+        });
+      }
+      
       // Fetch new profiles
       await fetchPotentialMatches(true);
+      
+      if (isDebugMode) {
+        addDebugLog({
+          event: 'Profile fetch completed',
+          status: 'success',
+          details: `Profile fetch completed. New count: ${profiles.length}`,
+          source: 'discover-screen',
+          data: {
+            newProfileCount: profiles.length,
+            profileIds: profiles.map(p => p.id)
+          }
+        });
+      }
       
       // Only show success if we actually have profiles
       if (profiles.length > 0) {
         notify.success('Profiles refreshed successfully!');
+        if (isDebugMode) {
+          addDebugLog({
+            event: 'Refresh success notification',
+            status: 'success',
+            details: `Successfully refreshed ${profiles.length} profiles`,
+            source: 'discover-screen'
+          });
+        }
       } else {
         notify.info('No new profiles found. All available profiles have been shown.');
+        if (isDebugMode) {
+          addDebugLog({
+            event: 'No profiles found',
+            status: 'warning',
+            details: 'Refresh completed but no new profiles were found',
+            source: 'discover-screen'
+          });
+        }
       }
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('[DiscoverScreen] Error during refresh:', errorMessage);
-      // Don't show error notification here since fetchPotentialMatches already shows it
+      
       if (isDebugMode) {
-        console.log('[DiscoverScreen] Error notification already shown by fetchPotentialMatches');
+        addDebugLog({
+          event: 'Refresh error',
+          status: 'error',
+          details: `Refresh failed: ${errorMessage}`,
+          source: 'discover-screen',
+          data: {
+            error: errorMessage,
+            stack: error instanceof Error ? error.stack : undefined
+          }
+        });
       }
+      
+      // Don't show error notification here since fetchPotentialMatches already shows it
     } finally {
       setRefreshing(false);
+      
+      if (isDebugMode) {
+        addDebugLog({
+          event: 'Refresh completed',
+          status: 'info',
+          details: 'Refresh process finished',
+          source: 'discover-screen',
+          data: {
+            finalProfileCount: profiles.length,
+            wasSuccessful: !error
+          }
+        });
+      }
     }
-  }, [user?.id, fetchDatabaseTotals, updateLimitStatus, fetchPotentialMatches, isDebugMode]);
+  }, [user?.id, fetchDatabaseTotals, updateLimitStatus, fetchPotentialMatches, isDebugMode, profiles, isLoading, error, limitStatus, databaseTotals]);
 
   // Simplified swipe left handler with batch caching
   const handleSwipeLeft = useCallback(async (profile: UserProfile) => {

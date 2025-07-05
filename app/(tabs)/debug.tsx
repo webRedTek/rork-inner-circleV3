@@ -35,6 +35,7 @@ import { useDebugStore } from '@/store/debug-store';
 import { MembershipTier, TierSettings } from '@/types/user';
 import type { DebugLogEntry } from '@/store/debug-store';
 import { useNotificationStore } from '@/store/notification-store';
+import { supabase } from '@/lib/supabase';
 
 export default function DebugScreen() {
   const [refreshing, setRefreshing] = useState(false);
@@ -54,7 +55,8 @@ export default function DebugScreen() {
     matches,
     isLoading,
     error,
-    getCacheStats
+    getCacheStats,
+    fetchPotentialMatches
   } = useMatchesStore();
 
   const { user, allTierSettings } = useAuthStore();
@@ -268,11 +270,170 @@ export default function DebugScreen() {
               ))}
             </View>
           )}
-                     <Button
-             title="Clear All Notifications"
-             onPress={handleClearNotifications}
-             variant="danger"
-           />
+          <Button
+            title="Clear All Notifications"
+            onPress={handleClearNotifications}
+            variant="danger"
+          />
+        </View>
+
+        {/* Profile Refresh Debug Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Profile Refresh Debug</Text>
+          <Text style={styles.subtitle}>
+            Complete refresh flow tracking - Click refresh on Discover tab to see detailed logs
+          </Text>
+          
+          <View style={styles.debugSubsection}>
+            <Text style={styles.debugSubtitle}>Current State</Text>
+            <Text style={styles.debugText}>
+              Total Profiles: {profiles.length}{'\n'}
+              Is Loading: {isLoading ? 'Yes' : 'No'}{'\n'}
+              Has Error: {error ? 'Yes' : 'No'}{'\n'}
+              Database Totals: {databaseTotals ? 'Available' : 'Not Available'}{'\n'}
+              Cache Stats: {getCacheStats().size} profiles cached
+            </Text>
+          </View>
+
+          <View style={styles.debugSubsection}>
+            <Text style={styles.debugSubtitle}>Refresh Flow Timeline</Text>
+            <View style={styles.refreshTimelineContainer}>
+              {debugLog
+                .filter(log => 
+                  log.source === 'matches-store' || 
+                  log.source === 'usage-store' ||
+                  log.source === 'discover-screen' ||
+                  log.event.toLowerCase().includes('refresh') ||
+                  log.event.toLowerCase().includes('fetch') ||
+                  log.event.toLowerCase().includes('profile') ||
+                  log.event.toLowerCase().includes('database') ||
+                  log.event.toLowerCase().includes('limit') ||
+                  log.event.toLowerCase().includes('swipe')
+                )
+                .sort((a, b) => b.timestamp - a.timestamp)
+                .slice(0, 20) // Show last 20 relevant entries
+                .map((log) => (
+                  <View key={log.id} style={styles.refreshTimelineEntry}>
+                    <Text style={styles.refreshTimelineTime}>
+                      {formatTime(log.timestamp)}
+                    </Text>
+                    <Text style={[
+                      styles.refreshTimelineSource,
+                      { color: log.source === 'matches-store' ? Colors.light.tint :
+                              log.source === 'usage-store' ? Colors.light.success :
+                              log.source === 'discover-screen' ? Colors.light.warning :
+                              Colors.light.text }
+                    ]}>
+                      [{log.source}]
+                    </Text>
+                    <Text style={[
+                      styles.refreshTimelineEvent,
+                      { color: log.status === 'error' ? Colors.light.error :
+                              log.status === 'success' ? Colors.light.success :
+                              log.status === 'warning' ? Colors.light.warning :
+                              Colors.light.text }
+                    ]}>
+                      {log.event}
+                    </Text>
+                    {log.details && (
+                      <Text style={styles.refreshTimelineDetails}>
+                        {log.details}
+                      </Text>
+                    )}
+                    {log.data && (
+                      <Text style={styles.refreshTimelineData}>
+                        Data: {JSON.stringify(log.data, null, 2)}
+                      </Text>
+                    )}
+                  </View>
+                ))}
+            </View>
+          </View>
+
+          <View style={styles.debugSubsection}>
+            <Text style={styles.debugSubtitle}>Database Query Debug</Text>
+            <Text style={styles.debugText}>
+              Last Database Query: {formatTime(Date.now())}{'\n'}
+              Query Parameters:{'\n'}
+              - User ID: {user?.id || 'Not available'}{'\n'}
+              - Global Discovery: true{'\n'}
+              - Limit: 50{'\n'}
+              - Offset: 0{'\n'}
+              
+              {databaseTotals && (
+                <>
+                  Database Totals:{'\n'}
+                  - Swipes: {databaseTotals.swipe_count}{'\n'}
+                  - Matches: {databaseTotals.match_count}{'\n'}
+                  - Likes: {databaseTotals.like_count}{'\n'}
+                  - Messages: {databaseTotals.message_count}{'\n'}
+                </>
+              )}
+            </Text>
+          </View>
+
+          <View style={styles.debugSubsection}>
+            <Text style={styles.debugSubtitle}>Profile Processing Debug</Text>
+            <Text style={styles.debugText}>
+              Cache Size: {getCacheStats().size}{'\n'}
+              Hit Rate: {(getCacheStats().hitRate * 100).toFixed(1)}%{'\n'}
+              Memory Usage: {(getCacheStats().memoryUsage / 1024).toFixed(2)} KB{'\n'}
+              
+              Recent Profile Processing:{'\n'}
+              {profiles.slice(0, 5).map((profile, index) => (
+                `${index + 1}. ${profile.name} (ID: ${profile.id})\n`
+              )).join('')}
+            </Text>
+          </View>
+
+          <View style={styles.debugSubsection}>
+            <Text style={styles.debugSubtitle}>Limit Checking Debug</Text>
+            <Text style={styles.debugText}>
+              {usageCache ? (
+                <>
+                  Current Limits:{'\n'}
+                  - Swipe: {usageCache.counts.swipe_count}/10000{'\n'}
+                  - Match: {usageCache.counts.match_count}/100{'\n'}
+                  - Like: {usageCache.counts.like_count}/50{'\n'}
+                  - Message: {usageCache.counts.message_count}/500{'\n'}
+                  
+                  Last Sync: {formatTime(usageCache.lastSyncTimestamp)}{'\n'}
+                  Batch Updates: {batchUpdates.length} pending{'\n'}
+                </>
+              ) : (
+                'Usage cache not initialized'
+              )}
+            </Text>
+          </View>
+
+          <View style={styles.debugSubsection}>
+            <Text style={styles.debugSubtitle}>Troubleshooting</Text>
+            <Text style={styles.debugText}>
+              Common issues to check:{'\n'}
+              1. Database connection: {supabase ? 'Connected' : 'Not connected'}{'\n'}
+              2. User authentication: {user?.id ? 'Authenticated' : 'Not authenticated'}{'\n'}
+              3. Profile cache: {getCacheStats().size > 0 ? 'Has data' : 'Empty'}{'\n'}
+              4. Error state: {error || 'No errors'}{'\n'}
+              5. Loading state: {isLoading ? 'Currently loading' : 'Not loading'}{'\n'}
+              6. Sync status: {isSyncing ? 'Currently syncing' : 'Not syncing'}{'\n'}
+              
+              If profiles not showing:{'\n'}
+              - Check if fetch_potential_matches returns data{'\n'}
+              - Verify profile validation passes{'\n'}
+              - Ensure cache is being populated{'\n'}
+              - Check for errors in RPC call{'\n'}
+            </Text>
+          </View>
+
+          <Button
+            title="Force Refresh Profiles"
+            onPress={async () => {
+              if (user?.id) {
+                await fetchPotentialMatches(true);
+              }
+            }}
+            variant="primary"
+          />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -368,5 +529,49 @@ const styles = StyleSheet.create({
   },
   text: {
     marginBottom: 8
+  },
+  debugSubsection: {
+    marginBottom: 16
+  },
+  debugSubtitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: Colors.light.text,
+    marginBottom: 8
+  },
+  debugText: {
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+    marginBottom: 4
+  },
+  refreshTimelineContainer: {
+    marginTop: 8
+  },
+  refreshTimelineEntry: {
+    marginBottom: 12,
+    padding: 12,
+    backgroundColor: Colors.light.cardAlt,
+    borderRadius: 8
+  },
+  refreshTimelineTime: {
+    fontSize: 12,
+    color: Colors.light.textSecondary
+  },
+  refreshTimelineSource: {
+    fontSize: 12,
+    fontWeight: 'bold'
+  },
+  refreshTimelineEvent: {
+    fontSize: 14
+  },
+  refreshTimelineDetails: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginTop: 4
+  },
+  refreshTimelineData: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginTop: 4
   }
 }); 

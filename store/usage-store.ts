@@ -197,6 +197,20 @@ export const useUsageStore = create<UsageStore>()(
       },
 
       fetchDatabaseTotals: async (userId: string) => {
+        // Only log to debug system when debug mode is enabled
+        const { useDebugStore } = require('@/store/debug-store');
+        const { isDebugMode, addDebugLog } = useDebugStore.getState();
+        
+        if (isDebugMode) {
+          addDebugLog({
+            event: 'fetchDatabaseTotals started',
+            status: 'info',
+            details: `Fetching database totals for user ${userId}`,
+            source: 'usage-store',
+            data: { userId }
+          });
+        }
+        
         try {
           if (!userId) {
             throw new Error('User ID is required');
@@ -206,6 +220,15 @@ export const useUsageStore = create<UsageStore>()(
           
           if (!isSupabaseConfigured() || !supabase) {
             throw new Error('Supabase is not configured');
+          }
+          
+          if (isDebugMode) {
+            addDebugLog({
+              event: 'Querying usage_stats table',
+              status: 'info',
+              details: `Executing query on usage_stats table for user ${userId}`,
+              source: 'usage-store'
+            });
           }
           
           const { data, error } = await supabase
@@ -232,16 +255,67 @@ export const useUsageStore = create<UsageStore>()(
                 boost_uses_count: 0,
               };
               
+              if (isDebugMode) {
+                addDebugLog({
+                  event: 'No usage stats found, using defaults',
+                  status: 'warning',
+                  details: 'No usage_stats record found, creating default totals',
+                  source: 'usage-store',
+                  data: { defaultTotals }
+                });
+              }
+              
               set({ databaseTotals: defaultTotals });
               return;
             }
+            
+            if (isDebugMode) {
+              addDebugLog({
+                event: 'Database query error',
+                status: 'error',
+                details: `Failed to fetch usage stats: ${error.message}`,
+                source: 'usage-store',
+                data: { error, errorCode: error.code }
+              });
+            }
+            
             throw error;
+          }
+          
+          if (isDebugMode) {
+            addDebugLog({
+              event: 'Database totals fetched successfully',
+              status: 'success',
+              details: `Retrieved usage stats from database`,
+              source: 'usage-store',
+              data: { 
+                totals: data,
+                swipeCount: data.swipe_count,
+                matchCount: data.match_count,
+                likeCount: data.like_count,
+                messageCount: data.message_count
+              }
+            });
           }
           
           set({ databaseTotals: data });
           
         } catch (error) {
           logger.logDebug('Failed to fetch database totals:', { error });
+          
+          if (isDebugMode) {
+            addDebugLog({
+              event: 'fetchDatabaseTotals failed',
+              status: 'error',
+              details: `Critical error fetching database totals: ${error instanceof Error ? error.message : 'Unknown error'}`,
+              source: 'usage-store',
+              data: { 
+                error: error instanceof Error ? error.message : 'Unknown error',
+                stack: error instanceof Error ? error.stack : undefined
+              }
+            });
+          }
+          
           set({ lastSyncError: error instanceof Error ? error.message : 'Unknown error' });
         }
       },

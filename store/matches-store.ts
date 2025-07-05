@@ -327,6 +327,24 @@ export const useMatchesStore = create<MatchesStore>()(
           return;
         }
 
+        // Only log to debug system when debug mode is enabled
+        const { useDebugStore } = require('@/store/debug-store');
+        const { isDebugMode, addDebugLog } = useDebugStore.getState();
+        
+        if (isDebugMode) {
+          addDebugLog({
+            event: 'fetchPotentialMatches started',
+            status: 'info',
+            details: `Starting profile fetch for user ${guard.user.id}`,
+            source: 'matches-store',
+            data: {
+              force,
+              currentProfileCount: profiles.length,
+              cacheSize: cache.getStats().size
+            }
+          });
+        }
+
         set({ isLoading: true, error: null });
 
         try {
@@ -334,6 +352,21 @@ export const useMatchesStore = create<MatchesStore>()(
           
           if (!supabase) {
             throw new Error('Supabase client not initialized');
+          }
+          
+          if (isDebugMode) {
+            addDebugLog({
+              event: 'Calling database RPC',
+              status: 'info',
+              details: 'Calling fetch_potential_matches RPC function',
+              source: 'matches-store',
+              data: {
+                userId: guard.user.id,
+                isGlobalDiscovery: true,
+                limit: 50,
+                offset: 0
+              }
+            });
           }
           
           // Call the simplified database function
@@ -347,6 +380,21 @@ export const useMatchesStore = create<MatchesStore>()(
 
           if (supabaseError) {
             logger.logDebug('Supabase RPC error', { error: supabaseError });
+            
+            if (isDebugMode) {
+              addDebugLog({
+                event: 'Database RPC error',
+                status: 'error',
+                details: `RPC call failed: ${supabaseError.message}`,
+                source: 'matches-store',
+                data: {
+                  error: supabaseError,
+                  errorCode: supabaseError.code,
+                  errorDetails: supabaseError.details
+                }
+              });
+            }
+            
             throw supabaseError;
           }
 
@@ -357,9 +405,34 @@ export const useMatchesStore = create<MatchesStore>()(
             length: matchesData?.length || 'N/A'
           });
 
+          if (isDebugMode) {
+            addDebugLog({
+              event: 'Database RPC response received',
+              status: 'success',
+              details: `RPC returned ${matchesData?.length || 0} raw results`,
+              source: 'matches-store',
+              data: {
+                responseType: typeof matchesData,
+                isArray: Array.isArray(matchesData),
+                length: matchesData?.length || 'N/A',
+                firstResult: matchesData?.[0] || null
+              }
+            });
+          }
+
           // Validate that we got an array response
           if (!matchesData) {
             logger.logDebug('No data returned from RPC call');
+            
+            if (isDebugMode) {
+              addDebugLog({
+                event: 'Empty RPC response',
+                status: 'warning',
+                details: 'RPC call returned no data',
+                source: 'matches-store'
+              });
+            }
+            
             set({ profiles: [], isLoading: false, error: null });
             notify.info('No new profiles found. Try adjusting your discovery settings.');
             return;
@@ -377,11 +450,35 @@ export const useMatchesStore = create<MatchesStore>()(
               type: typeof matchesData,
               data: matchesData 
             });
+            
+            if (isDebugMode) {
+              addDebugLog({
+                event: 'Invalid RPC response format',
+                status: 'error',
+                details: `Expected array, got ${typeof matchesData}`,
+                source: 'matches-store',
+                data: {
+                  responseType: typeof matchesData,
+                  response: matchesData
+                }
+              });
+            }
+            
             throw new Error(`Unexpected data format: expected array, got ${typeof matchesData}`);
           }
 
           if (matchesArray.length === 0) {
             logger.logDebug('Empty matches array received');
+            
+            if (isDebugMode) {
+              addDebugLog({
+                event: 'Empty matches array',
+                status: 'warning',
+                details: 'RPC returned empty array - no potential matches found',
+                source: 'matches-store'
+              });
+            }
+            
             set({ profiles: [], isLoading: false, error: null });
             notify.info('No new profiles found. Try adjusting your discovery settings.');
             return;
@@ -389,8 +486,22 @@ export const useMatchesStore = create<MatchesStore>()(
 
           logger.logDebug('Processing matches array', { count: matchesArray.length });
 
+          if (isDebugMode) {
+            addDebugLog({
+              event: 'Starting profile processing',
+              status: 'info',
+              details: `Processing ${matchesArray.length} raw profile results`,
+              source: 'matches-store',
+              data: {
+                rawCount: matchesArray.length,
+                sampleKeys: matchesArray[0] ? Object.keys(matchesArray[0]) : []
+              }
+            });
+          }
+
           // Process and cache profiles
           const processedProfiles: UserProfile[] = [];
+          const rejectedProfiles: any[] = [];
           
           matchesArray.forEach((match: any, index: number) => {
             try {
@@ -431,6 +542,13 @@ export const useMatchesStore = create<MatchesStore>()(
                   name: profile.name,
                   originalMatch: match
                 });
+                
+                rejectedProfiles.push({
+                  reason: 'Missing essential fields',
+                  profile: profile,
+                  originalMatch: match
+                });
+                
                 return;
               }
 
@@ -448,6 +566,12 @@ export const useMatchesStore = create<MatchesStore>()(
                 error: safeStringifyError(error),
                 match: match
               });
+              
+              rejectedProfiles.push({
+                reason: 'Processing error',
+                error: safeStringifyError(error),
+                originalMatch: match
+              });
             }
           });
 
@@ -457,6 +581,22 @@ export const useMatchesStore = create<MatchesStore>()(
             originalCount: matchesArray.length
           });
 
+          if (isDebugMode) {
+            addDebugLog({
+              event: 'Profile processing completed',
+              status: 'success',
+              details: `Processed ${processedProfiles.length}/${matchesArray.length} profiles successfully`,
+              source: 'matches-store',
+              data: {
+                processedCount: processedProfiles.length,
+                rejectedCount: rejectedProfiles.length,
+                cacheSize: cache.getStats().size,
+                processedIds: processedProfiles.map(p => p.id),
+                rejectedReasons: rejectedProfiles.map(r => r.reason)
+              }
+            });
+          }
+
           set({ 
             profiles: processedProfiles, 
             isLoading: false,
@@ -465,8 +605,40 @@ export const useMatchesStore = create<MatchesStore>()(
 
           if (processedProfiles.length > 0) {
             notify.success(`Found ${processedProfiles.length} new profiles!`);
+            
+            if (isDebugMode) {
+              addDebugLog({
+                event: 'Profiles successfully loaded',
+                status: 'success',
+                details: `${processedProfiles.length} profiles loaded and ready for display`,
+                source: 'matches-store',
+                data: {
+                  profileCount: processedProfiles.length,
+                  profiles: processedProfiles.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    age: p.age,
+                    location: p.location
+                  }))
+                }
+              });
+            }
           } else {
             notify.info('No valid profiles found. Try refreshing later.');
+            
+            if (isDebugMode) {
+              addDebugLog({
+                event: 'No valid profiles found',
+                status: 'warning',
+                details: 'All profiles were rejected during processing',
+                source: 'matches-store',
+                data: {
+                  rawCount: matchesArray.length,
+                  rejectedCount: rejectedProfiles.length,
+                  rejectedReasons: rejectedProfiles
+                }
+              });
+            }
           }
 
         } catch (error) {
@@ -476,6 +648,20 @@ export const useMatchesStore = create<MatchesStore>()(
             errorType: typeof error,
             errorStack: error instanceof Error ? error.stack : undefined
           });
+          
+          if (isDebugMode) {
+            addDebugLog({
+              event: 'fetchPotentialMatches error',
+              status: 'error',
+              details: `Fatal error during profile fetch: ${errorMessage}`,
+              source: 'matches-store',
+              data: {
+                error: errorMessage,
+                errorType: typeof error,
+                errorStack: error instanceof Error ? error.stack : undefined
+              }
+            });
+          }
           
           set({ 
             isLoading: false, 
