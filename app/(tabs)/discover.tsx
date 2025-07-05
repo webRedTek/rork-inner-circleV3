@@ -52,7 +52,7 @@ import { handleError, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
 export default function DiscoverScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const { profiles, isLoading, error, fetchPotentialMatches } = useMatchesStore();
+  const { profiles, isLoading, error, fetchPotentialMatches, cache } = useMatchesStore();
   const { 
     checkAllLimits, 
     checkSwipeLimit, 
@@ -62,7 +62,7 @@ export default function DiscoverScreen() {
     fetchDatabaseTotals,
     databaseTotals 
   } = useUsageStore();
-  const { isDebugMode } = useDebugStore();
+  const { isDebugMode, addDebugLog } = useDebugStore();
 
   const [refreshing, setRefreshing] = useState(false);
   const [limitStatus, setLimitStatus] = useState<{
@@ -70,6 +70,44 @@ export default function DiscoverScreen() {
     match: { isAllowed: boolean };
     like: { isAllowed: boolean };
   } | null>(null);
+
+  // Debug logging for store state changes
+  useEffect(() => {
+    if (isDebugMode) {
+      addDebugLog({
+        event: 'Discover screen store state update',
+        status: 'info',
+        details: `Store state: ${profiles.length} profiles, loading: ${isLoading}, error: ${error || 'none'}`,
+        source: 'discover-screen',
+        data: {
+          profileCount: profiles.length,
+          profileIds: profiles.map(p => p.id),
+          cacheSize: cache?.getStats().size || 0,
+          cacheHitRate: cache?.getStats().hitRate || 0,
+          isLoading,
+          error,
+          timestamp: Date.now()
+        }
+      });
+    }
+  }, [profiles, isLoading, error, cache, isDebugMode, addDebugLog]);
+
+  // Debug logging for initial load
+  useEffect(() => {
+    if (user?.id && isDebugMode) {
+      addDebugLog({
+        event: 'Discover screen initialized',
+        status: 'info',
+        details: `Screen loaded for user ${user.id}`,
+        source: 'discover-screen',
+        data: {
+          userId: user.id,
+          initialProfileCount: profiles.length,
+          initialCacheSize: cache?.getStats().size || 0
+        }
+      });
+    }
+  }, [user?.id, isDebugMode, addDebugLog]);
 
   // Initialize usage sync and fetch limit status
   useEffect(() => {
@@ -282,16 +320,51 @@ export default function DiscoverScreen() {
     if (!user?.id) return;
     
     if (isDebugMode) {
-      console.log('[DiscoverScreen] Swipe left (pass):', profile.id);
+      addDebugLog({
+        event: 'Swipe left initiated',
+        status: 'info',
+        details: `User swiped left (pass) on ${profile.name}`,
+        source: 'discover-screen',
+        data: {
+          profileId: profile.id,
+          profileName: profile.name,
+          userId: user.id,
+          timestamp: Date.now()
+        }
+      });
     }
     
     try {
       // Check swipe limit using unified system
       const canSwipe = checkSwipeLimit();
       if (!canSwipe) {
-        const swipeStatus = checkAllLimits().swipe;
-        notify.error(`Daily swipe limit reached (${swipeStatus.current}/${swipeStatus.limit}). Try again tomorrow!`);
+        const allLimits = checkAllLimits();
+        const swipeStatus = allLimits?.swipe;
+        
+        if (isDebugMode) {
+          addDebugLog({
+            event: 'Swipe left blocked - limit reached',
+            status: 'warning',
+            details: 'Daily swipe limit reached',
+            source: 'discover-screen',
+            data: {
+              swipeStatus,
+              allLimits
+            }
+          });
+        }
+        
+        notify.error(`Daily swipe limit reached. Try again tomorrow!`);
         return;
+      }
+      
+      if (isDebugMode) {
+        addDebugLog({
+          event: 'Swipe left limit check passed',
+          status: 'success',
+          details: 'Swipe limit allows action',
+          source: 'discover-screen'
+        });
       }
       
       // Cache the swipe decision locally (no immediate database call)
@@ -303,29 +376,90 @@ export default function DiscoverScreen() {
         timestamp: Date.now()
       };
       
+      if (isDebugMode) {
+        addDebugLog({
+          event: 'Swipe left action cached',
+          status: 'info',
+          details: 'Swipe action cached for batch processing',
+          source: 'discover-screen',
+          data: {
+            swipeAction,
+            cacheType: 'local'
+          }
+        });
+      }
+      
       // Track usage (this will be batched)
       await updateUsage('swipe', 1);
+      
+      if (isDebugMode) {
+        addDebugLog({
+          event: 'Swipe left usage tracked',
+          status: 'success',
+          details: 'Usage incremented in usage store',
+          source: 'discover-screen',
+          data: {
+            action: 'swipe',
+            count: 1
+          }
+        });
+      }
       
       // Update limit status
       updateLimitStatus();
       
       if (isDebugMode) {
-        console.log('[DiscoverScreen] Swipe left cached locally for batch processing');
+        addDebugLog({
+          event: 'Swipe left completed',
+          status: 'success',
+          details: `Successfully processed swipe left on ${profile.name}`,
+          source: 'discover-screen',
+          data: {
+            profileId: profile.id,
+            totalTime: Date.now() - Date.now()
+          }
+        });
       }
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      if (isDebugMode) {
+        addDebugLog({
+          event: 'Swipe left error',
+          status: 'error',
+          details: `Error processing swipe left: ${errorMessage}`,
+          source: 'discover-screen',
+          data: {
+            error: errorMessage,
+            profileId: profile.id,
+            stack: error instanceof Error ? error.stack : undefined
+          }
+        });
+      }
+      
       console.error('[DiscoverScreen] Error processing swipe left:', errorMessage);
       notify.error(`Failed to process swipe: ${errorMessage}`);
     }
-  }, [user?.id, checkSwipeLimit, checkAllLimits, updateUsage, updateLimitStatus, isDebugMode]);
+  }, [user?.id, checkSwipeLimit, checkAllLimits, updateUsage, updateLimitStatus, isDebugMode, addDebugLog]);
 
   // Simplified swipe right handler with batch caching
   const handleSwipeRight = useCallback(async (profile: UserProfile) => {
     if (!user?.id) return;
     
     if (isDebugMode) {
-      console.log('[DiscoverScreen] Swipe right (like):', profile.id);
+      addDebugLog({
+        event: 'Swipe right initiated',
+        status: 'info',
+        details: `User swiped right (like) on ${profile.name}`,
+        source: 'discover-screen',
+        data: {
+          profileId: profile.id,
+          profileName: profile.name,
+          userId: user.id,
+          timestamp: Date.now()
+        }
+      });
     }
     
     try {
@@ -334,15 +468,54 @@ export default function DiscoverScreen() {
       const canLike = checkLikeLimit();
       
       if (!canSwipe) {
-        const swipeStatus = checkAllLimits().swipe;
-        notify.error(`Daily swipe limit reached (${swipeStatus.current}/${swipeStatus.limit}). Try again tomorrow!`);
+        const allLimits = checkAllLimits();
+        const swipeStatus = allLimits?.swipe;
+        
+        if (isDebugMode) {
+          addDebugLog({
+            event: 'Swipe right blocked - swipe limit reached',
+            status: 'warning',
+            details: 'Daily swipe limit reached',
+            source: 'discover-screen',
+            data: {
+              swipeStatus,
+              allLimits
+            }
+          });
+        }
+        
+        notify.error(`Daily swipe limit reached. Try again tomorrow!`);
         return;
       }
       
       if (!canLike) {
-        const likeStatus = checkAllLimits().like;
-        notify.error(`Daily like limit reached (${likeStatus.current}/${likeStatus.limit}). Upgrade your plan for more!`);
+        const allLimits = checkAllLimits();
+        const likeStatus = allLimits?.like;
+        
+        if (isDebugMode) {
+          addDebugLog({
+            event: 'Swipe right blocked - like limit reached',
+            status: 'warning',
+            details: 'Daily like limit reached',
+            source: 'discover-screen',
+            data: {
+              likeStatus,
+              allLimits
+            }
+          });
+        }
+        
+        notify.error(`Daily like limit reached. Upgrade your plan for more!`);
         return;
+      }
+      
+      if (isDebugMode) {
+        addDebugLog({
+          event: 'Swipe right limit checks passed',
+          status: 'success',
+          details: 'Both swipe and like limits allow action',
+          source: 'discover-screen'
+        });
       }
       
       // Cache the swipe decision locally (no immediate database call)
@@ -354,9 +527,35 @@ export default function DiscoverScreen() {
         timestamp: Date.now()
       };
       
+      if (isDebugMode) {
+        addDebugLog({
+          event: 'Swipe right action cached',
+          status: 'info',
+          details: 'Like action cached for batch processing',
+          source: 'discover-screen',
+          data: {
+            swipeAction,
+            cacheType: 'local'
+          }
+        });
+      }
+      
       // Track usage for both swipe and like (this will be batched)
       await updateUsage('swipe', 1);
       await updateUsage('like', 1);
+      
+      if (isDebugMode) {
+        addDebugLog({
+          event: 'Swipe right usage tracked',
+          status: 'success',
+          details: 'Both swipe and like usage incremented',
+          source: 'discover-screen',
+          data: {
+            actions: ['swipe', 'like'],
+            count: 1
+          }
+        });
+      }
       
       // Update limit status
       updateLimitStatus();
@@ -365,15 +564,40 @@ export default function DiscoverScreen() {
       notify.info(`You liked ${profile.name}! 💖`);
       
       if (isDebugMode) {
-        console.log('[DiscoverScreen] Swipe right cached locally for batch processing');
+        addDebugLog({
+          event: 'Swipe right completed',
+          status: 'success',
+          details: `Successfully processed swipe right on ${profile.name}`,
+          source: 'discover-screen',
+          data: {
+            profileId: profile.id,
+            totalTime: Date.now() - Date.now(),
+            notification: `You liked ${profile.name}! 💖`
+          }
+        });
       }
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      if (isDebugMode) {
+        addDebugLog({
+          event: 'Swipe right error',
+          status: 'error',
+          details: `Error processing swipe right: ${errorMessage}`,
+          source: 'discover-screen',
+          data: {
+            error: errorMessage,
+            profileId: profile.id,
+            stack: error instanceof Error ? error.stack : undefined
+          }
+        });
+      }
+      
       console.error('[DiscoverScreen] Error processing swipe right:', errorMessage);
       notify.error(`Failed to process like: ${errorMessage}`);
     }
-  }, [user?.id, checkSwipeLimit, checkLikeLimit, checkAllLimits, updateUsage, updateLimitStatus, isDebugMode]);
+  }, [user?.id, checkSwipeLimit, checkLikeLimit, checkAllLimits, updateUsage, updateLimitStatus, isDebugMode, addDebugLog]);
 
   // Handle profile press
   const handleProfilePress = useCallback((profile: UserProfile) => {

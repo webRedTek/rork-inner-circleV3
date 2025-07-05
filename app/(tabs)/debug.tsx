@@ -514,6 +514,100 @@ export default function DebugScreen() {
           </View>
 
           <View style={styles.debugSubsection}>
+            <Text style={styles.debugSubtitle}>Discover & Swipe Flow Debug</Text>
+            <Text style={styles.debugText}>
+              Complete flow from discover screen to swipe actions:{'\n'}
+              
+              Current State:{'\n'}
+              - Profiles in Store: {profiles.length}{'\n'}
+              - Profiles in Cache: {getCacheStats().size}{'\n'}
+              - Loading State: {isLoading ? 'Loading' : 'Ready'}{'\n'}
+              - Error State: {error || 'None'}{'\n'}
+              {'\n'}
+              UI Display Chain:{'\n'}
+              1. Store → Discover Screen → SwipeCards{'\n'}
+              2. Profile props passed to SwipeCards{'\n'}
+              3. SwipeCards render decision{'\n'}
+              4. Individual card rendering{'\n'}
+              {'\n'}
+              Recent Discover & Swipe Events (last 10):
+            </Text>
+            <View style={styles.discoverFlowContainer}>
+              {(() => {
+                // Get discover and swipe related logs
+                const discoverLogs = debugLog
+                  .filter(log => 
+                    log.source === 'discover-screen' || 
+                    log.source === 'swipe-cards'
+                  )
+                  .sort((a, b) => b.timestamp - a.timestamp)
+                  .slice(0, 10);
+
+                if (discoverLogs.length === 0) {
+                  return (
+                    <Text style={styles.debugText}>
+                      No discover/swipe events logged yet.{'\n'}
+                      Navigate to Discover tab and try swiping to see flow.
+                    </Text>
+                  );
+                }
+
+                return discoverLogs.map((log, index) => (
+                  <View key={index} style={styles.discoverFlowEvent}>
+                    <Text style={styles.discoverFlowTimestamp}>
+                      {formatTime(log.timestamp)}
+                    </Text>
+                    <Text style={[
+                      styles.discoverFlowSource,
+                      { color: log.source === 'discover-screen' ? Colors.light.info : Colors.light.secondary }
+                    ]}>
+                      [{log.source}]
+                    </Text>
+                    <Text style={[
+                      styles.discoverFlowEventText,
+                      { color: log.status === 'error' ? Colors.light.error :
+                              log.status === 'success' ? Colors.light.success :
+                              log.status === 'warning' ? Colors.light.warning :
+                              Colors.light.text }
+                    ]}>
+                      {log.event}
+                    </Text>
+                    {log.details && (
+                      <Text style={styles.discoverFlowDetails}>
+                        {log.details}
+                      </Text>
+                    )}
+                    {log.data && (
+                      <Text style={styles.discoverFlowData}>
+                        {JSON.stringify(log.data, null, 2).slice(0, 200)}
+                        {JSON.stringify(log.data, null, 2).length > 200 ? '...' : ''}
+                      </Text>
+                    )}
+                  </View>
+                ));
+              })()}
+            </View>
+            
+            <Text style={styles.debugText}>
+              {'\n'}Debug Flow Checklist:{'\n'}
+              ✓ Store receives profiles from matches-store{'\n'}
+              ✓ Discover screen gets profiles prop{'\n'}
+              ✓ SwipeCards receives profiles prop{'\n'}
+              ✓ SwipeCards makes render decision{'\n'}
+              ✓ Individual cards render with EntrepreneurCard{'\n'}
+              ✓ Swipe gestures trigger handlers{'\n'}
+              ✓ Usage tracking and limit checking{'\n'}
+              ✓ Optimistic UI updates{'\n'}
+              
+              If SwipeCards not showing:{'\n'}
+              - Check "SwipeCards render decision" events above{'\n'}
+              - Verify profiles.length {'>'}  0 in logs{'\n'}
+              - Look for error events in timeline{'\n'}
+              - Check if loading state is blocking display
+            </Text>
+          </View>
+
+          <View style={styles.debugSubsection}>
             <Text style={styles.debugSubtitle}>Limit Checking Debug</Text>
             <Text style={styles.debugText}>
               {usageCache ? (
@@ -721,5 +815,35 @@ const styles = StyleSheet.create({
   },
   processingResultContainer: {
     marginTop: 8
+  },
+  discoverFlowContainer: {
+    marginTop: 8
+  },
+  discoverFlowEvent: {
+    marginBottom: 12,
+    padding: 12,
+    backgroundColor: Colors.light.cardAlt,
+    borderRadius: 8
+  },
+  discoverFlowTimestamp: {
+    fontSize: 12,
+    color: Colors.light.textSecondary
+  },
+  discoverFlowSource: {
+    fontSize: 12,
+    fontWeight: 'bold'
+  },
+  discoverFlowEventText: {
+    fontSize: 14
+  },
+  discoverFlowDetails: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginTop: 4
+  },
+  discoverFlowData: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginTop: 4
   }
 }); 

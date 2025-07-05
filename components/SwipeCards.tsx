@@ -159,7 +159,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   onRefresh,
   refreshing = false
 }) => {
-  const { isDebugMode } = useDebugStore();
+  const { isDebugMode, addDebugLog } = useDebugStore();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isGestureActive, setIsGestureActive] = useState(false);
@@ -239,6 +239,63 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       passIndicatorDynamicScale
     };
   }, [position.x]);
+
+  // Debug logging for SwipeCards props and state changes
+  useEffect(() => {
+    if (isDebugMode) {
+      addDebugLog({
+        event: 'SwipeCards props/state update',
+        status: 'info',
+        details: `SwipeCards received ${profiles.length} profiles, currentIndex: ${currentIndex}, loading: ${isLoading}`,
+        source: 'swipe-cards',
+        data: {
+          profileCount: profiles.length,
+          profileIds: profiles.map(p => p.id).slice(0, 5), // Limit to first 5 for readability
+          currentIndex,
+          isLoading,
+          error: error || propError,
+          refreshing,
+          visibleProfiles: profiles.slice(currentIndex, currentIndex + 3).map(p => ({
+            id: p.id,
+            name: p.name,
+            businessField: p.businessField
+          }))
+        }
+      });
+    }
+  }, [profiles, currentIndex, isLoading, error, propError, refreshing, isDebugMode, addDebugLog]);
+
+  // Debug logging for SwipeCards render decisions
+  useEffect(() => {
+    if (isDebugMode) {
+      let renderDecision = '';
+      if (isLoading) {
+        renderDecision = 'Loading spinner';
+      } else if (error || propError) {
+        renderDecision = 'Error container';
+      } else if (profiles.length === 0) {
+        renderDecision = 'Empty state';
+      } else {
+        renderDecision = `Rendering ${profiles.length - currentIndex} cards starting from index ${currentIndex}`;
+      }
+
+      addDebugLog({
+        event: 'SwipeCards render decision',
+        status: 'info',
+        details: renderDecision,
+        source: 'swipe-cards',
+        data: {
+          renderDecision,
+          profileCount: profiles.length,
+          currentIndex,
+          cardsToRender: Math.max(0, profiles.length - currentIndex),
+          isLoading,
+          hasError: !!(error || propError),
+          isEmpty: profiles.length === 0
+        }
+      });
+    }
+  }, [profiles, currentIndex, isLoading, error, propError, isDebugMode, addDebugLog]);
 
   // FIXED: Proper useEffect for currentIndex reset to prevent setState during render
   useEffect(() => {
