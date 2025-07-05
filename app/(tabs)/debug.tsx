@@ -50,13 +50,11 @@ export default function DebugScreen() {
   } = useUsageStore();
   
   const {
-    potentialMatches,
+    profiles,
     matches,
     isLoading,
     error,
-    swipeLimitReached,
-    matchLimitReached,
-    cacheStats
+    getCacheStats
   } = useMatchesStore();
 
   const { user, allTierSettings } = useAuthStore();
@@ -168,18 +166,14 @@ export default function DebugScreen() {
               </View>
 
               <View style={styles.infoBlock}>
-                <Text style={styles.label}>Premium Features:</Text>
+                <Text style={styles.label}>Usage Counts:</Text>
                 <Text style={styles.value}>
-                  Boost Minutes: {usageCache.premiumFeatures.boostMinutesRemaining}{'\n'}
-                  Boost Uses: {usageCache.premiumFeatures.boostUsesRemaining}
-                </Text>
-              </View>
-
-              <View style={styles.infoBlock}>
-                <Text style={styles.label}>Analytics:</Text>
-                <Text style={styles.value}>
-                  Profile Views: {usageCache.analytics.profileViews}{'\n'}
-                  Search Appearances: {usageCache.analytics.searchAppearances}
+                  Swipes: {usageCache.counts.swipe_count}{'\n'}
+                  Matches: {usageCache.counts.match_count}{'\n'}
+                  Likes: {usageCache.counts.like_count}{'\n'}
+                  Messages: {usageCache.counts.message_count}{'\n'}
+                  Boost Minutes Used: {usageCache.counts.boost_minutes_used}{'\n'}
+                  Boost Uses: {usageCache.counts.boost_uses_count}
                 </Text>
               </View>
             </>
@@ -217,24 +211,22 @@ export default function DebugScreen() {
           <View style={styles.infoBlock}>
             <Text style={styles.label}>Cache Stats:</Text>
             <Text style={styles.value}>
-              Size: {cacheStats.size}{'\n'}
-              Hit Rate: {(cacheStats.hitRate * 100).toFixed(1)}%{'\n'}
-              Average Age: {formatDuration(cacheStats.averageAge)}{'\n'}
-              Memory Usage: {(cacheStats.memoryUsage / 1024).toFixed(2)} KB{'\n'}
-              Compression Ratio: {cacheStats.compressionRatio.toFixed(2)}{'\n'}
-              Eviction Count: {cacheStats.evictionCount}
+              Size: {getCacheStats().size}{'\n'}
+              Hit Rate: {(getCacheStats().hitRate * 100).toFixed(1)}%{'\n'}
+              Average Age: {formatDuration(getCacheStats().averageAge)}{'\n'}
+              Memory Usage: {(getCacheStats().memoryUsage / 1024).toFixed(2)} KB{'\n'}
+              Compression Ratio: {getCacheStats().compressionRatio.toFixed(2)}{'\n'}
+              Eviction Count: {getCacheStats().evictionCount}
             </Text>
           </View>
 
           <View style={styles.infoBlock}>
             <Text style={styles.label}>Match Counts:</Text>
             <Text style={styles.value}>
-              Potential: {potentialMatches.length}{'\n'}
+              Profiles: {profiles.length}{'\n'}
               Matches: {matches.length}{'\n'}
               Loading: {isLoading ? 'Yes' : 'No'}{'\n'}
-              Error: {error || 'None'}{'\n'}
-              Swipe Limit: {swipeLimitReached ? 'Reached' : 'Available'}{'\n'}
-              Match Limit: {matchLimitReached ? 'Reached' : 'Available'}
+              Error: {error || 'None'}
             </Text>
           </View>
         </View>
