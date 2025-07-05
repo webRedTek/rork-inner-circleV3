@@ -260,24 +260,35 @@ export const useUsageStore = create<UsageStore>()(
           if (!userId) {
             throw new Error('User ID is required');
           }
-          
+
           await initSupabase();
           
           if (!isSupabaseConfigured() || !supabase) {
             throw new Error('Supabase is not configured');
           }
-          
+
           // Query for today's usage record
           const today = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
           
-          console.log(`Querying user_daily_usage for user ${userId} on date ${today}`);
-          
+          console.log(`🔍 [DEBUG] fetchDatabaseTotals - Query Details:`);
+          console.log(`   User ID: ${userId}`);
+          console.log(`   Date: ${today}`);
+          console.log(`   Table: user_daily_usage`);
+          console.log(`   Query: SELECT * FROM user_daily_usage WHERE user_id = '${userId}' AND date = '${today}'`);
+
           const { data, error } = await supabase
             .from('user_daily_usage')
             .select('*')
             .eq('user_id', userId)
             .eq('date', today)
             .single();
+
+          console.log(`🔍 [DEBUG] fetchDatabaseTotals - Query Response:`);
+          console.log(`   Data:`, data);
+          console.log(`   Error:`, error);
+          console.log(`   Error Code:`, error?.code);
+          console.log(`   Error Message:`, error?.message);
+          console.log(`   Error Details:`, error?.details);
           
           if (error) {
             if (error.code === 'PGRST116') {
@@ -297,8 +308,35 @@ export const useUsageStore = create<UsageStore>()(
                 boost_uses_count: 0,
               };
               
-              console.log('No user_daily_usage record found, creating default totals');
-              set({ databaseTotals: defaultTotals });
+              console.log('🔍 [DEBUG] No user_daily_usage record found, creating default totals');
+              console.log('🔍 [DEBUG] Default totals:', defaultTotals);
+              
+              // Try to create the record in the database
+              console.log('🔍 [DEBUG] Attempting to create user_daily_usage record...');
+              const { data: insertData, error: insertError } = await supabase
+                .from('user_daily_usage')
+                .insert({
+                  user_id: userId,
+                  date: today,
+                  ...defaultTotals,
+                  last_updated: new Date().toISOString(),
+                  created_at: new Date().toISOString()
+                })
+                .select()
+                .single();
+
+              console.log('🔍 [DEBUG] Insert attempt result:');
+              console.log('   Insert Data:', insertData);
+              console.log('   Insert Error:', insertError);
+              
+              if (insertError) {
+                console.error('🔍 [DEBUG] Failed to create user_daily_usage record:', insertError);
+                // Still set defaults in memory even if DB insert fails
+                set({ databaseTotals: defaultTotals });
+              } else {
+                console.log('🔍 [DEBUG] Successfully created user_daily_usage record');
+                set({ databaseTotals: insertData });
+              }
               
               // Optional debug logging (non-blocking)
               try {
@@ -311,7 +349,13 @@ export const useUsageStore = create<UsageStore>()(
                     status: 'warning',
                     details: 'No user_daily_usage record found, creating default totals',
                     source: 'usage-store',
-                    data: { defaultTotals }
+                    data: { 
+                      defaultTotals,
+                      userId,
+                      date: today,
+                      insertSuccess: !insertError,
+                      insertError: insertError?.message
+                    }
                   });
                 }
               } catch (debugError) {
@@ -322,11 +366,13 @@ export const useUsageStore = create<UsageStore>()(
               return;
             }
             
-            console.error(`Failed to fetch user daily usage: ${error.message}`);
+            console.error(`🔍 [DEBUG] Failed to fetch user daily usage: ${error.message}`);
+            console.error(`🔍 [DEBUG] Full error object:`, error);
             throw error;
           }
-          
-          console.log('Database totals fetched successfully:', data);
+
+          console.log('🔍 [DEBUG] Database totals fetched successfully:', data);
+          console.log('🔍 [DEBUG] Setting databaseTotals in store...');
           set({ databaseTotals: data });
           
           // Optional debug logging (non-blocking)
@@ -355,6 +401,7 @@ export const useUsageStore = create<UsageStore>()(
           }
           
         } catch (error) {
+          console.error('🔍 [DEBUG] fetchDatabaseTotals caught error:', error);
           logger.logDebug('Failed to fetch database totals:', { error });
           set({ lastSyncError: error instanceof Error ? error.message : 'Unknown error' });
           // Don't re-throw to avoid blocking other operations
@@ -638,7 +685,9 @@ export const useUsageStore = create<UsageStore>()(
 
       // Authority methods - these are the "source of truth" for usage data
       getDatabaseTotals: () => {
-        return get().databaseTotals;
+        const totals = get().databaseTotals;
+        console.log('🔍 [DEBUG] getDatabaseTotals called - returning:', totals);
+        return totals;
       },
 
       getUsageCache: () => {
