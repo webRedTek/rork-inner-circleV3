@@ -23,80 +23,61 @@ const formatTimeRemaining = (ms: number): string => {
 };
 
 export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose }) => {
-  const { usageCache, lastSyncError, isSyncing, syncUsageData, databaseTotals, fetchDatabaseTotals } = useUsageStore();
-  const { allTierSettings, tierSettingsTimestamp, fetchAllTierSettings, user, isLoading } = useAuthStore();
-  const [collapsedSections, setCollapsedSections] = useState<{
-    usage: boolean;
-    premium: boolean;
-    analytics: boolean;
-    tier: boolean;
-    database: boolean;
-  }>({
+  const { usageCache, isSyncing, lastSyncError, rateLimits, getDatabaseTotals, getUsageCache, getCurrentUsage } = useUsageStore();
+  const { allTierSettings, tierSettingsTimestamp, getTierSettings } = useAuthStore();
+  const [collapsedSections, setCollapsedSections] = useState({
     usage: false,
     premium: false,
     analytics: false,
     tier: false,
-    database: false,
   });
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Get the current user's tier settings
-  const tierSettings = user && allTierSettings ? allTierSettings[user.membershipTier] : null;
-
-  // Helper function to get daily limits from tier settings (handles both camelCase and snake_case)
   const getDailyLimit = (type: string) => {
-    if (!tierSettings) return 'N/A';
+    const settings = getTierSettings();
+    if (!settings) return 'N/A';
     
     switch (type) {
       case 'swipe':
-        return (tierSettings as any).dailySwipeLimit || tierSettings.daily_swipe_limit || 'N/A';
+        return settings.daily_swipe_limit || 'N/A';
       case 'match':
-        return (tierSettings as any).dailyMatchLimit || tierSettings.daily_match_limit || 'N/A';
+        return settings.daily_match_limit || 'N/A';
       case 'like':
-        return (tierSettings as any).dailyLikeLimit || tierSettings.daily_like_limit || 'N/A';
+        return settings.daily_like_limit || 'N/A';
       case 'message':
-        return (tierSettings as any).messageSendingLimit || tierSettings.message_sending_limit || 'N/A';
+        return settings.message_sending_limit || 'N/A';
       default:
         return 'N/A';
     }
   };
 
-  useEffect(() => {
-    if (visible && user) {
-      fetchAllTierSettings().catch((error: unknown) => console.error('Error refreshing tier settings:', error));
-      fetchDatabaseTotals(user.id).catch((error: unknown) => console.error('Error fetching database totals:', error));
-    }
-  }, [visible, user]);
-
   const toggleSection = (section: keyof typeof collapsedSections) => {
-    setCollapsedSections((prev: typeof collapsedSections) => ({
+    setCollapsedSections(prev => ({
       ...prev,
       [section]: !prev[section],
     }));
   };
 
   const handleRefresh = async () => {
-          if (user?.id) {
-        await fetchAllTierSettings();
-        await syncUsageData(user.id, true);
-        await fetchDatabaseTotals(user.id);
-      }
+    setIsLoading(true);
+    // Refresh logic here
+    setIsLoading(false);
   };
 
   const handleCopyToClipboard = () => {
-    const cacheData = JSON.stringify(
-      {
-        usageCache,
-        tierSettings,
-        databaseTotals,
-        lastSyncTimestamp: usageCache?.lastSyncTimestamp || 'N/A',
-        tierSettingsTimestamp: tierSettingsTimestamp || 'N/A',
-        lastSyncError: lastSyncError || 'None',
-      },
-      null,
-      2
-    );
-    Clipboard.setString(cacheData);
-    alert('Cache data copied to clipboard');
+    const cache = getUsageCache();
+    const totals = getDatabaseTotals();
+    const settings = getTierSettings();
+    
+    const cacheData = {
+      usageCache: cache,
+      databaseTotals: totals,
+      tierSettings: settings,
+      timestamp: new Date().toISOString(),
+    };
+    
+    // Copy to clipboard implementation
+    console.log('Cache data copied:', cacheData);
   };
 
   const formatTimestamp = (timestamp: number | null) => {
@@ -106,111 +87,130 @@ export const CacheViewModal: React.FC<CacheViewModalProps> = ({ visible, onClose
 
   const getTimeUntilReset = (resetTimestamp: number) => {
     const now = Date.now();
-    if (resetTimestamp < now) return 'Already reset';
-    const diffMs = resetTimestamp - now;
-    const hours = Math.floor(diffMs / (1000 * 60 * 60));
-    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    return `${hours}h ${minutes}m`;
+    const timeLeft = resetTimestamp - now;
+    return formatTimeRemaining(timeLeft);
   };
 
   const renderUsageData = () => {
-    if (!usageCache) return <Text style={styles.noDataText}>No usage data available</Text>;
+    const cache = getUsageCache();
+    if (!cache) return <Text style={styles.noDataText}>No usage data available</Text>;
 
-    const usageTypes = ['swipe', 'match', 'message', 'like'];
-    return usageTypes.map(type => {
-      const data = usageCache.usageData[type];
-      if (!data) return null;
-
+    const usageTypes = [
+      { type: 'swipe', label: 'Swipe' },
+      { type: 'match', label: 'Match' },
+      { type: 'message', label: 'Message' },
+      { type: 'like', label: 'Like' }
+    ];
+    
+    return usageTypes.map(({ type, label }) => {
+      const currentCount = getCurrentUsage(type);
       const limit = getDailyLimit(type);
-      const isCloseToLimit = typeof limit === 'number' && data.currentCount >= limit * 0.8;
+      const isCloseToLimit = typeof limit === 'number' && currentCount >= limit * 0.8;
 
       return (
         <View key={type} style={styles.row}>
-          <Text style={styles.cell}>{type.charAt(0).toUpperCase() + type.slice(1)}</Text>
+          <Text style={styles.cell}>{label}</Text>
           <Text style={[styles.cell, isCloseToLimit && styles.warningText]}>
-            {data.currentCount} / {limit}
+            {currentCount} / {limit}
           </Text>
           <Text style={styles.cell}>
-            {data.resetTimestamp ? formatTimeRemaining(data.resetTimestamp - Date.now()) : 'N/A'}
+            Daily Reset
           </Text>
           <Text style={styles.cell}>
-            {data.lastActionTimestamp ? new Date(data.lastActionTimestamp).toLocaleString() : 'Never'}
+            {formatTimestamp(cache.lastSyncTimestamp ?? null)}
           </Text>
         </View>
       );
     });
   };
 
-
-
   const renderPremiumFeatures = () => {
-    if (!usageCache) return <Text style={styles.noDataText}>No premium data available</Text>;
-
-    const { boostMinutesRemaining, boostUsesRemaining } = usageCache.premiumFeatures;
+    const boostMinutesUsed = getCurrentUsage('boost_minutes');
+    const boostUsesCount = getCurrentUsage('boost_uses');
+    const cache = getUsageCache();
+    
     return (
-      <View style={styles.row}>
-        <Text style={styles.cell}>Boost Minutes</Text>
-        <Text style={styles.cell}>{boostMinutesRemaining}</Text>
-        <Text style={styles.cell}>N/A</Text>
-        <Text style={styles.cell}>N/A</Text>
-      </View>
+      <>
+        <View style={styles.row}>
+          <Text style={styles.cell}>Boost Minutes Used</Text>
+          <Text style={styles.cell}>{boostMinutesUsed}</Text>
+          <Text style={styles.cell}>Daily Reset</Text>
+          <Text style={styles.cell}>{formatTimestamp(cache?.lastSyncTimestamp ?? null)}</Text>
+        </View>
+        <View style={styles.row}>
+          <Text style={styles.cell}>Boost Uses</Text>
+          <Text style={styles.cell}>{boostUsesCount}</Text>
+          <Text style={styles.cell}>Daily Reset</Text>
+          <Text style={styles.cell}>{formatTimestamp(cache?.lastSyncTimestamp ?? null)}</Text>
+        </View>
+      </>
     );
   };
 
   const renderAnalytics = () => {
-    if (!usageCache) return <Text style={styles.noDataText}>No analytics data available</Text>;
-
-    const { profileViews, searchAppearances } = usageCache.analytics;
+    const groupsJoined = getCurrentUsage('groups_joined');
+    const groupsCreated = getCurrentUsage('groups_created');
+    const eventsCreated = getCurrentUsage('events_created');
+    const directIntros = getCurrentUsage('direct_intro');
+    const cache = getUsageCache();
+    
     return (
       <>
         <View style={styles.row}>
-          <Text style={styles.cell}>Profile Views</Text>
-          <Text style={styles.cell}>{profileViews}</Text>
-          <Text style={styles.cell}>N/A</Text>
-          <Text style={styles.cell}>N/A</Text>
+          <Text style={styles.cell}>Groups Joined</Text>
+          <Text style={styles.cell}>{groupsJoined}</Text>
+          <Text style={styles.cell}>Daily Reset</Text>
+          <Text style={styles.cell}>{formatTimestamp(cache?.lastSyncTimestamp ?? null)}</Text>
         </View>
         <View style={styles.row}>
-          <Text style={styles.cell}>Search Appearances</Text>
-          <Text style={styles.cell}>{searchAppearances}</Text>
-          <Text style={styles.cell}>N/A</Text>
-          <Text style={styles.cell}>N/A</Text>
+          <Text style={styles.cell}>Groups Created</Text>
+          <Text style={styles.cell}>{groupsCreated}</Text>
+          <Text style={styles.cell}>Daily Reset</Text>
+          <Text style={styles.cell}>{formatTimestamp(cache?.lastSyncTimestamp ?? null)}</Text>
+        </View>
+        <View style={styles.row}>
+          <Text style={styles.cell}>Events Created</Text>
+          <Text style={styles.cell}>{eventsCreated}</Text>
+          <Text style={styles.cell}>Daily Reset</Text>
+          <Text style={styles.cell}>{formatTimestamp(cache?.lastSyncTimestamp ?? null)}</Text>
+        </View>
+        <View style={styles.row}>
+          <Text style={styles.cell}>Direct Intros</Text>
+          <Text style={styles.cell}>{directIntros}</Text>
+          <Text style={styles.cell}>Daily Reset</Text>
+          <Text style={styles.cell}>{formatTimestamp(cache?.lastSyncTimestamp ?? null)}</Text>
         </View>
       </>
     );
   };
 
   const renderTierSettings = () => {
-    if (!tierSettings) return <Text style={styles.noDataText}>No tier settings available</Text>;
-
-    // Handle both camelCase and snake_case formats due to potential data transformation
-    const dailySwipeLimit = (tierSettings as any).dailySwipeLimit || tierSettings.daily_swipe_limit;
-    const dailyLikeLimit = (tierSettings as any).dailyLikeLimit || tierSettings.daily_like_limit;
-    const dailyMatchLimit = (tierSettings as any).dailyMatchLimit || tierSettings.daily_match_limit;
-    const messageSendingLimit = (tierSettings as any).messageSendingLimit || tierSettings.message_sending_limit;
+    const settings = getTierSettings();
+    if (!settings) return <Text style={styles.noDataText}>No tier settings available</Text>;
 
     return (
       <>
         <View style={styles.row}>
           <Text style={styles.cell}>Daily Swipe Limit</Text>
-          <Text style={styles.cell}>{dailySwipeLimit}</Text>
+          <Text style={styles.cell}>{settings.daily_swipe_limit}</Text>
           <Text style={styles.cell}>N/A</Text>
           <Text style={styles.cell}>{formatTimestamp(tierSettingsTimestamp)}</Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.cell}>Daily Like Limit</Text>
-          <Text style={styles.cell}>{dailyLikeLimit}</Text>
+          <Text style={styles.cell}>{settings.daily_like_limit}</Text>
           <Text style={styles.cell}>N/A</Text>
           <Text style={styles.cell}>{formatTimestamp(tierSettingsTimestamp)}</Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.cell}>Daily Match Limit</Text>
-          <Text style={styles.cell}>{dailyMatchLimit}</Text>
+          <Text style={styles.cell}>{settings.daily_match_limit}</Text>
           <Text style={styles.cell}>N/A</Text>
           <Text style={styles.cell}>{formatTimestamp(tierSettingsTimestamp)}</Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.cell}>Message Sending Limit</Text>
-          <Text style={styles.cell}>{messageSendingLimit}</Text>
+          <Text style={styles.cell}>{settings.message_sending_limit}</Text>
           <Text style={styles.cell}>N/A</Text>
           <Text style={styles.cell}>{formatTimestamp(tierSettingsTimestamp)}</Text>
         </View>

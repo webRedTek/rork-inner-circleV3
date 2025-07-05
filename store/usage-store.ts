@@ -556,6 +556,23 @@ export const useUsageStore = create<UsageStore>()(
         return swipeCache.pendingSwipes.length;
       },
 
+      // Authority methods - these are the "source of truth" for usage data
+      getDatabaseTotals: () => {
+        return get().databaseTotals;
+      },
+
+      getUsageCache: () => {
+        return get().usageCache;
+      },
+
+      getCurrentUsage: (type: string) => {
+        const { usageCache } = get();
+        if (!usageCache || !usageCache.counts) return 0;
+        
+        const countKey = `${type}_count` as keyof typeof usageCache.counts;
+        return Number(usageCache.counts[countKey]) || 0;
+      },
+
     })) as any,
     {
       name: 'usage-store',

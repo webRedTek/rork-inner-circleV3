@@ -404,6 +404,11 @@ export interface UsageStore {
   checkLikeLimit: () => boolean;
   checkMessageLimit: () => boolean;
   
+  // Authority methods - these are the "source of truth" for usage data
+  getDatabaseTotals: () => DatabaseTotals | null;
+  getUsageCache: () => UsageCache | null;
+  getCurrentUsage: (type: string) => number;
+  
   // Core functions
   initializeUsage: (userId: string) => Promise<void>;
   fetchDatabaseTotals: (userId: string) => Promise<void>;
@@ -420,4 +425,54 @@ export interface UsageStore {
   cacheSwipe: (swipeAction: any) => void;
   syncSwipeData: () => Promise<void>;
   getPendingSwipeCount: () => number;
+}
+
+// Store interfaces for consistency
+export interface AuthStoreState {
+  user: UserProfile | null;
+  allTierSettings: Record<MembershipTier, TierSettings> | null;
+  tierSettingsTimestamp: number | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  isReady: boolean;
+  error: string | null;
+  networkStatus: { isConnected: boolean | null; type?: string | null; } | null;
+}
+
+export interface UsageStoreState {
+  usageCache: UsageCache | null;
+  batchUpdates: BatchUpdate[];
+  isSyncing: boolean;
+  lastSyncError: string | null;
+  databaseTotals: DatabaseTotals | null;
+  saveStrategy: SyncStrategy;
+  rateLimits: RateLimits;
+  cacheConfig: CacheConfig;
+  retryStrategy: RetryStrategy;
+  swipeCache: {
+    pendingSwipes: any[];
+    lastSyncTimestamp: number;
+  };
+}
+
+// Store authorities interfaces - these are the "source of truth" methods
+export interface AuthStoreAuthority {
+  getTierSettings: () => TierSettings | null;
+  fetchAllTierSettings: () => Promise<void>;
+  getUserProfile: () => UserProfile | null;
+  isUserAuthenticated: () => boolean;
+  getUserRole: () => UserRole;
+  getUserMembershipTier: () => MembershipTier;
+}
+
+export interface UsageStoreAuthority {
+  checkAllLimits: () => any; // Returns AllLimitsStatus
+  checkSpecificLimit: (limitType: string) => any; // Returns LimitStatus
+  checkSwipeLimit: () => boolean;
+  checkMatchLimit: () => boolean;
+  checkLikeLimit: () => boolean;
+  checkMessageLimit: () => boolean;
+  getDatabaseTotals: () => DatabaseTotals | null;
+  getUsageCache: () => UsageCache | null;
+  getCurrentUsage: (type: string) => number;
 }

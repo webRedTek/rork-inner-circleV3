@@ -895,6 +895,25 @@ export const useAuthStore = create<AuthState>()(
           });
         }
       },
+
+      // Authority methods - these are the "source of truth" for auth data
+      getUserProfile: () => {
+        return get().user;
+      },
+
+      isUserAuthenticated: () => {
+        return get().isAuthenticated;
+      },
+
+      getUserRole: () => {
+        const { user } = get();
+        return user?.role || 'member';
+      },
+
+      getUserMembershipTier: () => {
+        const { user } = get();
+        return user?.membershipTier || 'bronze';
+      },
     }),
     {
       name: 'auth-store',
