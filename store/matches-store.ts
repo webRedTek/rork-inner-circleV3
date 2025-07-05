@@ -245,6 +245,21 @@ class EnhancedProfileCache {
     return { ...this.stats };
   }
 
+  getAllProfiles(): UserProfile[] {
+    logger.logFunctionCall('EnhancedProfileCache.getAllProfiles');
+    const profiles: UserProfile[] = [];
+    const now = Date.now();
+    
+    this.cache.forEach((entry, key) => {
+      // Check if entry is still valid
+      if (now - entry.timestamp <= this.config.maxAge && entry.profile) {
+        profiles.push(entry.profile);
+      }
+    });
+    
+    return profiles;
+  }
+
   destroy(): void {
     logger.logFunctionCall('EnhancedProfileCache.destroy');
     if (this.cleanupInterval) {
@@ -323,8 +338,45 @@ export const useMatchesStore = create<MatchesStore>()(
 
         // Check cache first unless force refresh
         if (!force && profiles.length > 0) {
-          logger.logDebug('Using cached profiles', { count: profiles.length });
+          logger.logDebug('Using existing profiles in state', { count: profiles.length });
           return;
+        }
+
+        // If no profiles in state but cache has profiles, load from cache
+        if (!force && profiles.length === 0) {
+          const cacheStats = cache.getStats();
+          
+          if (cacheStats.size > 0) {
+            logger.logDebug('Loading profiles from cache', { cacheSize: cacheStats.size });
+            
+            // Extract all cached profiles using public method
+            const cachedProfiles = cache.getAllProfiles();
+            
+            if (cachedProfiles.length > 0) {
+              logger.logDebug('Loaded profiles from cache to state', { count: cachedProfiles.length });
+              
+              // Only log to debug system when debug mode is enabled
+              const { useDebugStore } = require('@/store/debug-store');
+              const { isDebugMode, addDebugLog } = useDebugStore.getState();
+              
+              if (isDebugMode) {
+                addDebugLog({
+                  event: 'Profiles loaded from cache',
+                  status: 'success',
+                  details: `${cachedProfiles.length} profiles loaded from cache to state`,
+                  source: 'matches-store',
+                  data: {
+                    profileCount: cachedProfiles.length,
+                    profileIds: cachedProfiles.map(p => p.id),
+                    cacheSize: cacheStats.size
+                  }
+                });
+              }
+              
+              set({ profiles: cachedProfiles, isLoading: false, error: null });
+              return;
+            }
+          }
         }
 
         // Only log to debug system when debug mode is enabled

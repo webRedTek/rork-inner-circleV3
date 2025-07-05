@@ -126,6 +126,18 @@ export default function DiscoverScreen() {
     }
   }, [user?.id, isDebugMode]);
 
+  // Fetch potential matches when screen loads
+  useEffect(() => {
+    if (user?.id) {
+      if (isDebugMode) {
+        console.log('[DiscoverScreen] Fetching potential matches on screen load');
+      }
+      
+      // Fetch profiles (will use cache if available)
+      fetchPotentialMatches();
+    }
+  }, [user?.id, fetchPotentialMatches, isDebugMode]);
+
   // Update limit status whenever usage data changes
   useEffect(() => {
     updateLimitStatus();
@@ -143,7 +155,12 @@ export default function DiscoverScreen() {
         if (isDebugMode) {
           console.log('[DiscoverScreen] checkAllLimits returned null - database totals or rate limits not available yet');
         }
-        setLimitStatus(null);
+        // Set default "allowed" status while loading instead of null
+        setLimitStatus({
+          swipe: { isAllowed: true },
+          match: { isAllowed: true },
+          like: { isAllowed: true }
+        });
         return;
       }
       
@@ -162,7 +179,12 @@ export default function DiscoverScreen() {
       }
     } catch (error) {
       console.error('[DiscoverScreen] Error updating limit status:', error);
-      setLimitStatus(null);
+      // Set default "allowed" status on error instead of null
+      setLimitStatus({
+        swipe: { isAllowed: true },
+        match: { isAllowed: true },
+        like: { isAllowed: true }
+      });
     }
   }, [user?.id, checkAllLimits, isDebugMode]);
 
@@ -335,12 +357,9 @@ export default function DiscoverScreen() {
     }
     
     try {
-      // Check swipe limit using unified system
+      // Check swipe limit using authority - UI-only, doesn't block backend
       const canSwipe = checkSwipeLimit();
       if (!canSwipe) {
-        const allLimits = checkAllLimits();
-        const swipeStatus = allLimits?.swipe;
-        
         if (isDebugMode) {
           addDebugLog({
             event: 'Swipe left blocked - limit reached',
@@ -348,13 +367,13 @@ export default function DiscoverScreen() {
             details: 'Daily swipe limit reached',
             source: 'discover-screen',
             data: {
-              swipeStatus,
-              allLimits
+              action: 'swipe_left',
+              limitType: 'swipe'
             }
           });
         }
         
-        notify.error(`Daily swipe limit reached. Try again tomorrow!`);
+        notify.error('Limit Reached');
         return;
       }
       
@@ -463,14 +482,11 @@ export default function DiscoverScreen() {
     }
     
     try {
-      // Check both swipe and like limits using unified system
+      // Check both swipe and like limits using authority - UI-only, doesn't block backend
       const canSwipe = checkSwipeLimit();
       const canLike = checkLikeLimit();
       
       if (!canSwipe) {
-        const allLimits = checkAllLimits();
-        const swipeStatus = allLimits?.swipe;
-        
         if (isDebugMode) {
           addDebugLog({
             event: 'Swipe right blocked - swipe limit reached',
@@ -478,20 +494,17 @@ export default function DiscoverScreen() {
             details: 'Daily swipe limit reached',
             source: 'discover-screen',
             data: {
-              swipeStatus,
-              allLimits
+              action: 'swipe_right',
+              limitType: 'swipe'
             }
           });
         }
         
-        notify.error(`Daily swipe limit reached. Try again tomorrow!`);
+        notify.error('Limit Reached');
         return;
       }
       
       if (!canLike) {
-        const allLimits = checkAllLimits();
-        const likeStatus = allLimits?.like;
-        
         if (isDebugMode) {
           addDebugLog({
             event: 'Swipe right blocked - like limit reached',
@@ -499,13 +512,13 @@ export default function DiscoverScreen() {
             details: 'Daily like limit reached',
             source: 'discover-screen',
             data: {
-              likeStatus,
-              allLimits
+              action: 'swipe_right',
+              limitType: 'like'
             }
           });
         }
         
-        notify.error(`Daily like limit reached. Upgrade your plan for more!`);
+        notify.error('Limit Reached');
         return;
       }
       
@@ -642,7 +655,7 @@ export default function DiscoverScreen() {
         <View style={styles.limitStatusRow}>
           <View style={[
             styles.limitIndicator,
-            !limitStatus || !limitStatus.swipe?.isAllowed ? styles.limitReached : {}
+            limitStatus && !limitStatus.swipe?.isAllowed ? styles.limitReached : {}
           ]}>
             <Heart size={16} color={
               limitStatus && limitStatus.swipe?.isAllowed 
@@ -651,15 +664,15 @@ export default function DiscoverScreen() {
             } />
             <Text style={[
               styles.limitText,
-              !limitStatus || !limitStatus.swipe?.isAllowed ? styles.limitTextReached : {}
+              limitStatus && !limitStatus.swipe?.isAllowed ? styles.limitTextReached : {}
             ]}>
-              {limitStatus ? 'Swipe OK' : 'Loading...'}
+              {limitStatus && limitStatus.swipe?.isAllowed ? 'Swipe OK' : 'Swipe Limit'}
             </Text>
           </View>
           
           <View style={[
             styles.limitIndicator,
-            !limitStatus || !limitStatus.like?.isAllowed ? styles.limitReached : {}
+            limitStatus && !limitStatus.like?.isAllowed ? styles.limitReached : {}
           ]}>
             <Zap size={16} color={
               limitStatus && limitStatus.like?.isAllowed 
@@ -668,15 +681,15 @@ export default function DiscoverScreen() {
             } />
             <Text style={[
               styles.limitText,
-              !limitStatus || !limitStatus.like?.isAllowed ? styles.limitTextReached : {}
+              limitStatus && !limitStatus.like?.isAllowed ? styles.limitTextReached : {}
             ]}>
-              {limitStatus ? 'Like OK' : 'Loading...'}
+              {limitStatus && limitStatus.like?.isAllowed ? 'Like OK' : 'Like Limit'}
             </Text>
           </View>
           
           <View style={[
             styles.limitIndicator,
-            !limitStatus || !limitStatus.match?.isAllowed ? styles.limitReached : {}
+            limitStatus && !limitStatus.match?.isAllowed ? styles.limitReached : {}
           ]}>
             <MessageCircle size={16} color={
               limitStatus && limitStatus.match?.isAllowed 
@@ -685,9 +698,9 @@ export default function DiscoverScreen() {
             } />
             <Text style={[
               styles.limitText,
-              !limitStatus || !limitStatus.match?.isAllowed ? styles.limitTextReached : {}
+              limitStatus && !limitStatus.match?.isAllowed ? styles.limitTextReached : {}
             ]}>
-              {limitStatus ? 'Match OK' : 'Loading...'}
+              {limitStatus && limitStatus.match?.isAllowed ? 'Match OK' : 'Match Limit'}
             </Text>
           </View>
         </View>
