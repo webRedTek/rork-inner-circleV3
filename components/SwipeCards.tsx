@@ -75,7 +75,6 @@ interface SwipeCardsProps {
   error?: string | null;
   onRetry?: () => Promise<void>;
   onRefresh?: () => Promise<void>;
-  refreshing?: boolean;
 }
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -156,8 +155,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   isLoading = false,
   error: propError = null,
   onRetry,
-  onRefresh,
-  refreshing = false
+  onRefresh
 }) => {
   const { isDebugMode, addDebugLog } = useDebugStore();
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -254,7 +252,6 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
           currentIndex,
           isLoading,
           error: error || propError,
-          refreshing,
           visibleProfiles: profiles.slice(currentIndex, currentIndex + 3).map(p => ({
             id: p.id,
             name: p.name,
@@ -263,7 +260,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
         }
       });
     }
-  }, [profiles, currentIndex, isLoading, error, propError, refreshing, isDebugMode, addDebugLog]);
+  }, [profiles, currentIndex, isLoading, error, propError, isDebugMode, addDebugLog]);
 
   // Debug logging for SwipeCards render decisions
   useEffect(() => {

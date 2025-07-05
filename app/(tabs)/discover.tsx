@@ -32,7 +32,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { SwipeCards } from '@/components/SwipeCards';
@@ -306,36 +306,7 @@ export default function DiscoverScreen() {
     }
     
     try {
-      // Check swipe limit using authority - UI-only, doesn't block backend
-      const canSwipe = checkSwipeLimit();
-      if (!canSwipe) {
-        if (isDebugMode) {
-          addDebugLog({
-            event: 'Swipe left blocked - limit reached',
-            status: 'warning',
-            details: 'Daily swipe limit reached',
-            source: 'discover-screen',
-            data: {
-              action: 'swipe_left',
-              limitType: 'swipe'
-            }
-          });
-        }
-        
-        notify.error('Limit Reached');
-        return;
-      }
-      
-      if (isDebugMode) {
-        addDebugLog({
-          event: 'Swipe left limit check passed',
-          status: 'success',
-          details: 'Swipe limit allows action',
-          source: 'discover-screen'
-        });
-      }
-      
-      // Cache the swipe decision locally (no immediate database call)
+      // Simple cache-only operation - no database calls, no limit checks
       const swipeAction = {
         id: `${user.id}_${profile.id}_${Date.now()}`,
         swiper_id: user.id,
@@ -344,48 +315,15 @@ export default function DiscoverScreen() {
         timestamp: Date.now()
       };
       
-      if (isDebugMode) {
-        addDebugLog({
-          event: 'Swipe left action cached',
-          status: 'info',
-          details: 'Swipe action cached for batch processing',
-          source: 'discover-screen',
-          data: {
-            swipeAction,
-            cacheType: 'local'
-          }
-        });
-      }
-      
-      // Track usage (this will be batched)
-      await updateUsage('swipe', 1);
+      // TODO: Queue for batch processing later (not implemented yet)
       
       if (isDebugMode) {
         addDebugLog({
-          event: 'Swipe left usage tracked',
+          event: 'Swipe left cached',
           status: 'success',
-          details: 'Usage incremented in usage store',
+          details: `Cached pass action for ${profile.name} - no database calls`,
           source: 'discover-screen',
-          data: {
-            action: 'swipe',
-            count: 1
-          }
-        });
-      }
-      
-      // Update limit status
-      updateLimitStatus();
-      
-      if (isDebugMode) {
-        addDebugLog({
-          event: 'Swipe left completed',
-          status: 'success',
-          details: `Successfully processed swipe left on ${profile.name}`,
-          source: 'discover-screen',
-          data: {
-            profileId: profile.id,
-            totalTime: Date.now() - Date.now()
-          }
+          data: { swipeAction }
         });
       }
       
@@ -409,7 +347,7 @@ export default function DiscoverScreen() {
       console.error('[DiscoverScreen] Error processing swipe left:', errorMessage);
       notify.error(`Failed to process swipe: ${errorMessage}`);
     }
-  }, [user?.id, checkSwipeLimit, checkAllLimits, updateUsage, updateLimitStatus, isDebugMode, addDebugLog]);
+  }, [user?.id, isDebugMode, addDebugLog]);
 
   // Simplified swipe right handler with batch caching
   const handleSwipeRight = useCallback(async (profile: UserProfile) => {
@@ -431,56 +369,7 @@ export default function DiscoverScreen() {
     }
     
     try {
-      // Check both swipe and like limits using authority - UI-only, doesn't block backend
-      const canSwipe = checkSwipeLimit();
-      const canLike = checkLikeLimit();
-      
-      if (!canSwipe) {
-        if (isDebugMode) {
-          addDebugLog({
-            event: 'Swipe right blocked - swipe limit reached',
-            status: 'warning',
-            details: 'Daily swipe limit reached',
-            source: 'discover-screen',
-            data: {
-              action: 'swipe_right',
-              limitType: 'swipe'
-            }
-          });
-        }
-        
-        notify.error('Limit Reached');
-        return;
-      }
-      
-      if (!canLike) {
-        if (isDebugMode) {
-          addDebugLog({
-            event: 'Swipe right blocked - like limit reached',
-            status: 'warning',
-            details: 'Daily like limit reached',
-            source: 'discover-screen',
-            data: {
-              action: 'swipe_right',
-              limitType: 'like'
-            }
-          });
-        }
-        
-        notify.error('Limit Reached');
-        return;
-      }
-      
-      if (isDebugMode) {
-        addDebugLog({
-          event: 'Swipe right limit checks passed',
-          status: 'success',
-          details: 'Both swipe and like limits allow action',
-          source: 'discover-screen'
-        });
-      }
-      
-      // Cache the swipe decision locally (no immediate database call)
+      // Simple cache-only operation - no database calls, no limit checks
       const swipeAction = {
         id: `${user.id}_${profile.id}_${Date.now()}`,
         swiper_id: user.id,
@@ -489,53 +378,18 @@ export default function DiscoverScreen() {
         timestamp: Date.now()
       };
       
-      if (isDebugMode) {
-        addDebugLog({
-          event: 'Swipe right action cached',
-          status: 'info',
-          details: 'Like action cached for batch processing',
-          source: 'discover-screen',
-          data: {
-            swipeAction,
-            cacheType: 'local'
-          }
-        });
-      }
+      // TODO: Queue for batch processing later (not implemented yet)
       
-      // Track usage for both swipe and like (this will be batched)
-      await updateUsage('swipe', 1);
-      await updateUsage('like', 1);
-      
-      if (isDebugMode) {
-        addDebugLog({
-          event: 'Swipe right usage tracked',
-          status: 'success',
-          details: 'Both swipe and like usage incremented',
-          source: 'discover-screen',
-          data: {
-            actions: ['swipe', 'like'],
-            count: 1
-          }
-        });
-      }
-      
-      // Update limit status
-      updateLimitStatus();
-      
-      // Show optimistic feedback
+      // Show optimistic feedback immediately
       notify.info(`You liked ${profile.name}! 💖`);
       
       if (isDebugMode) {
         addDebugLog({
-          event: 'Swipe right completed',
+          event: 'Swipe right cached',
           status: 'success',
-          details: `Successfully processed swipe right on ${profile.name}`,
+          details: `Cached like action for ${profile.name} - no database calls`,
           source: 'discover-screen',
-          data: {
-            profileId: profile.id,
-            totalTime: Date.now() - Date.now(),
-            notification: `You liked ${profile.name}! 💖`
-          }
+          data: { swipeAction }
         });
       }
       
@@ -559,7 +413,7 @@ export default function DiscoverScreen() {
       console.error('[DiscoverScreen] Error processing swipe right:', errorMessage);
       notify.error(`Failed to process like: ${errorMessage}`);
     }
-  }, [user?.id, checkSwipeLimit, checkLikeLimit, checkAllLimits, updateUsage, updateLimitStatus, isDebugMode, addDebugLog]);
+  }, [user?.id, isDebugMode, addDebugLog]);
 
   // Handle profile press
   const handleProfilePress = useCallback((profile: UserProfile) => {
@@ -698,17 +552,7 @@ export default function DiscoverScreen() {
   // Main render
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView
-        style={styles.scrollView}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor={Colors.dark.primary}
-            colors={[Colors.dark.primary]}
-          />
-        }
-      >
+      <View style={styles.content}>
         <View style={styles.header}>
           <Text style={styles.title}>Discover</Text>
           <Text style={styles.subtitle}>
@@ -718,7 +562,7 @@ export default function DiscoverScreen() {
 
         {renderLimitStatus()}
 
-        <View style={styles.content}>
+        <View style={styles.swipeContainer}>
           {error ? renderError() : (
             <>
               {profiles.length === 0 ? renderEmpty() : (
@@ -731,13 +575,12 @@ export default function DiscoverScreen() {
                   isLoading={isLoading}
                   error={error}
                   onRefresh={handleRefresh}
-                  refreshing={refreshing}
                 />
               )}
             </>
           )}
         </View>
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -747,7 +590,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.dark.background,
   },
-  scrollView: {
+  content: {
     flex: 1,
   },
   header: {
@@ -797,7 +640,7 @@ const styles = StyleSheet.create({
   limitTextReached: {
     color: Colors.dark.error,
   },
-  content: {
+  swipeContainer: {
     flex: 1,
     paddingHorizontal: 20,
   },
