@@ -341,7 +341,7 @@ export const useMatchesStore = create<MatchesStore>()(
             .rpc('fetch_potential_matches', {
               p_user_id: guard.user.id,
               p_is_global_discovery: true, // Simplified to global discovery
-              p_limit: 10, // Reduced to 10 profiles for better UX
+              p_limit: 50, // Increased to 50 profiles for better coverage
               p_offset: 0
             });
 

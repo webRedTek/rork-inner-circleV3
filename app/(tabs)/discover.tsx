@@ -79,10 +79,7 @@ export default function DiscoverScreen() {
       }
       
       // Trigger usage sync for discovery
-      const { user } = useAuthStore.getState();
-      if (user?.id) {
-        startUsageSyncForDiscovery(user.id);
-      }
+      startUsageSyncForDiscovery(user.id);
       
       // Fetch current database totals and limit status
       fetchDatabaseTotals(user.id).then(() => {
@@ -140,8 +137,12 @@ export default function DiscoverScreen() {
       // Fetch new profiles
       await fetchPotentialMatches(true);
       
-      // Only show success if we get here without errors
-      notify.success('Profiles refreshed successfully!');
+      // Only show success if we actually have profiles
+      if (profiles.length > 0) {
+        notify.success('Profiles refreshed successfully!');
+      } else {
+        notify.info('No new profiles found. All available profiles have been shown.');
+      }
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -296,24 +297,24 @@ export default function DiscoverScreen() {
     return (
       <View style={styles.limitStatusContainer}>
         <View style={styles.limitStatusRow}>
-          <View style={[styles.limitIndicator, limitStatus.swipe.isReached && styles.limitReached]}>
-            <Heart size={16} color={limitStatus.swipe.isReached ? Colors.dark.error : Colors.dark.success} />
-            <Text style={[styles.limitText, limitStatus.swipe.isReached && styles.limitTextReached]}>
-              Swipes: {limitStatus.swipe.current}/{limitStatus.swipe.limit}
+          <View style={[styles.limitIndicator, !limitStatus.swipe.isAllowed && styles.limitReached]}>
+            <Heart size={16} color={!limitStatus.swipe.isAllowed ? Colors.dark.error : Colors.dark.success} />
+            <Text style={[styles.limitText, !limitStatus.swipe.isAllowed && styles.limitTextReached]}>
+              Swipes: {limitStatus.swipe.isAllowed ? 'Available' : 'Limit Reached'}
             </Text>
           </View>
           
-          <View style={[styles.limitIndicator, limitStatus.like.isReached && styles.limitReached]}>
-            <Zap size={16} color={limitStatus.like.isReached ? Colors.dark.error : Colors.dark.success} />
-            <Text style={[styles.limitText, limitStatus.like.isReached && styles.limitTextReached]}>
-              Likes: {limitStatus.like.current}/{limitStatus.like.limit}
+          <View style={[styles.limitIndicator, !limitStatus.like.isAllowed && styles.limitReached]}>
+            <Zap size={16} color={!limitStatus.like.isAllowed ? Colors.dark.error : Colors.dark.success} />
+            <Text style={[styles.limitText, !limitStatus.like.isAllowed && styles.limitTextReached]}>
+              Likes: {limitStatus.like.isAllowed ? 'Available' : 'Limit Reached'}
             </Text>
           </View>
           
-          <View style={[styles.limitIndicator, limitStatus.match.isReached && styles.limitReached]}>
-            <Users size={16} color={limitStatus.match.isReached ? Colors.dark.error : Colors.dark.success} />
-            <Text style={[styles.limitText, limitStatus.match.isReached && styles.limitTextReached]}>
-              Matches: {limitStatus.match.current}/{limitStatus.match.limit}
+          <View style={[styles.limitIndicator, !limitStatus.match.isAllowed && styles.limitReached]}>
+            <Users size={16} color={!limitStatus.match.isAllowed ? Colors.dark.error : Colors.dark.success} />
+            <Text style={[styles.limitText, !limitStatus.match.isAllowed && styles.limitTextReached]}>
+              Matches: {limitStatus.match.isAllowed ? 'Available' : 'Limit Reached'}
             </Text>
           </View>
         </View>
