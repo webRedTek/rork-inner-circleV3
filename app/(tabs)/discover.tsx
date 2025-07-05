@@ -60,7 +60,7 @@ export default function DiscoverScreen() {
     checkLikeLimit,
     updateUsage
   } = useUsageStore();
-  const { isDebugMode, addDebugLog } = useDebugStore();
+  const { isDebugMode, addDebugLog, useSimpleProfileView } = useDebugStore();
 
   const [refreshing, setRefreshing] = useState(false);
   const [limitStatus, setLimitStatus] = useState<{
@@ -492,16 +492,26 @@ export default function DiscoverScreen() {
           {error ? renderError() : (
             <>
               {profiles.length === 0 ? renderEmpty() : (
-                <SwipeCards
-                  profiles={profiles}
-                  onSwipeLeft={handleSwipeLeft}
-                  onSwipeRight={handleSwipeRight}
-                  onEmpty={handleEmpty}
-                  onProfilePress={handleProfilePress}
-                  isLoading={isLoading && profiles.length === 0}
-                  error={error}
-                  onRefresh={handleRefresh}
-                />
+                useSimpleProfileView ? (
+                  <View style={styles.container}>
+                    <Text style={styles.title}>Simple View (Debug)</Text>
+                    <Text>Profiles: {profiles.length}, Loading: {isLoading ? 'Yes' : 'No'}</Text>
+                    {profiles.map(profile => (
+                      <Text key={profile.id} style={styles.subtitle}>{profile.name}</Text>
+                    ))}
+                  </View>
+                ) : (
+                  <SwipeCards
+                    profiles={profiles}
+                    onSwipeLeft={handleSwipeLeft}
+                    onSwipeRight={handleSwipeRight}
+                    onEmpty={handleEmpty}
+                    onProfilePress={handleProfilePress}
+                    isLoading={isLoading && profiles.length === 0}
+                    error={error}
+                    onRefresh={handleRefresh}
+                  />
+                )
               )}
             </>
           )}

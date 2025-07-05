@@ -36,8 +36,10 @@ import { MembershipTier, TierSettings } from '@/types/user';
 import type { DebugLogEntry } from '@/store/debug-store';
 import { useNotificationStore } from '@/store/notification-store';
 import { supabase } from '@/lib/supabase';
+import { useRouter } from 'expo-router';
 
 export default function DebugScreen() {
+  const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(new Date());
   
@@ -56,13 +58,14 @@ export default function DebugScreen() {
     isLoading,
     error,
     getCacheStats,
-    fetchPotentialMatches
+    fetchPotentialMatches,
+    cache,
   } = useMatchesStore();
 
   const { user, allTierSettings, tierSettingsTimestamp } = useAuthStore();
 
   // Get debug logs and debug mode
-  const { debugLog, isDebugMode, toggleDebugMode } = useDebugStore();
+  const { debugLog, isDebugMode, toggleDebugMode, addDebugLog, clearDebugLog, useSimpleProfileView, toggleSimpleProfileView } = useDebugStore();
 
   const { clearAllNotifications, notifications } = useNotificationStore();
 
@@ -103,6 +106,31 @@ export default function DebugScreen() {
       >
         <Text style={styles.title}>Debug Information</Text>
         <Text style={styles.subtitle}>Last Updated: {lastRefresh.toLocaleTimeString()}</Text>
+
+        {/* NEW: SwipeCards Debug Toggle - Always Visible */}
+        <View style={[styles.section, { backgroundColor: Colors.light.info + '20' }]}>
+          <Text style={[styles.sectionTitle, { color: Colors.light.info }]}>
+            🔧 SWIPECARDS DEBUG CONTROL
+          </Text>
+          <View style={styles.infoBlock}>
+            <Text style={[styles.value, { fontSize: 18, fontWeight: 'bold' }]}>
+              {useSimpleProfileView ? '📋 SIMPLE VIEW ACTIVE' : '🎴 SWIPECARDS ACTIVE'}
+            </Text>
+            <Text style={styles.label}>
+              {useSimpleProfileView 
+                ? 'Using simple profile list to test if loading issue is in SwipeCards component' 
+                : 'Using full SwipeCards component (default behavior)'}
+            </Text>
+          </View>
+          <Button
+            title={useSimpleProfileView ? 'Enable SwipeCards' : 'Enable Simple View'}
+            onPress={toggleSimpleProfileView}
+            variant={useSimpleProfileView ? 'primary' : 'secondary'}
+          />
+          <Text style={styles.warningText}>
+            💡 Toggle this to isolate whether the loading circle issue is in SwipeCards or elsewhere
+          </Text>
+        </View>
 
         {/* CRITICAL: Debug Mode Status - Always Visible */}
         <View style={[styles.section, { backgroundColor: isDebugMode ? Colors.light.success + '20' : Colors.light.error + '20' }]}>

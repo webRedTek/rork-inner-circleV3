@@ -42,35 +42,33 @@ export interface DebugLogEntry {
   source: string;
 }
 
-interface DebugState {
+interface DebugStore {
   isDebugMode: boolean;
   debugLog: DebugLogEntry[];
+  useSimpleProfileView: boolean;
   toggleDebugMode: () => void;
-  setDebugMode: (enabled: boolean) => void;
-  resetDebugMode: () => void;
+  toggleSimpleProfileView: () => void;
   addDebugLog: (entry: Omit<DebugLogEntry, 'id' | 'timestamp'>) => void;
   clearDebugLog: () => void;
-  getDebugLog: () => DebugLogEntry[];
+  getRecentLogs: (count?: number) => DebugLogEntry[];
+  getLogsBySource: (source: string) => DebugLogEntry[];
 }
 
-export const useDebugStore = create<DebugState>()(
+export const useDebugStore = create<DebugStore>()(
   persist(
     (set, get) => ({
       isDebugMode: false,
       debugLog: [],
+      useSimpleProfileView: false,
       
       toggleDebugMode: () => {
         set((state) => ({ isDebugMode: !state.isDebugMode }));
       },
       
-      setDebugMode: (enabled: boolean) => {
-        set({ isDebugMode: enabled });
+      toggleSimpleProfileView: () => {
+        set((state) => ({ useSimpleProfileView: !state.useSimpleProfileView }));
       },
       
-      resetDebugMode: () => {
-        set({ isDebugMode: false });
-      },
-
       addDebugLog: (entry) => {
         const newEntry: DebugLogEntry = {
           id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -87,8 +85,12 @@ export const useDebugStore = create<DebugState>()(
         set({ debugLog: [] });
       },
 
-      getDebugLog: () => {
-        return get().debugLog;
+      getRecentLogs: (count = 10) => {
+        return get().debugLog.slice(-count);
+      },
+
+      getLogsBySource: (source: string) => {
+        return get().debugLog.filter(log => log.source === source);
       },
     }),
     {
