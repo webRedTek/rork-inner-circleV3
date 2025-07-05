@@ -423,6 +423,24 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     const profile = profiles[currentIndex];
     if (!profile) return;
     
+    // Debug logging for swipe completion
+    if (isDebugMode) {
+      addDebugLog({
+        event: 'SwipeCards onSwipeComplete',
+        status: 'info',
+        details: `Swipe ${direction} on profile ${profile.name} (index ${currentIndex}/${profiles.length})`,
+        source: 'swipe-cards',
+        data: {
+          direction,
+          profileId: profile.id,
+          profileName: profile.name,
+          currentIndex,
+          totalProfiles: profiles.length,
+          nextIndex: currentIndex + 1
+        }
+      });
+    }
+    
     try {
       triggerHapticFeedback(direction === 'right' ? 'success' : 'medium');
       
@@ -435,6 +453,21 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       // Move to next card
       setCurrentIndex(prevIndex => {
         const newIndex = prevIndex + 1;
+        
+        if (isDebugMode) {
+          addDebugLog({
+            event: 'SwipeCards currentIndex update',
+            status: 'info',
+            details: `CurrentIndex updated from ${prevIndex} to ${newIndex}`,
+            source: 'swipe-cards',
+            data: {
+              oldIndex: prevIndex,
+              newIndex,
+              totalProfiles: profiles.length,
+              nextProfile: profiles[newIndex] ? profiles[newIndex].name : 'No more profiles'
+            }
+          });
+        }
         
         if (newIndex >= profiles.length && onEmpty) {
           setTimeout(onEmpty, 100);
@@ -463,7 +496,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       setError(`Failed to ${direction === 'right' ? 'like' : 'pass'} profile. Please try again.`);
       setTimeout(() => setError(null), 3000);
     }
-  }, [profiles, currentIndex, onSwipeRight, onSwipeLeft, onEmpty, triggerHapticFeedback]);
+  }, [profiles, currentIndex, onSwipeRight, onSwipeLeft, onEmpty, triggerHapticFeedback, isDebugMode, addDebugLog]);
 
   // Button-triggered swipe functions
   const handleButtonSwipe = useCallback((direction: 'left' | 'right') => {
@@ -780,12 +813,12 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   passButton: {
-    backgroundColor: Colors.dark.surface,
+    backgroundColor: Colors.dark.card,
     borderWidth: 2,
     borderColor: Colors.dark.error,
   },
   likeButton: {
-    backgroundColor: Colors.dark.surface,
+    backgroundColor: Colors.dark.card,
     borderWidth: 2,
     borderColor: Colors.dark.success,
   },
