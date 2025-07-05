@@ -507,7 +507,6 @@ export default function DiscoverScreen() {
                     onSwipeRight={handleSwipeRight}
                     onEmpty={handleEmpty}
                     onProfilePress={handleProfilePress}
-                    isLoading={isLoading && profiles.length === 0}
                     error={error}
                     onRefresh={handleRefresh}
                   />

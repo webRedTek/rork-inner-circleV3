@@ -100,7 +100,6 @@ import {
   Dimensions,
   Text,
   TouchableOpacity,
-  ActivityIndicator,
   Platform,
   ScrollView,
   RefreshControl
@@ -123,7 +122,6 @@ interface SwipeCardsProps {
   onSwipeRight: (profile: UserProfile) => Promise<void>;
   onEmpty?: () => void;
   onProfilePress: (profile: UserProfile) => void;
-  isLoading?: boolean;
   error?: string | null;
   onRetry?: () => Promise<void>;
   onRefresh?: () => Promise<void>;
@@ -195,7 +193,6 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   onSwipeRight,
   onEmpty,
   onProfilePress,
-  isLoading = false,
   error: propError = null,
   onRetry,
   onRefresh
@@ -219,25 +216,19 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   useEffect(() => {
     if (isDebugMode) {
       addDebugLog({
-        event: 'SwipeCards props/state update',
+        event: 'SwipeCards Component Render',
         status: 'info',
-        details: `SwipeCards received ${profiles.length} profiles, currentIndex: ${currentIndex}, loading: ${isLoading}`,
-        source: 'swipe-cards',
+        details: `SwipeCards received ${profiles.length} profiles, currentIndex: ${currentIndex}`,
+        source: 'SwipeCards',
         data: {
           profileCount: profiles.length,
-          profileIds: profiles.map(p => p.id).slice(0, 5),
           currentIndex,
-          isLoading,
-          error: error || propError,
-          visibleProfiles: profiles.slice(currentIndex, currentIndex + 3).map(p => ({
-            id: p.id,
-            name: p.name,
-            businessField: p.businessField
-          }))
+          hasError: !!(error || propError),
+          currentProfile: profiles[currentIndex]?.name || 'None'
         }
       });
     }
-  }, [profiles, currentIndex, isLoading, error, propError, isDebugMode, addDebugLog]);
+  }, [profiles, currentIndex, error, propError, isDebugMode, addDebugLog]);
 
   // FIXED: Proper useEffect for currentIndex reset to prevent setState during render
   useEffect(() => {
@@ -332,14 +323,14 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       outputRange: [1, 0.5, 0],
       extrapolate: 'clamp'
     });
-
+    
     return {
       rotate,
       likeOpacityInterpolated,
       passOpacityInterpolated
     };
   }, [position.x]);
-
+  
   // Simplified pan responder with better gesture handling
   const panResponder = useRef(
     PanResponder.create({
@@ -461,8 +452,8 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
             details: `CurrentIndex updated from ${prevIndex} to ${newIndex}`,
             source: 'swipe-cards',
             data: {
-              oldIndex: prevIndex,
-              newIndex,
+            oldIndex: prevIndex, 
+            newIndex,
               totalProfiles: profiles.length,
               nextProfile: profiles[newIndex] ? profiles[newIndex].name : 'No more profiles'
             }
@@ -532,8 +523,8 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     passOpacity.setValue(0);
     
     // Animate next card
-    Animated.spring(nextCardScale, {
-      toValue: 1,
+      Animated.spring(nextCardScale, {
+        toValue: 1,
       ...SPRING_CONFIG
     }).start(() => {
       nextCardScale.setValue(0.95);
@@ -595,7 +586,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
           >
             {/* Like Indicator */}
             <Animated.View style={[
-              styles.likeContainer,
+              styles.likeContainer, 
               { opacity: animatedStyles.likeOpacityInterpolated }
             ]}>
               <View style={styles.likeLabel}>
@@ -606,7 +597,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
             
             {/* Pass Indicator */}
             <Animated.View style={[
-              styles.passContainer,
+              styles.passContainer, 
               { opacity: animatedStyles.passOpacityInterpolated }
             ]}>
               <View style={styles.passLabel}>
@@ -615,10 +606,10 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
               </View>
             </Animated.View>
             
-            <EntrepreneurCard 
-              profile={profile} 
-              onProfilePress={() => onProfilePress(profile)}
-            />
+                         <EntrepreneurCard 
+               profile={profile} 
+               onProfilePress={() => onProfilePress(profile)}
+             />
           </Animated.View>
         );
       } else if (isNextCard) {
@@ -691,12 +682,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   
   return (
     <View style={styles.container}>
-      {isLoading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.dark.primary} />
-          <Text style={styles.loadingText}>Loading profiles...</Text>
-        </View>
-      ) : error || propError ? (
+      {error || propError ? (
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{getErrorMessage(error || propError)}</Text>
           {onRetry && (
@@ -711,7 +697,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       ) : (
         <>
           <View style={styles.cardsContainer}>
-            {renderCards()}
+          {renderCards()}
           </View>
           {renderActionButtons()}
         </>
@@ -856,16 +842,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
     marginBottom: 20,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    color: Colors.dark.text,
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: 16,
   },
 });
