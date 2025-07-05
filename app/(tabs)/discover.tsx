@@ -45,7 +45,7 @@ import { UserProfile } from '@/types/user';
 import Colors from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { Heart, X, RotateCcw, AlertCircle, TrendingUp, Users, MessageCircle, Zap } from 'lucide-react-native';
-import { startUsageSyncForDiscovery } from '@/store/usage-store';
+
 import { notify } from '@/store/notification-store';
 import { handleError, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
 
@@ -58,9 +58,7 @@ export default function DiscoverScreen() {
     checkSwipeLimit, 
     checkMatchLimit, 
     checkLikeLimit,
-    updateUsage,
-    fetchDatabaseTotals,
-    databaseTotals 
+    updateUsage
   } = useUsageStore();
   const { isDebugMode, addDebugLog } = useDebugStore();
 
@@ -109,22 +107,7 @@ export default function DiscoverScreen() {
     }
   }, [user?.id, isDebugMode, addDebugLog]);
 
-  // Initialize usage sync and fetch limit status
-  useEffect(() => {
-    if (user?.id) {
-      if (isDebugMode) {
-        console.log('[DiscoverScreen] Initializing usage sync and fetching limits');
-      }
-      
-      // Trigger usage sync for discovery
-      startUsageSyncForDiscovery(user.id);
-      
-      // Fetch current database totals and limit status
-      fetchDatabaseTotals(user.id).then(() => {
-        updateLimitStatus();
-      });
-    }
-  }, [user?.id, isDebugMode]);
+  // Remove usage initialization - should only happen once after login
 
   // Fetch potential matches when screen loads
   useEffect(() => {
@@ -138,10 +121,10 @@ export default function DiscoverScreen() {
     }
   }, [user?.id, fetchPotentialMatches, isDebugMode]);
 
-  // Update limit status whenever usage data changes
+  // Update limit status from cached usage data only
   useEffect(() => {
     updateLimitStatus();
-  }, [databaseTotals]);
+  }, []);
 
   // Update limit status from unified source
   const updateLimitStatus = useCallback(() => {
@@ -213,41 +196,7 @@ export default function DiscoverScreen() {
     setRefreshing(true);
     
     try {
-      // Log database totals fetch
-      if (isDebugMode) {
-        addDebugLog({
-          event: 'Fetching database totals',
-          status: 'info',
-          details: 'Refreshing usage limits and totals',
-          source: 'discover-screen'
-        });
-      }
-      
-      // Refresh database totals first
-      await fetchDatabaseTotals(user.id);
-      
-      if (isDebugMode) {
-        addDebugLog({
-          event: 'Database totals fetched',
-          status: 'success',
-          details: 'Usage limits and totals refreshed successfully',
-          source: 'discover-screen',
-          data: databaseTotals
-        });
-      }
-      
-      // Update limit status
-      updateLimitStatus();
-      
-      if (isDebugMode) {
-        addDebugLog({
-          event: 'Limit status updated',
-          status: 'success',
-          details: 'Refresh limit checking completed',
-          source: 'discover-screen',
-          data: limitStatus
-        });
-      }
+      // Remove usage fetching from refresh - profiles should load independently
       
       // Log before profile fetch
       if (isDebugMode) {
@@ -335,7 +284,7 @@ export default function DiscoverScreen() {
         });
       }
     }
-  }, [user?.id, fetchDatabaseTotals, updateLimitStatus, fetchPotentialMatches, isDebugMode, profiles, isLoading, error, limitStatus, databaseTotals]);
+  }, [user?.id, updateLimitStatus, fetchPotentialMatches, isDebugMode, profiles, isLoading, error, limitStatus]);
 
   // Simplified swipe left handler with batch caching
   const handleSwipeLeft = useCallback(async (profile: UserProfile) => {
