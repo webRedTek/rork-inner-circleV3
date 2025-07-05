@@ -409,53 +409,28 @@ export const useMatchesStore = create<MatchesStore>()(
             addDebugLog({
               event: 'Database RPC response received',
               status: 'success',
-              details: `RPC returned ${matchesData?.length || 0} raw results`,
+              details: `RPC returned response with ${matchesData?.count || 0} matches`,
               source: 'matches-store',
               data: {
                 responseType: typeof matchesData,
-                isArray: Array.isArray(matchesData),
-                length: matchesData?.length || 'N/A',
-                firstResult: matchesData?.[0] || null
+                responseStructure: matchesData ? Object.keys(matchesData) : [],
+                matchesCount: matchesData?.count || 0,
+                isGlobal: matchesData?.is_global || false,
+                maxDistance: matchesData?.max_distance || null,
+                actualMatches: matchesData?.matches || []
               }
             });
           }
 
-          // Validate that we got an array response
-          if (!matchesData) {
-            logger.logDebug('No data returned from RPC call');
+          // Validate that we got a proper response
+          if (!matchesData || typeof matchesData !== 'object') {
+            logger.logDebug('Invalid or empty response from RPC call', { matchesData });
             
             if (isDebugMode) {
               addDebugLog({
-                event: 'Empty RPC response',
-                status: 'warning',
-                details: 'RPC call returned no data',
-                source: 'matches-store'
-              });
-            }
-            
-            set({ profiles: [], isLoading: false, error: null });
-            notify.info('No new profiles found. Try adjusting your discovery settings.');
-            return;
-          }
-
-          // Ensure matchesData is an array
-          let matchesArray: any[] = [];
-          if (Array.isArray(matchesData)) {
-            matchesArray = matchesData;
-          } else if (matchesData && typeof matchesData === 'object') {
-            // If it's a single object, wrap it in an array
-            matchesArray = [matchesData];
-          } else {
-            logger.logDebug('Unexpected data format from RPC', { 
-              type: typeof matchesData,
-              data: matchesData 
-            });
-            
-            if (isDebugMode) {
-              addDebugLog({
-                event: 'Invalid RPC response format',
+                event: 'Invalid RPC response',
                 status: 'error',
-                details: `Expected array, got ${typeof matchesData}`,
+                details: 'RPC call returned invalid response structure',
                 source: 'matches-store',
                 data: {
                   responseType: typeof matchesData,
@@ -464,7 +439,35 @@ export const useMatchesStore = create<MatchesStore>()(
               });
             }
             
-            throw new Error(`Unexpected data format: expected array, got ${typeof matchesData}`);
+            set({ profiles: [], isLoading: false, error: null });
+            notify.info('No new profiles found. Try adjusting your discovery settings.');
+            return;
+          }
+
+          // Extract the matches array from the response
+          const matchesArray = matchesData.matches || [];
+          
+          if (!Array.isArray(matchesArray)) {
+            logger.logDebug('Matches property is not an array', { 
+              matchesType: typeof matchesArray,
+              matchesData: matchesArray 
+            });
+            
+            if (isDebugMode) {
+              addDebugLog({
+                event: 'Invalid matches array format',
+                status: 'error',
+                details: `Expected matches to be array, got ${typeof matchesArray}`,
+                source: 'matches-store',
+                data: {
+                  matchesType: typeof matchesArray,
+                  matchesData: matchesArray,
+                  fullResponse: matchesData
+                }
+              });
+            }
+            
+            throw new Error(`Invalid matches format: expected array, got ${typeof matchesArray}`);
           }
 
           if (matchesArray.length === 0) {
@@ -474,8 +477,13 @@ export const useMatchesStore = create<MatchesStore>()(
               addDebugLog({
                 event: 'Empty matches array',
                 status: 'warning',
-                details: 'RPC returned empty array - no potential matches found',
-                source: 'matches-store'
+                details: 'RPC returned empty matches array - no potential matches found',
+                source: 'matches-store',
+                data: {
+                  totalCount: matchesData.count || 0,
+                  isGlobal: matchesData.is_global || false,
+                  maxDistance: matchesData.max_distance || null
+                }
               });
             }
             
@@ -494,6 +502,8 @@ export const useMatchesStore = create<MatchesStore>()(
               source: 'matches-store',
               data: {
                 rawCount: matchesArray.length,
+                totalCount: matchesData.count || 0,
+                isGlobal: matchesData.is_global || false,
                 sampleKeys: matchesArray[0] ? Object.keys(matchesArray[0]) : []
               }
             });
@@ -506,33 +516,37 @@ export const useMatchesStore = create<MatchesStore>()(
           matchesArray.forEach((match: any, index: number) => {
             try {
               logger.logDebug(`Processing match ${index + 1}/${matchesArray.length}`, { 
-                matchId: match?.id || match?.user_id || 'unknown',
+                matchId: match?.id || 'unknown',
                 matchKeys: match ? Object.keys(match) : []
               });
 
               const profile: UserProfile = {
-                id: match.id || match.user_id,
-                name: match.name || match.full_name || 'Unknown',
+                id: match.id || '',
+                name: match.name || 'Unknown',
                 email: match.email || '',
-                age: match.age || 0,
-                location: match.location || '',
                 bio: match.bio || '',
-                interests: match.interests || [],
-                images: match.images || [],
-                verified: match.verified || false,
-                tier: match.tier || 'basic',
-                lastActive: match.last_active || new Date().toISOString(),
-                distance: match.distance || 0,
-                matchScore: match.match_score || 0,
-                portfolio: match.portfolio || [],
-                role: match.role || 'entrepreneur',
-                company: match.company || '',
-                industry: match.industry || '',
-                seeking: match.seeking || '',
-                ...(match.latitude && match.longitude && {
-                  latitude: match.latitude,
-                  longitude: match.longitude
-                })
+                location: match.location || '',
+                businessField: match.business_field || 'Technology',
+                entrepreneurStatus: match.entrepreneur_status || 'upcoming',
+                lookingFor: Array.isArray(match.looking_for) ? match.looking_for : [],
+                businessStage: match.business_stage || 'Idea Phase',
+                skillsOffered: Array.isArray(match.skills_offered) ? match.skills_offered : [],
+                skillsSeeking: Array.isArray(match.skills_seeking) ? match.skills_seeking : [],
+                membershipTier: match.membership_tier || 'bronze',
+                businessVerified: match.business_verified || false,
+                photoUrl: match.photo_url || '',
+                createdAt: match.created_at ? new Date(match.created_at).getTime() : Date.now(),
+                latitude: match.latitude || 0,
+                longitude: match.longitude || 0,
+                joinedGroups: [],
+                preferredDistance: 50,
+                locationPrivacy: 'public',
+                keyChallenge: '',
+                industryFocus: '',
+                availabilityLevel: [],
+                timezone: '',
+                successHighlight: '',
+                distance: match.distance || 0
               };
 
               // Validate essential fields
@@ -558,7 +572,9 @@ export const useMatchesStore = create<MatchesStore>()(
 
               logger.logDebug(`Successfully processed profile ${index + 1}`, {
                 id: profile.id,
-                name: profile.name
+                name: profile.name,
+                businessField: profile.businessField,
+                location: profile.location
               });
 
             } catch (error) {
