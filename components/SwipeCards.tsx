@@ -1052,6 +1052,8 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'flex-start',
+    minHeight: SCREEN_WIDTH * 0.9 * 1.5 + 100,
+    paddingTop: 20
   }
 });
