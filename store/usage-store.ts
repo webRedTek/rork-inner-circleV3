@@ -355,16 +355,34 @@ export const useUsageStore = create<UsageStore>()(
               return acc;
             }, {} as Record<string, number>);
             
-            // Apply updates to database
+            // Apply updates to database using specific upsert functions
             for (const [actionType, count] of Object.entries(updates)) {
-              const { error } = await supabase.rpc('track_usage', {
+              let rpcFunction: string;
+              
+              switch (actionType) {
+                case 'swipe':
+                  rpcFunction = 'upsert_swipe_count';
+                  break;
+                case 'match':
+                  rpcFunction = 'upsert_match_count';
+                  break;
+                case 'like':
+                  rpcFunction = 'upsert_like_count';
+                  break;
+                case 'message':
+                  rpcFunction = 'upsert_message_count';
+                  break;
+                default:
+                  continue; // Skip unknown action types
+              }
+              
+              const { error } = await supabase.rpc(rpcFunction, {
                 p_user_id: userId,
-                p_action_type: actionType,
                 p_count: count,
               });
               
               if (error) {
-                logger.logDebug('Failed to sync usage data:', { error });
+                logger.logDebug('Failed to sync usage data:', { actionType, error });
                 throw error;
               }
             }
