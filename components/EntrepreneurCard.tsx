@@ -1,20 +1,18 @@
 /**
  * FILE: components/EntrepreneurCard.tsx
- * LAST UPDATED: 2025-07-02 18:00
+ * LAST UPDATED: 2025-07-05 16:00
  * 
  * CURRENT STATE:
- * Enhanced reusable card component for displaying entrepreneur profiles in the discovery interface.
- * Handles loading states, error states, and image loading with fallbacks.
- * Supports profile detail expansion and retry functionality for failed loads.
- * Optimized for smooth animations and better user experience.
+ * **OPTIMIZED** reusable card component with reduced flickering and improved performance.
+ * Handles loading states efficiently without causing parent re-renders.
+ * Optimized image loading with better state management and reduced flicker.
  * 
  * RECENT CHANGES:
- * - Enhanced loading state handling for profile data with better animations
- * - Improved error state with better retry functionality and user feedback
- * - Enhanced image loading states and fallbacks with smoother transitions
- * - Better accessibility with proper hit slops and touch feedback
- * - Improved visual design with better shadows and spacing
- * - Enhanced integration with SwipeCards component for smoother animations
+ * - Optimized image loading state management to reduce flicker
+ * - Improved loading timeout handling with better cleanup
+ * - Reduced unnecessary re-renders through better state management
+ * - Enhanced error state handling with better user feedback
+ * - Optimized haptic feedback to prevent performance issues
  * 
  * FILE INTERACTIONS:
  * - Imports from: types (UserProfile interface)
@@ -23,17 +21,10 @@
  * - Exports to: discover.tsx and other profile display screens
  * - Dependencies: React Native, Expo LinearGradient
  * - Data flow: Receives profile data and callbacks from parent,
- *   manages internal loading states, triggers parent callbacks
- * 
- * KEY FUNCTIONS/COMPONENTS:
- * - Enhanced profile image display with loading states
- * - Improved business information display
- * - Better error state handling with retry
- * - Enhanced loading state display
- * - Optimized profile expansion trigger
+ *   manages internal loading states efficiently, triggers parent callbacks
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { FC } from 'react';
 import { View, Text, StyleSheet, Dimensions, Image, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import type { ViewStyle } from 'react-native';
@@ -64,38 +55,107 @@ export const EntrepreneurCard: FC<EntrepreneurCardProps> = ({
 }) => {
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hapticTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Enhanced haptic feedback function
-  const triggerHapticFeedback = (type: 'light' | 'medium' | 'heavy') => {
+  // Optimized haptic feedback function with debouncing
+  const triggerHapticFeedback = useCallback((type: 'light' | 'medium' | 'heavy') => {
     if (Platform.OS === 'web') return;
     
-    switch (type) {
-      case 'light':
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        break;
-      case 'medium':
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        break;
-      case 'heavy':
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-        break;
+    // Clear existing timeout to prevent multiple haptic calls
+    if (hapticTimeoutRef.current) {
+      clearTimeout(hapticTimeoutRef.current);
     }
-  };
+    
+    // Debounce haptic feedback
+    hapticTimeoutRef.current = setTimeout(() => {
+      switch (type) {
+        case 'light':
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          break;
+        case 'medium':
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          break;
+        case 'heavy':
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          break;
+      }
+    }, 50); // 50ms debounce
+  }, []);
   
-  // Reset states when profile changes
+  // Optimized image loading state management
   useEffect(() => {
     if (profile?.id) {
       setImageLoading(true);
       setImageError(false);
       
-      // Fallback timeout to prevent infinite loading
-      const timeout = setTimeout(() => {
-        setImageLoading(false);
-      }, 10000); // 10 second timeout
+      // Clear existing timeout
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
       
-      return () => clearTimeout(timeout);
+      // Fallback timeout to prevent infinite loading
+      timeoutRef.current = setTimeout(() => {
+        setImageLoading(false);
+      }, 8000); // Reduced to 8 seconds for better UX
+      
+      return () => {
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+        }
+      };
     }
   }, [profile?.id]);
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      if (hapticTimeoutRef.current) {
+        clearTimeout(hapticTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Optimized image load handlers
+  const handleImageLoadStart = useCallback(() => {
+    setImageLoading(true);
+  }, []);
+
+  const handleImageLoadEnd = useCallback(() => {
+    setImageLoading(false);
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
+
+  const handleImageError = useCallback(() => {
+    setImageLoading(false);
+    setImageError(true);
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
+
+  // Optimized profile press handler
+  const handleProfilePress = useCallback(() => {
+    if (!isLoading && onProfilePress) {
+      triggerHapticFeedback('light');
+      onProfilePress();
+    }
+  }, [isLoading, onProfilePress, triggerHapticFeedback]);
+
+  // Optimized retry handler
+  const handleRetry = useCallback(() => {
+    if (onRetry) {
+      triggerHapticFeedback('light');
+      onRetry();
+    }
+  }, [onRetry, triggerHapticFeedback]);
   
   // Enhanced error state with better styling
   if (error) {
@@ -107,10 +167,7 @@ export const EntrepreneurCard: FC<EntrepreneurCardProps> = ({
         {onRetry && (
           <TouchableOpacity
             style={styles.retryButton}
-            onPress={() => {
-              triggerHapticFeedback('light');
-              onRetry();
-            }}
+            onPress={handleRetry}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <Text style={styles.retryText}>Try Again</Text>
@@ -137,7 +194,7 @@ export const EntrepreneurCard: FC<EntrepreneurCardProps> = ({
   
   return (
     <View style={styles.cardContainer}>
-      {/* Enhanced image with fallback */}
+      {/* Optimized image with fallback */}
       {imageError ? (
         <View style={[styles.image, styles.imageFallback]}>
           <User size={80} color={Colors.dark.textSecondary} />
@@ -150,14 +207,11 @@ export const EntrepreneurCard: FC<EntrepreneurCardProps> = ({
               uri: profile.photoUrl || 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?q=80&w=2787&auto=format&fit=crop'
             }}
             style={styles.image}
-            onLoadStart={() => setImageLoading(true)}
-            onLoadEnd={() => setImageLoading(false)}
-            onError={() => {
-              setImageLoading(false);
-              setImageError(true);
-            }}
+            onLoadStart={handleImageLoadStart}
+            onLoadEnd={handleImageLoadEnd}
+            onError={handleImageError}
           />
-          {/* Simplified loading indicator */}
+          {/* Optimized loading indicator */}
           {imageLoading && (
             <View style={styles.imageLoadingOverlay}>
               <ActivityIndicator size="large" color={Colors.dark.accent} />
@@ -212,12 +266,7 @@ export const EntrepreneurCard: FC<EntrepreneurCardProps> = ({
           styles.profileDetailButton,
           isLoading && styles.buttonDisabled
         ]}
-        onPress={() => {
-          if (!isLoading && onProfilePress) {
-            triggerHapticFeedback('light');
-            onProfilePress();
-          }
-        }}
+        onPress={handleProfilePress}
         disabled={isLoading}
         hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
       >

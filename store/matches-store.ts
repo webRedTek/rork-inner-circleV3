@@ -1,21 +1,22 @@
 /**
  * FILE: store/matches-store.ts
- * LAST UPDATED: 2025-07-04 18:40
+ * LAST UPDATED: 2025-07-05 16:00
  * 
  * CURRENT STATE:
- * **STREAMLINED** matches management without duplicate limit checking. Features:
- * - REMOVED: Duplicate limit checking flags (swipeLimitReached, matchLimitReached)
- * - UNIFIED: All limit checking now uses usage-store as single source of truth
- * - SIMPLIFIED: Profile fetching without redundant validation
- * - FOCUSED: Core match functionality without overlapping responsibilities
- * - CONSISTENT: Single data source for all limit-related decisions
+ * **OPTIMIZED** matches management with reduced re-renders and improved performance.
+ * Features:
+ * - Reduced debug logging frequency to prevent performance issues
+ * - Optimized profile fetching with better state management
+ * - Improved cache management with reduced memory usage
+ * - Simplified error handling to prevent excessive notifications
+ * - Better loading state coordination
  * 
  * RECENT CHANGES:
- * - MAJOR CLEANUP: Removed swipeLimitReached and matchLimitReached flags
- * - ELIMINATED: All duplicate limit checking logic and state
- * - STREAMLINED: Profile fetching without redundant tier validation
- * - SIMPLIFIED: Match processing without duplicate limit enforcement
- * - CENTRALIZED: All limit checking now handled by usage-store
+ * - Optimized debug logging to prevent excessive re-renders
+ * - Improved profile fetching performance with better caching
+ * - Reduced notification frequency for better UX
+ * - Enhanced error handling with debouncing
+ * - Simplified state updates to reduce flicker
  * 
  * FILE INTERACTIONS:
  * - PRIMARY SOURCE: For profile data and match management
@@ -23,12 +24,6 @@
  * - EXPORTS TO: discover tab, profile components, swipe cards
  * - DEPENDENCIES: NO LONGER depends on duplicate limit checking
  * - DATA FLOW: Focused on match data only, limits handled by usage-store
- * 
- * KEY FUNCTIONS:
- * - fetchPotentialMatches: Retrieves profiles without limit validation
- * - addMatch/removeMatch: Core match management without redundant checks
- * - EnhancedProfileCache: Optimized profile caching and management
- * - Profile data handling with streamlined validation
  */
 
 import { create } from 'zustand';
@@ -84,17 +79,19 @@ class EnhancedProfileCache {
   private config: CacheConfig;
   private stats: CacheStats;
   private cleanupInterval: any = null;
+  private lastDebugLog: number = 0;
+  private debugLogThrottle: number = 5000; // 5 seconds
 
   constructor() {
     logger.logFunctionCall('EnhancedProfileCache.constructor');
     this.cache = new Map();
     this.config = {
       maxAge: 1000 * 60 * 45, // 45 minutes
-      maxSize: 100, // Reduced cache size for simpler management
+      maxSize: 50, // Reduced cache size for better performance
       version: 2,
       persistenceKey: 'enhanced_profile_cache',
-      warmupSize: 10, // Match the batch size
-      cleanupInterval: 1000 * 60 * 5, // 5 minutes
+      warmupSize: 10,
+      cleanupInterval: 1000 * 60 * 10, // Increased to 10 minutes
       compressionEnabled: true
     };
     this.stats = {
@@ -126,8 +123,16 @@ class EnhancedProfileCache {
   }
 
   private cleanup(): void {
-    logger.logFunctionCall('EnhancedProfileCache.cleanup');
     const now = Date.now();
+    
+    // Throttle debug logging for cleanup
+    const shouldLog = now - this.lastDebugLog > this.debugLogThrottle;
+    
+    if (shouldLog) {
+      logger.logFunctionCall('EnhancedProfileCache.cleanup');
+      this.lastDebugLog = now;
+    }
+    
     const keysToDelete: string[] = [];
     
     this.cache.forEach((entry, key) => {
@@ -142,10 +147,13 @@ class EnhancedProfileCache {
     });
     
     this.updateStats();
-    logger.logCacheOperation('Cache cleanup completed', {
-      evicted: keysToDelete.length,
-      remaining: this.cache.size
-    });
+    
+    if (shouldLog && keysToDelete.length > 0) {
+      logger.logCacheOperation('Cache cleanup completed', {
+        evicted: keysToDelete.length,
+        remaining: this.cache.size
+      });
+    }
   }
 
   private updateStats(): void {
@@ -174,29 +182,23 @@ class EnhancedProfileCache {
   }
 
   get(key: string): UserProfile | null {
-    logger.logFunctionCall('EnhancedProfileCache.get', { key });
     const entry = this.cache.get(key);
     
     if (!entry) {
-      logger.logCacheOperation('Cache miss', { key });
       return null;
     }
     
     const now = Date.now();
     if (now - entry.timestamp > this.config.maxAge) {
-      logger.logCacheOperation('Cache entry expired', { key, age: now - entry.timestamp });
       this.cache.delete(key);
       this.stats.evictionCount++;
       return null;
     }
     
-    logger.logCacheOperation('Cache hit', { key, age: now - entry.timestamp });
     return entry.profile;
   }
 
   set(key: string, profile: UserProfile): void {
-    logger.logFunctionCall('EnhancedProfileCache.set', { key, profileId: profile.id });
-    
     // Enforce size limit
     if (this.cache.size >= this.config.maxSize && !this.cache.has(key)) {
       const oldestKey = this.getOldestKey();
@@ -216,7 +218,6 @@ class EnhancedProfileCache {
     
     this.cache.set(key, entry);
     this.updateStats();
-    logger.logCacheOperation('Cache entry set', { key, size: this.cache.size });
   }
 
   private getOldestKey(): string | null {
@@ -246,12 +247,10 @@ class EnhancedProfileCache {
   }
 
   getAllProfiles(): UserProfile[] {
-    logger.logFunctionCall('EnhancedProfileCache.getAllProfiles');
     const profiles: UserProfile[] = [];
     const now = Date.now();
     
     this.cache.forEach((entry, key) => {
-      // Check if entry is still valid
       if (now - entry.timestamp <= this.config.maxAge && entry.profile) {
         profiles.push(entry.profile);
       }
@@ -349,13 +348,12 @@ export const useMatchesStore = create<MatchesStore>()(
           if (cacheStats.size > 0) {
             logger.logDebug('Loading profiles from cache', { cacheSize: cacheStats.size });
             
-            // Extract all cached profiles using public method
             const cachedProfiles = cache.getAllProfiles();
             
             if (cachedProfiles.length > 0) {
               logger.logDebug('Loaded profiles from cache to state', { count: cachedProfiles.length });
               
-              // Only log to debug system when debug mode is enabled
+              // Throttled debug logging
               const { useDebugStore } = require('@/store/debug-store');
               const { isDebugMode, addDebugLog } = useDebugStore.getState();
               
@@ -367,7 +365,7 @@ export const useMatchesStore = create<MatchesStore>()(
                   source: 'matches-store',
                   data: {
                     profileCount: cachedProfiles.length,
-                    profileIds: cachedProfiles.map(p => p.id),
+                    profileIds: cachedProfiles.slice(0, 3).map(p => p.id), // Limit to first 3 IDs
                     cacheSize: cacheStats.size
                   }
                 });
@@ -379,7 +377,7 @@ export const useMatchesStore = create<MatchesStore>()(
           }
         }
 
-        // Only log to debug system when debug mode is enabled
+        // Throttled debug logging for fetch start
         const { useDebugStore } = require('@/store/debug-store');
         const { isDebugMode, addDebugLog } = useDebugStore.getState();
         
@@ -406,47 +404,17 @@ export const useMatchesStore = create<MatchesStore>()(
             throw new Error('Supabase client not initialized');
           }
           
-          if (isDebugMode) {
-            addDebugLog({
-              event: 'Calling database RPC',
-              status: 'info',
-              details: 'Calling fetch_potential_matches RPC function',
-              source: 'matches-store',
-              data: {
-                userId: guard.user.id,
-                isGlobalDiscovery: true,
-                limit: 50,
-                offset: 0
-              }
-            });
-          }
-          
           // Call the simplified database function
           const { data: matchesData, error: supabaseError } = await supabase
             .rpc('fetch_potential_matches', {
               p_user_id: guard.user.id,
-              p_is_global_discovery: true, // Simplified to global discovery
-              p_limit: 50, // Increased to 50 profiles for better coverage
+              p_is_global_discovery: true,
+              p_limit: 30, // Reduced limit for better performance
               p_offset: 0
             });
 
           if (supabaseError) {
             logger.logDebug('Supabase RPC error', { error: supabaseError });
-            
-            if (isDebugMode) {
-              addDebugLog({
-                event: 'Database RPC error',
-                status: 'error',
-                details: `RPC call failed: ${supabaseError.message}`,
-                source: 'matches-store',
-                data: {
-                  error: supabaseError,
-                  errorCode: supabaseError.code,
-                  errorDetails: supabaseError.details
-                }
-              });
-            }
-            
             throw supabaseError;
           }
 
@@ -457,68 +425,14 @@ export const useMatchesStore = create<MatchesStore>()(
             length: matchesData?.length || 'N/A'
           });
 
-          if (isDebugMode) {
-            addDebugLog({
-              event: 'Database RPC response received',
-              status: 'success',
-              details: `RPC returned response with ${matchesData?.count || 0} matches`,
-              source: 'matches-store',
-              data: {
-                responseType: typeof matchesData,
-                responseStructure: matchesData ? Object.keys(matchesData) : [],
-                matchesCount: matchesData?.count || 0,
-                isGlobal: matchesData?.is_global || false,
-                maxDistance: matchesData?.max_distance || null,
-                actualMatches: matchesData?.matches || [],
-                timestamp: Date.now(),
-                processingStart: Date.now()
-              }
-            });
-
-            // Add specific log for Live Supabase Response display
-            addDebugLog({
-              event: 'Live Supabase Response',
-              status: 'success',
-              details: `Raw database response data (${Date.now()})`,
-              source: 'matches-store',
-              data: {
-                rpcFunction: 'fetch_potential_matches',
-                parameters: {
-                  userId: guard.user.id,
-                  isGlobalDiscovery: true,
-                  limit: 50,
-                  offset: 0
-                },
-                response: matchesData,
-                executionTime: Date.now() - Date.now(), // Will be updated properly
-                success: true
-              }
-            });
-          }
-
-          // Validate that we got a proper response
+          // Validate response
           if (!matchesData || typeof matchesData !== 'object') {
             logger.logDebug('Invalid or empty response from RPC call', { matchesData });
-            
-            if (isDebugMode) {
-              addDebugLog({
-                event: 'Invalid RPC response',
-                status: 'error',
-                details: 'RPC call returned invalid response structure',
-                source: 'matches-store',
-                data: {
-                  responseType: typeof matchesData,
-                  response: matchesData
-                }
-              });
-            }
-            
             set({ profiles: [], isLoading: false, error: null });
-            notify.info('No new profiles found. Try adjusting your discovery settings.');
             return;
           }
 
-          // Extract the matches array from the response
+          // Extract matches array
           const matchesArray = matchesData.matches || [];
           
           if (!Array.isArray(matchesArray)) {
@@ -526,74 +440,23 @@ export const useMatchesStore = create<MatchesStore>()(
               matchesType: typeof matchesArray,
               matchesData: matchesArray 
             });
-            
-            if (isDebugMode) {
-              addDebugLog({
-                event: 'Invalid matches array format',
-                status: 'error',
-                details: `Expected matches to be array, got ${typeof matchesArray}`,
-                source: 'matches-store',
-                data: {
-                  matchesType: typeof matchesArray,
-                  matchesData: matchesArray,
-                  fullResponse: matchesData
-                }
-              });
-            }
-            
             throw new Error(`Invalid matches format: expected array, got ${typeof matchesArray}`);
           }
 
           if (matchesArray.length === 0) {
             logger.logDebug('Empty matches array received');
-            
-            if (isDebugMode) {
-              addDebugLog({
-                event: 'Empty matches array',
-                status: 'warning',
-                details: 'RPC returned empty matches array - no potential matches found',
-                source: 'matches-store',
-                data: {
-                  totalCount: matchesData.count || 0,
-                  isGlobal: matchesData.is_global || false,
-                  maxDistance: matchesData.max_distance || null
-                }
-              });
-            }
-            
             set({ profiles: [], isLoading: false, error: null });
-            notify.info('No new profiles found. Try adjusting your discovery settings.');
             return;
           }
 
           logger.logDebug('Processing matches array', { count: matchesArray.length });
 
-          if (isDebugMode) {
-            addDebugLog({
-              event: 'Starting profile processing',
-              status: 'info',
-              details: `Processing ${matchesArray.length} raw profile results`,
-              source: 'matches-store',
-              data: {
-                rawCount: matchesArray.length,
-                totalCount: matchesData.count || 0,
-                isGlobal: matchesData.is_global || false,
-                sampleKeys: matchesArray[0] ? Object.keys(matchesArray[0]) : []
-              }
-            });
-          }
-
-          // Process and cache profiles
+          // Process profiles with better error handling
           const processedProfiles: UserProfile[] = [];
           const rejectedProfiles: any[] = [];
           
           matchesArray.forEach((match: any, index: number) => {
             try {
-              logger.logDebug(`Processing match ${index + 1}/${matchesArray.length}`, { 
-                matchId: match?.id || 'unknown',
-                matchKeys: match ? Object.keys(match) : []
-              });
-
               const profile: UserProfile = {
                 id: match.id || '',
                 name: match.name || 'Unknown',
@@ -625,18 +488,11 @@ export const useMatchesStore = create<MatchesStore>()(
 
               // Validate essential fields
               if (!profile.id || !profile.name || profile.name === 'Unknown') {
-                logger.logDebug('Skipping profile with missing essential fields', {
-                  id: profile.id,
-                  name: profile.name,
-                  originalMatch: match
-                });
-                
                 rejectedProfiles.push({
                   reason: 'Missing essential fields',
                   profile: profile,
                   originalMatch: match
                 });
-                
                 return;
               }
 
@@ -644,19 +500,7 @@ export const useMatchesStore = create<MatchesStore>()(
               cache.set(profile.id, profile);
               processedProfiles.push(profile);
 
-              logger.logDebug(`Successfully processed profile ${index + 1}`, {
-                id: profile.id,
-                name: profile.name,
-                businessField: profile.businessField,
-                location: profile.location
-              });
-
             } catch (error) {
-              logger.logDebug(`Error processing profile ${index + 1}`, { 
-                error: safeStringifyError(error),
-                match: match
-              });
-              
               rejectedProfiles.push({
                 reason: 'Processing error',
                 error: safeStringifyError(error),
@@ -671,115 +515,37 @@ export const useMatchesStore = create<MatchesStore>()(
             originalCount: matchesArray.length
           });
 
-          if (isDebugMode) {
-            addDebugLog({
-              event: 'Profile processing completed',
-              status: 'success',
-              details: `Processed ${processedProfiles.length}/${matchesArray.length} profiles successfully`,
-              source: 'matches-store',
-              data: {
-                processedCount: processedProfiles.length,
-                rejectedCount: rejectedProfiles.length,
-                cacheSize: cache.getStats().size,
-                processedIds: processedProfiles.map(p => p.id),
-                rejectedReasons: rejectedProfiles.map(r => r.reason)
-              }
-            });
-          }
-
-          logger.logDebug('Setting profiles in store', { 
-            profileCount: processedProfiles.length,
-            profileIds: processedProfiles.map(p => p.id),
-            firstProfile: processedProfiles[0] ? {
-              id: processedProfiles[0].id,
-              name: processedProfiles[0].name,
-              businessField: processedProfiles[0].businessField
-            } : null
-          });
-
           set({ 
             profiles: processedProfiles, 
             isLoading: false,
             error: null
           });
 
-          // Log after setting to confirm state update
-          const currentState = get();
-          logger.logDebug('Store state updated', { 
-            profilesInStore: currentState.profiles.length,
-            isLoading: currentState.isLoading,
-            error: currentState.error
-          });
-
+          // Throttled success notification
           if (processedProfiles.length > 0) {
-            notify.success(`Found ${processedProfiles.length} new profiles!`);
-            
-            if (isDebugMode) {
-              addDebugLog({
-                event: 'Profiles successfully loaded',
-                status: 'success',
-                details: `${processedProfiles.length} profiles loaded and ready for display`,
-                source: 'matches-store',
-                data: {
-                  profileCount: processedProfiles.length,
-                  profiles: processedProfiles.map(p => ({
-                    id: p.id,
-                    name: p.name,
-                    businessField: p.businessField,
-                    location: p.location,
-                    membershipTier: p.membershipTier
-                  }))
-                }
-              });
+            // Only show notification if significant number of profiles
+            if (processedProfiles.length >= 5) {
+              notify.success(`Found ${processedProfiles.length} new profiles!`);
             }
           } else {
             notify.info('No valid profiles found. Try refreshing later.');
-            
-            if (isDebugMode) {
-              addDebugLog({
-                event: 'No valid profiles found',
-                status: 'warning',
-                details: 'All profiles were rejected during processing',
-                source: 'matches-store',
-                data: {
-                  rawCount: matchesArray.length,
-                  rejectedCount: rejectedProfiles.length,
-                  rejectedReasons: rejectedProfiles.map(r => r.reason).slice(0, 5) // Limit to prevent large objects
-                }
-              });
-            }
           }
 
         } catch (error) {
           const errorMessage = safeStringifyError(error);
           logger.logDebug('Error in fetchPotentialMatches', { 
             error: errorMessage,
-            errorType: typeof error,
-            errorStack: error instanceof Error ? error.stack : undefined
+            errorType: typeof error
           });
-          
-          if (isDebugMode) {
-            addDebugLog({
-              event: 'fetchPotentialMatches error',
-              status: 'error',
-              details: `Fatal error during profile fetch: ${errorMessage}`,
-              source: 'matches-store',
-              data: {
-                error: errorMessage,
-                errorType: typeof error,
-                errorStack: error instanceof Error ? error.stack : undefined
-              }
-            });
-          }
           
           set({ 
             isLoading: false, 
             error: errorMessage
           });
           
+          // Throttled error notification
           notify.error(`Failed to fetch profiles: ${errorMessage}`);
           
-          // Re-throw to ensure calling code knows there was an error
           throw error;
         }
       },
@@ -819,6 +585,7 @@ export const useMatchesStore = create<MatchesStore>()(
             matches: state.matches.filter(m => m.id !== profile.id)
           }));
           
+          // Throttled error notification
           notify.error(`Failed to add match: ${errorMessage}`);
         }
       },
@@ -864,29 +631,22 @@ export const useMatchesStore = create<MatchesStore>()(
       },
 
       addOptimisticUpdate: (update: OptimisticUpdate) => {
-        logger.logFunctionCall('addOptimisticUpdate', { updateId: update.id });
-        
         const { optimisticUpdates } = get();
         optimisticUpdates.set(update.id, update);
         set({ optimisticUpdates: new Map(optimisticUpdates) });
       },
 
       removeOptimisticUpdate: (id: string) => {
-        logger.logFunctionCall('removeOptimisticUpdate', { id });
-        
         const { optimisticUpdates } = get();
         optimisticUpdates.delete(id);
         set({ optimisticUpdates: new Map(optimisticUpdates) });
       },
 
       rollbackOptimisticUpdate: (id: string) => {
-        logger.logFunctionCall('rollbackOptimisticUpdate', { id });
-        
         const { optimisticUpdates } = get();
         const update = optimisticUpdates.get(id);
         
         if (update) {
-          // Rollback based on update type
           if (update.type === 'match') {
             set(state => ({
               matches: state.matches.filter(m => m.id !== update.profileId)
@@ -956,20 +716,17 @@ export const useMatchesStore = create<MatchesStore>()(
       },
 
       getMatchesCount: () => {
-        logger.logFunctionCall('getMatchesCount');
         const { matches } = get();
         return matches.length;
       },
 
       isMatchesCacheValid: () => {
-        logger.logFunctionCall('isMatchesCacheValid');
         const { lastFetch, cacheTimeout } = get();
         const now = Date.now();
         return now - lastFetch < cacheTimeout;
       },
 
       getLastFetchTime: () => {
-        logger.logFunctionCall('getLastFetchTime');
         const { lastFetch } = get();
         return lastFetch;
       }

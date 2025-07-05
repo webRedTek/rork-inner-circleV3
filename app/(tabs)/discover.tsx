@@ -1,21 +1,21 @@
 /**
  * FILE: app/(tabs)/discover.tsx
- * LAST UPDATED: 2025-07-04 18:45
+ * LAST UPDATED: 2025-07-05 16:00
  * 
  * CURRENT STATE:
- * **UNIFIED LIMIT CHECKING** discover screen with single source of truth. Features:
- * - USES: Unified usage-store limit checking system exclusively
- * - ELIMINATED: Duplicate limit checking from matches-store
- * - CONSISTENT: Same limit validation as profile cache and other components
- * - REAL-TIME: Live limit status updates with proper error handling
- * - STREAMLINED: Simplified swipe validation without redundant checks
+ * **OPTIMIZED** discover screen with reduced flickering and improved loading states. Features:
+ * - Reduced re-renders through optimized useEffect dependencies
+ * - Simplified loading state management
+ * - Debounced limit status updates
+ * - Optimized debug logging to prevent performance issues
+ * - Improved error handling with better user feedback
  * 
  * RECENT CHANGES:
- * - MAJOR REFACTOR: Integrated unified usage-store limit checking system
- * - REMOVED: Dependencies on matches-store limit flags (swipeLimitReached, matchLimitReached)
- * - UNIFIED: All limit validation now uses single source of truth
- * - ENHANCED: Real-time limit status display with accurate counts
- * - SIMPLIFIED: Swipe handlers without duplicate validation logic
+ * - Fixed excessive re-renders by optimizing useEffect dependencies
+ * - Reduced debug logging frequency to prevent performance issues
+ * - Simplified limit status checking to reduce state updates
+ * - Improved loading state coordination between components
+ * - Added debouncing for frequent state updates
  * 
  * FILE INTERACTIONS:
  * - PRIMARY DATA: Gets limit status from usage-store (single source of truth)
@@ -23,16 +23,10 @@
  * - NOTIFICATIONS: Integrated with notification system for limit alerts
  * - SWIPE HANDLING: Simplified without redundant limit checks
  * - CACHE VIEW: Now consistent with same data source
- * 
- * KEY FUNCTIONS:
- * - handleSwipeLeft/Right: Simplified swipe handling with unified limit checking
- * - handleRefresh: Manual profile refresh with limit validation
- * - Limit status display: Real-time updates from single source
- * - SwipeCards integration: Streamlined without duplicate validation
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Alert, Platform } from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { SwipeCards } from '@/components/SwipeCards';
@@ -43,7 +37,6 @@ import { useAuthStore } from '@/store/auth-store';
 import { useDebugStore } from '@/store/debug-store';
 import { UserProfile } from '@/types/user';
 import Colors from '@/constants/colors';
-import { supabase } from '@/lib/supabase';
 import { Heart, X, RotateCcw, AlertCircle, TrendingUp, Users, MessageCircle, Zap } from 'lucide-react-native';
 
 import { notify } from '@/store/notification-store';
@@ -53,13 +46,7 @@ export default function DiscoverScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
   const { profiles, isLoading, error, fetchPotentialMatches, cache } = useMatchesStore();
-  const { 
-    checkAllLimits, 
-    checkSwipeLimit, 
-    checkMatchLimit, 
-    checkLikeLimit,
-    updateUsage
-  } = useUsageStore();
+  const { checkAllLimits } = useUsageStore();
   const { isDebugMode, addDebugLog, useSimpleProfileView } = useDebugStore();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -69,300 +56,213 @@ export default function DiscoverScreen() {
     like: { isAllowed: boolean };
   } | null>(null);
 
-  // Debug logging for store state changes - ONLY when profiles actually change
-  useEffect(() => {
-    if (isDebugMode && profiles.length > 0) {
+  // Use refs to prevent unnecessary re-renders
+  const lastProfileCountRef = useRef(profiles.length);
+  const lastErrorRef = useRef(error);
+  const limitUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Memoize debug logging to prevent excessive calls
+  const debugLog = useCallback((event: string, details: string, data?: any) => {
+    if (isDebugMode) {
       addDebugLog({
-        event: 'Discover screen store state update',
+        event,
         status: 'info',
-        details: `Store state: ${profiles.length} profiles, loading: ${isLoading}, error: ${error || 'none'}`,
+        details,
         source: 'discover-screen',
-        data: {
-          profileCount: profiles.length,
-          profileIds: profiles.map(p => p.id),
-          cacheSize: cache?.getStats().size || 0,
-          cacheHitRate: cache?.getStats().hitRate || 0,
-          isLoading,
-          error,
-          timestamp: Date.now()
-        }
+        data
       });
     }
-  }, [profiles.length, isLoading, error]); // Removed cache and addDebugLog from dependencies
+  }, [isDebugMode, addDebugLog]);
 
-  // Debug logging for initial load - ONLY ONCE
-  useEffect(() => {
-    if (user?.id && isDebugMode) {
-      addDebugLog({
-        event: 'Discover screen initialized',
-        status: 'info',
-        details: `Screen loaded for user ${user.id}`,
-        source: 'discover-screen',
-        data: {
-          userId: user.id,
-          initialProfileCount: profiles.length,
-          initialCacheSize: cache?.getStats().size || 0
-        }
-      });
-    }
-  }, [user?.id]); // Removed isDebugMode and addDebugLog from dependencies
-
-  // Fetch potential matches when screen loads - ONLY ONCE per user
-  useEffect(() => {
-    if (user?.id) {
-      // Fetch profiles (will use cache if available)
-      fetchPotentialMatches();
-    }
-  }, [user?.id]); // Removed fetchPotentialMatches and isDebugMode from dependencies
-
-  // Update limit status from cached usage data only - ONLY ONCE
-  useEffect(() => {
-    updateLimitStatus();
-  }, [user?.id]); // Only run when user changes
-
-  // Update limit status from unified source
+  // Debounced limit status update to prevent flickering
   const updateLimitStatus = useCallback(() => {
     if (!user?.id) return;
     
-    try {
-      const allLimits = checkAllLimits();
-      
-      // Add null check to prevent "Cannot read properties of null" error
-      if (!allLimits) {
-        // Set default "allowed" status while loading instead of null
+    // Clear existing timeout
+    if (limitUpdateTimeoutRef.current) {
+      clearTimeout(limitUpdateTimeoutRef.current);
+    }
+    
+    // Debounce limit status updates
+    limitUpdateTimeoutRef.current = setTimeout(() => {
+      try {
+        const allLimits = checkAllLimits();
+        
+        if (!allLimits) {
+          setLimitStatus({
+            swipe: { isAllowed: true },
+            match: { isAllowed: true },
+            like: { isAllowed: true }
+          });
+          return;
+        }
+        
+        setLimitStatus({
+          swipe: allLimits.swipe,
+          match: allLimits.match,
+          like: allLimits.like
+        });
+      } catch (error) {
         setLimitStatus({
           swipe: { isAllowed: true },
           match: { isAllowed: true },
           like: { isAllowed: true }
         });
-        return;
       }
-      
-      setLimitStatus({
-        swipe: allLimits.swipe,
-        match: allLimits.match,
-        like: allLimits.like
-      });
-    } catch (error) {
-      // Set default "allowed" status on error instead of null
-      setLimitStatus({
-        swipe: { isAllowed: true },
-        match: { isAllowed: true },
-        like: { isAllowed: true }
-      });
-    }
+    }, 100); // 100ms debounce
   }, [user?.id, checkAllLimits]);
 
-  // Handle refresh with limit validation
-  const handleRefresh = useCallback(async () => {
-    if (!user?.id) return;
-    
-    // Only log to debug system when debug mode is enabled
-    const { addDebugLog } = useDebugStore.getState();
-    
-    if (isDebugMode) {
-      addDebugLog({
-        event: 'Profile refresh started',
-        status: 'info',
-        details: `User ${user.id} initiated manual refresh`,
-        source: 'discover-screen',
-        data: {
-          userId: user.id,
-          currentProfileCount: profiles.length,
-          isCurrentlyLoading: isLoading,
-          hasError: !!error
-        }
-      });
+  // Optimized debug logging - only when profiles actually change
+  useEffect(() => {
+    if (profiles.length !== lastProfileCountRef.current) {
+      lastProfileCountRef.current = profiles.length;
+      
+      if (isDebugMode && profiles.length > 0) {
+        debugLog(
+          'Discover screen store state update',
+          `Store state: ${profiles.length} profiles, loading: ${isLoading}, error: ${error || 'none'}`,
+          {
+            profileCount: profiles.length,
+            profileIds: profiles.slice(0, 5).map(p => p.id), // Limit to first 5 IDs
+            cacheSize: cache?.getStats().size || 0,
+            isLoading,
+            error,
+            timestamp: Date.now()
+          }
+        );
+      }
     }
+  }, [profiles.length, isLoading, error, isDebugMode, debugLog, cache]);
+
+  // Optimized error logging - only when error actually changes
+  useEffect(() => {
+    if (error !== lastErrorRef.current) {
+      lastErrorRef.current = error;
+      
+      if (error && isDebugMode) {
+        debugLog(
+          'Discover screen error state',
+          `Error occurred: ${error}`,
+          { error, timestamp: Date.now() }
+        );
+      }
+    }
+  }, [error, isDebugMode, debugLog]);
+
+  // Single initialization effect
+  useEffect(() => {
+    if (user?.id) {
+      // Only log once on initialization
+      if (isDebugMode) {
+        debugLog(
+          'Discover screen initialized',
+          `Screen loaded for user ${user.id}`,
+          {
+            userId: user.id,
+            initialProfileCount: profiles.length
+          }
+        );
+      }
+      
+      // Fetch profiles if needed
+      if (profiles.length === 0 && !isLoading) {
+        fetchPotentialMatches();
+      }
+      
+      // Update limit status
+      updateLimitStatus();
+    }
+  }, [user?.id]); // Only depend on user ID
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (limitUpdateTimeoutRef.current) {
+        clearTimeout(limitUpdateTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Optimized refresh handler
+  const handleRefresh = useCallback(async () => {
+    if (!user?.id || refreshing) return;
+    
+    debugLog(
+      'Profile refresh started',
+      `User ${user.id} initiated manual refresh`,
+      { userId: user.id, currentProfileCount: profiles.length }
+    );
     
     setRefreshing(true);
     
     try {
-      // Log before profile fetch
-      if (isDebugMode) {
-        addDebugLog({
-          event: 'Starting profile fetch',
-          status: 'info',
-          details: 'Calling fetchPotentialMatches with force=true',
-          source: 'discover-screen',
-          data: {
-            force: true,
-            currentProfileCount: profiles.length
-          }
-        });
-      }
-      
-      // Fetch new profiles
       await fetchPotentialMatches(true);
       
-      if (isDebugMode) {
-        addDebugLog({
-          event: 'Profile fetch completed',
-          status: 'success',
-          details: `Profile fetch completed. New count: ${profiles.length}`,
-          source: 'discover-screen',
-          data: {
-            newProfileCount: profiles.length,
-            profileIds: profiles.map(p => p.id)
-          }
-        });
-      }
-      
-      // Only show success if we actually have profiles
       if (profiles.length > 0) {
         notify.success('Profiles refreshed successfully!');
-        if (isDebugMode) {
-          addDebugLog({
-            event: 'Refresh success notification',
-            status: 'success',
-            details: `Successfully refreshed ${profiles.length} profiles`,
-            source: 'discover-screen'
-          });
-        }
       } else {
         notify.info('No new profiles found. All available profiles have been shown.');
-        if (isDebugMode) {
-          addDebugLog({
-            event: 'No profiles found',
-            status: 'warning',
-            details: 'Refresh completed but no new profiles were found',
-            source: 'discover-screen'
-          });
-        }
       }
       
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       notify.error(`Failed to refresh profiles: ${errorMessage}`);
       
-      if (isDebugMode) {
-        addDebugLog({
-          event: 'Profile refresh failed',
-          status: 'error',
-          details: `Failed to refresh profiles: ${errorMessage}`,
-          source: 'discover-screen',
-          data: {
-            error: errorMessage,
-            userId: user.id
-          }
-        });
-      }
+      debugLog(
+        'Profile refresh failed',
+        `Failed to refresh profiles: ${errorMessage}`,
+        { error: errorMessage, userId: user.id }
+      );
     } finally {
       setRefreshing(false);
     }
-  }, [user?.id, isDebugMode, profiles.length, isLoading, error, fetchPotentialMatches]);
+  }, [user?.id, refreshing, profiles.length, fetchPotentialMatches, debugLog]);
 
-  // Simplified swipe left handler with batch caching
+  // Optimized swipe handlers
   const handleSwipeLeft = useCallback(async (profile: UserProfile) => {
     if (!user?.id) return;
     
-    if (isDebugMode) {
-      addDebugLog({
-        event: 'Swipe left initiated',
-        status: 'info',
-        details: `User swiped left (pass) on ${profile.name}`,
-        source: 'discover-screen',
-        data: {
-          profileId: profile.id,
-          profileName: profile.name,
-          action: 'pass'
-        }
-      });
-    }
-    
-    // Always allow swipe actions for UI flow
-    if (isDebugMode) {
-      addDebugLog({
-        event: 'Swipe left cached',
-        status: 'success',
-        details: `Cached pass action for ${profile.name} - no database calls`,
-        source: 'discover-screen',
-        data: {
-          profileId: profile.id,
-          profileName: profile.name,
-          action: 'pass',
-          cached: true
-        }
-      });
-    }
-    
-    // No database calls for swipe actions - just allow the swipe
-  }, [user?.id, isDebugMode]);
+    debugLog(
+      'Swipe left initiated',
+      `User swiped left (pass) on ${profile.name}`,
+      { profileId: profile.id, profileName: profile.name, action: 'pass' }
+    );
+  }, [user?.id, debugLog]);
 
-  // Simplified swipe right handler with batch caching
   const handleSwipeRight = useCallback(async (profile: UserProfile) => {
     if (!user?.id) return;
     
-    if (isDebugMode) {
-      addDebugLog({
-        event: 'Swipe right initiated',
-        status: 'info',
-        details: `User swiped right (like) on ${profile.name}`,
-        source: 'discover-screen',
-        data: {
-          profileId: profile.id,
-          profileName: profile.name,
-          action: 'like'
-        }
-      });
-    }
-    
-    // Always allow swipe actions for UI flow  
-    if (isDebugMode) {
-      addDebugLog({
-        event: 'Swipe right cached',
-        status: 'success',
-        details: `Cached like action for ${profile.name} - no database calls`,
-        source: 'discover-screen',
-        data: {
-          profileId: profile.id,
-          profileName: profile.name,
-          action: 'like',
-          cached: true
-        }
-      });
-    }
-    
-    // No database calls for swipe actions - just allow the swipe
-  }, [user?.id, isDebugMode]);
+    debugLog(
+      'Swipe right initiated',
+      `User swiped right (like) on ${profile.name}`,
+      { profileId: profile.id, profileName: profile.name, action: 'like' }
+    );
+  }, [user?.id, debugLog]);
 
-  // Handle when no more profiles
+  // Optimized empty handler
   const handleEmpty = useCallback(() => {
-    if (isDebugMode) {
-      addDebugLog({
-        event: 'No more profiles',
-        status: 'info',
-        details: 'User has swiped through all available profiles',
-        source: 'discover-screen',
-        data: {
-          totalProfilesSwiped: profiles.length
-        }
-      });
-    }
+    debugLog(
+      'No more profiles',
+      'User has swiped through all available profiles',
+      { totalProfilesSwiped: profiles.length }
+    );
     
     notify.info('No more profiles available. Try refreshing to see new ones!');
-  }, [isDebugMode, profiles.length]);
+  }, [profiles.length, debugLog]);
 
-  // Handle profile press
+  // Optimized profile press handler
   const handleProfilePress = useCallback((profile: UserProfile) => {
-    if (isDebugMode) {
-      addDebugLog({
-        event: 'Profile detail view',
-        status: 'info',
-        details: `User opened profile details for ${profile.name}`,
-        source: 'discover-screen',
-        data: {
-          profileId: profile.id,
-          profileName: profile.name
-        }
-      });
-    }
+    debugLog(
+      'Profile detail view',
+      `User opened profile details for ${profile.name}`,
+      { profileId: profile.id, profileName: profile.name }
+    );
     
     router.push(`/profile/${profile.id}`);
-  }, [router, isDebugMode]);
+  }, [router, debugLog]);
 
-  // Render limit status indicators
-  const renderLimitStatus = () => {
+  // Memoized limit status indicators to prevent re-renders
+  const limitStatusIndicators = useMemo(() => {
     return (
       <View style={styles.limitStatusContainer}>
         <View style={styles.limitStatusRow}>
@@ -419,10 +319,10 @@ export default function DiscoverScreen() {
         </View>
       </View>
     );
-  };
+  }, [limitStatus]);
 
-  // Render error state
-  const renderError = () => {
+  // Memoized error state
+  const errorState = useMemo(() => {
     if (!error) return null;
     
     return (
@@ -434,13 +334,14 @@ export default function DiscoverScreen() {
           title="Try Again" 
           onPress={handleRefresh}
           style={styles.retryButton}
+          disabled={refreshing}
         />
       </View>
     );
-  };
+  }, [error, handleRefresh, refreshing]);
 
-  // Render empty state
-  const renderEmpty = () => {
+  // Memoized empty state
+  const emptyState = useMemo(() => {
     if (isLoading || profiles.length > 0) return null;
     
     return (
@@ -454,10 +355,11 @@ export default function DiscoverScreen() {
           title="Refresh Profiles" 
           onPress={handleRefresh}
           style={styles.refreshButton}
+          disabled={refreshing}
         />
       </View>
     );
-  };
+  }, [isLoading, profiles.length, handleRefresh, refreshing]);
 
   // Main render
   return (
@@ -470,17 +372,17 @@ export default function DiscoverScreen() {
           </Text>
         </View>
 
-        {renderLimitStatus()}
+        {limitStatusIndicators}
 
         <View style={styles.swipeContainer}>
-          {error ? renderError() : (
+          {error ? errorState : (
             <>
-              {profiles.length === 0 ? renderEmpty() : (
+              {profiles.length === 0 ? emptyState : (
                 useSimpleProfileView ? (
                   <View style={styles.container}>
                     <Text style={styles.title}>Simple View (Debug)</Text>
                     <Text>Profiles: {profiles.length}, Loading: {isLoading ? 'Yes' : 'No'}</Text>
-                    {profiles.map(profile => (
+                    {profiles.slice(0, 5).map(profile => (
                       <Text key={profile.id} style={styles.subtitle}>{profile.name}</Text>
                     ))}
                   </View>

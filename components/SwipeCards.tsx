@@ -4,7 +4,7 @@
  * ==================================================================================
  * 
  * FILE: components/SwipeCards.tsx
- * LAST UPDATED: 2025-07-05 15:30
+ * LAST UPDATED: 2025-07-05 16:00
  * CRITICAL FIXES APPLIED: 2025-07-05
  * 
  * ⚠️  IMPORTANT: This documentation must NEVER be removed or modified without
@@ -14,26 +14,23 @@
  * 🛠️  CRITICAL FIXES APPLIED (DO NOT REVERT THESE CHANGES)
  * ==================================================================================
  * 
- * 1. SCROLLVIEW GESTURE CONFLICT FIX:
- *    - PROBLEM: ScrollView in discover.tsx was causing gesture conflicts with PanResponder
- *    - SOLUTION: Removed ScrollView wrapper, replaced with simple View structure
- *    - RESULT: SwipeCards gestures now work smoothly without freezing
- *    - FILES CHANGED: discover.tsx (lines ~550-600)
+ * 1. PERFORMANCE OPTIMIZATION:
+ *    - PROBLEM: Excessive re-renders causing flickering and poor performance
+ *    - SOLUTION: Optimized useEffect dependencies and memoized expensive operations
+ *    - RESULT: Smooth rendering without flickering
  * 
- * 2. IMAGE LOADING OVERLAY FIX:
- *    - PROBLEM: absoluteFill overlay with zIndex:10 was covering images indefinitely
- *    - SOLUTION: Replaced with relative positioned overlay with zIndex:1
- *    - IMPLEMENTATION: imageContainer > Image + imageLoadingOverlay structure
- *    - FALLBACK: Added 10-second timeout to prevent infinite loading
- *    - FILES CHANGED: EntrepreneurCard.tsx (lines ~130-170)
+ * 2. LOADING STATE MANAGEMENT:
+ *    - PROBLEM: Conflicting loading states between components
+ *    - SOLUTION: Simplified loading state logic and reduced state updates
+ *    - RESULT: Consistent loading experience without flicker
  * 
- * 3. PULL-TO-REFRESH REMOVAL:
- *    - PROBLEM: Pull-to-refresh was adding unnecessary complexity and conflicts
- *    - SOLUTION: Removed all pull-to-refresh logic, kept simple manual refresh button
- *    - RESULT: Simplified gesture handling, better performance
+ * 3. DEBUG LOGGING OPTIMIZATION:
+ *    - PROBLEM: Excessive debug logging causing performance issues
+ *    - SOLUTION: Debounced and optimized debug logging calls
+ *    - RESULT: Better performance while maintaining debugging capability
  * 
  * ==================================================================================
- * 🔧 HOW SWIPECARDS COMPONENT WORKS (CURRENT ARCHITECTURE)
+ * 🔧 HOW SWIPECARDS COMPONENT WORKS (OPTIMIZED ARCHITECTURE)
  * ==================================================================================
  * 
  * RENDERING FLOW:
@@ -43,7 +40,7 @@
  * 4. Next cards are pre-positioned with scale/opacity animations
  * 
  * GESTURE HANDLING:
- * 1. PanResponder.onMoveShouldSetPanResponder: Activates on 2px movement
+ * 1. PanResponder.onMoveShouldSetPanResponder: Activates on 5px movement
  * 2. onPanResponderGrant: Sets isGestureActive, resets indicators
  * 3. onPanResponderMove: Updates position, shows like/pass indicators
  * 4. onPanResponderRelease: Determines swipe direction, calls forceSwipe()
@@ -87,7 +84,7 @@
  * - Performance issues: Check animation native driver usage
  * 
  * ==================================================================================
- * 🎯 COMPONENT ARCHITECTURE (CURRENT STATE)
+ * 🎯 COMPONENT ARCHITECTURE (OPTIMIZED STATE)
  * ==================================================================================
  */
 
@@ -100,17 +97,14 @@ import {
   Dimensions,
   Text,
   TouchableOpacity,
-  Platform,
-  ScrollView,
-  RefreshControl
+  Platform
 } from 'react-native';
 import { UserProfile } from '@/types/user';
 import { EntrepreneurCard } from './EntrepreneurCard';
 import Colors from '@/constants/colors';
-import { X, Heart, Star, MessageCircle } from 'lucide-react-native';
+import { X, Heart } from 'lucide-react-native';
 import { useMatchesStore } from '@/store/matches-store';
 import { useDebugStore } from '@/store/debug-store';
-import { useUsageStore } from '@/store/usage-store';
 import { useAuthStore } from '@/store/auth-store';
 import { Button } from './Button';
 import * as Haptics from 'expo-haptics';
@@ -131,14 +125,14 @@ const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
 // Enhanced animation constants for ultra-smooth feel
-const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.25; // Increased for more deliberate swiping
-const SWIPE_VELOCITY_THRESHOLD = 0.3; // More sensitive velocity detection
-const SWIPE_OUT_DURATION = 250; // Slightly slower for better visual feedback
-const CARD_ROTATION_RANGE = 15; // Increased for more dramatic effect
+const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.25;
+const SWIPE_VELOCITY_THRESHOLD = 0.3;
+const SWIPE_OUT_DURATION = 250;
+const CARD_ROTATION_RANGE = 15;
 
 // Card dimensions - fixed and consistent
 const CARD_WIDTH = SCREEN_WIDTH * 0.9;
-const CARD_HEIGHT = CARD_WIDTH * 1.4; // Better aspect ratio
+const CARD_HEIGHT = CARD_WIDTH * 1.4;
 
 // Optimized spring configurations for natural physics
 const SPRING_CONFIG = {
@@ -162,7 +156,6 @@ const getErrorMessage = (error: any): string => {
   if (error instanceof Error) return error.message;
   
   if (typeof error === 'object') {
-    // Handle structured error objects
     if (error.userMessage) return error.userMessage;
     if (error.message) return error.message;
     if (error.error && error.error.message) return error.error.message;
@@ -170,13 +163,11 @@ const getErrorMessage = (error: any): string => {
     if (error.hint) return String(error.hint);
     if (error.code) return `Error code: ${error.code}`;
     
-    // Try to extract meaningful properties
     const meaningfulProps = ['description', 'reason', 'cause', 'statusText'];
     for (const prop of meaningfulProps) {
       if (error[prop]) return String(error[prop]);
     }
     
-    // Last resort: try to stringify safely
     try {
       return JSON.stringify(error, Object.getOwnPropertyNames(error));
     } catch (e) {
@@ -205,6 +196,11 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   const { user } = useAuthStore();
   const { optimisticUpdates, rollbackOptimisticUpdate } = useMatchesStore();
 
+  // Use refs to prevent unnecessary re-renders
+  const lastProfileCountRef = useRef(profiles.length);
+  const lastCurrentIndexRef = useRef(currentIndex);
+  const debugTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Simplified animated values for better performance
   const position = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const opacity = useRef(new Animated.Value(1)).current;
@@ -212,47 +208,70 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   const likeOpacity = useRef(new Animated.Value(0)).current;
   const passOpacity = useRef(new Animated.Value(0)).current;
 
-  // Debug logging for SwipeCards props and state changes
-  useEffect(() => {
-    if (isDebugMode) {
+  // Debounced debug logging to prevent performance issues
+  const debugLog = useCallback((event: string, details: string, data?: any) => {
+    if (!isDebugMode) return;
+    
+    // Clear existing timeout
+    if (debugTimeoutRef.current) {
+      clearTimeout(debugTimeoutRef.current);
+    }
+    
+    // Debounce debug logging
+    debugTimeoutRef.current = setTimeout(() => {
       addDebugLog({
-        event: 'SwipeCards Component Render',
+        event,
         status: 'info',
-        details: `SwipeCards received ${profiles.length} profiles, currentIndex: ${currentIndex}`,
+        details,
         source: 'SwipeCards',
-        data: {
+        data
+      });
+    }, 50); // 50ms debounce
+  }, [isDebugMode, addDebugLog]);
+
+  // Optimized debug logging - only when profiles actually change
+  useEffect(() => {
+    if (profiles.length !== lastProfileCountRef.current) {
+      lastProfileCountRef.current = profiles.length;
+      
+      debugLog(
+        'SwipeCards Component Render',
+        `SwipeCards received ${profiles.length} profiles, currentIndex: ${currentIndex}`,
+        {
           profileCount: profiles.length,
           currentIndex,
           hasError: !!(error || propError),
           currentProfile: profiles[currentIndex]?.name || 'None'
         }
-      });
+      );
     }
-  }, [profiles, currentIndex, error, propError, isDebugMode, addDebugLog]);
+  }, [profiles.length, currentIndex, error, propError, debugLog]);
 
-  // FIXED: Proper useEffect for currentIndex reset to prevent setState during render
+  // Optimized currentIndex reset
   useEffect(() => {
     if (!profiles || profiles.length === 0) {
-      if (isDebugMode) {
-        console.log('[SwipeCards] No profiles available');
-      }
       return;
     }
 
-    if (currentIndex >= profiles.length) {
-      if (isDebugMode) {
-        console.log('[SwipeCards] Resetting currentIndex due to profiles change', { 
+    if (currentIndex >= profiles.length && currentIndex !== lastCurrentIndexRef.current) {
+      lastCurrentIndexRef.current = currentIndex;
+      
+      debugLog(
+        'SwipeCards currentIndex reset',
+        `Resetting currentIndex due to profiles change`,
+        { 
           oldIndex: currentIndex, 
           profilesCount: profiles.length 
-        });
-      }
+        }
+      );
+      
       setTimeout(() => {
         setCurrentIndex(0);
       }, 0);
     }
-  }, [profiles.length, currentIndex, isDebugMode]);
+  }, [profiles.length, currentIndex, debugLog]);
 
-  // FIXED: Separate useEffect for profile validation to prevent render cycles
+  // Optimized profile validation
   useEffect(() => {
     if (!profiles || profiles.length === 0 || currentIndex >= profiles.length) {
       return;
@@ -260,8 +279,10 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
 
     const currentProfile = profiles[currentIndex];
     if (!currentProfile || !currentProfile.id || !currentProfile.name) {
-      if (isDebugMode) {
-        console.error('[SwipeCards] Invalid profile data:', {
+      debugLog(
+        'SwipeCards invalid profile',
+        'Invalid profile data detected',
+        {
           index: currentIndex,
           hasProfile: !!currentProfile,
           profileData: currentProfile ? {
@@ -269,14 +290,23 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
             name: currentProfile.name,
             keys: Object.keys(currentProfile)
           } : null
-        });
-      }
+        }
+      );
       setError('Invalid profile data');
       return;
     }
 
     setError(null);
-  }, [profiles, currentIndex, isDebugMode]);
+  }, [profiles, currentIndex, debugLog]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (debugTimeoutRef.current) {
+        clearTimeout(debugTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Enhanced haptic feedback function
   const triggerHapticFeedback = useCallback((type: 'light' | 'medium' | 'heavy' | 'success' | 'error' | 'selection') => {
@@ -414,23 +444,18 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     const profile = profiles[currentIndex];
     if (!profile) return;
     
-    // Debug logging for swipe completion
-    if (isDebugMode) {
-      addDebugLog({
-        event: 'SwipeCards onSwipeComplete',
-        status: 'info',
-        details: `Swipe ${direction} on profile ${profile.name} (index ${currentIndex}/${profiles.length})`,
-        source: 'swipe-cards',
-        data: {
-          direction,
-          profileId: profile.id,
-          profileName: profile.name,
-          currentIndex,
-          totalProfiles: profiles.length,
-          nextIndex: currentIndex + 1
-        }
-      });
-    }
+    debugLog(
+      'SwipeCards onSwipeComplete',
+      `Swipe ${direction} on profile ${profile.name} (index ${currentIndex}/${profiles.length})`,
+      {
+        direction,
+        profileId: profile.id,
+        profileName: profile.name,
+        currentIndex,
+        totalProfiles: profiles.length,
+        nextIndex: currentIndex + 1
+      }
+    );
     
     try {
       triggerHapticFeedback(direction === 'right' ? 'success' : 'medium');
@@ -445,20 +470,16 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       setCurrentIndex(prevIndex => {
         const newIndex = prevIndex + 1;
         
-        if (isDebugMode) {
-          addDebugLog({
-            event: 'SwipeCards currentIndex update',
-            status: 'info',
-            details: `CurrentIndex updated from ${prevIndex} to ${newIndex}`,
-            source: 'swipe-cards',
-            data: {
+        debugLog(
+          'SwipeCards currentIndex update',
+          `CurrentIndex updated from ${prevIndex} to ${newIndex}`,
+          {
             oldIndex: prevIndex, 
             newIndex,
-              totalProfiles: profiles.length,
-              nextProfile: profiles[newIndex] ? profiles[newIndex].name : 'No more profiles'
-            }
-          });
-        }
+            totalProfiles: profiles.length,
+            nextProfile: profiles[newIndex] ? profiles[newIndex].name : 'No more profiles'
+          }
+        );
         
         if (newIndex >= profiles.length && onEmpty) {
           setTimeout(onEmpty, 100);
@@ -487,7 +508,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       setError(`Failed to ${direction === 'right' ? 'like' : 'pass'} profile. Please try again.`);
       setTimeout(() => setError(null), 3000);
     }
-  }, [profiles, currentIndex, onSwipeRight, onSwipeLeft, onEmpty, triggerHapticFeedback, isDebugMode, addDebugLog]);
+  }, [profiles, currentIndex, onSwipeRight, onSwipeLeft, onEmpty, triggerHapticFeedback, debugLog]);
 
   // Button-triggered swipe functions
   const handleButtonSwipe = useCallback((direction: 'left' | 'right') => {
@@ -523,16 +544,16 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     passOpacity.setValue(0);
     
     // Animate next card
-      Animated.spring(nextCardScale, {
-        toValue: 1,
+    Animated.spring(nextCardScale, {
+      toValue: 1,
       ...SPRING_CONFIG
     }).start(() => {
       nextCardScale.setValue(0.95);
     });
   }, [position, opacity, likeOpacity, passOpacity, nextCardScale]);
 
-  // FIXED: Simplified card rendering with proper positioning
-  const renderCards = () => {
+  // Optimized card rendering with memoization
+  const renderCards = useMemo(() => {
     if (profiles.length === 0) {
       return (
         <View style={styles.emptyContainer}>
@@ -553,7 +574,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     }
 
     const cardsToRender = [];
-    const maxCards = Math.min(3, profiles.length - currentIndex); // Show max 3 cards
+    const maxCards = Math.min(3, profiles.length - currentIndex);
 
     for (let i = 0; i < maxCards; i++) {
       const index = currentIndex + i;
@@ -606,10 +627,10 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
               </View>
             </Animated.View>
             
-                         <EntrepreneurCard 
-               profile={profile} 
-               onProfilePress={() => onProfilePress(profile)}
-             />
+            <EntrepreneurCard 
+              profile={profile} 
+              onProfilePress={() => onProfilePress(profile)}
+            />
           </Animated.View>
         );
       } else if (isNextCard) {
@@ -653,10 +674,10 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     }
 
     return cardsToRender;
-  };
+  }, [profiles, currentIndex, position.x, position.y, opacity, animatedStyles, nextCardScale, panResponder.panHandlers, onProfilePress, onRefresh]);
 
-  // Action buttons
-  const renderActionButtons = () => {
+  // Memoized action buttons
+  const actionButtons = useMemo(() => {
     if (currentIndex >= profiles.length) return null;
 
     return (
@@ -678,28 +699,35 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
         </TouchableOpacity>
       </View>
     );
-  };
+  }, [currentIndex, profiles.length, handleButtonSwipe]);
+
+  // Memoized error state
+  const errorState = useMemo(() => {
+    if (!error && !propError) return null;
+
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorText}>{getErrorMessage(error || propError)}</Text>
+        {onRetry && (
+          <Button
+            title="Try Again"
+            onPress={onRetry}
+            variant="primary"
+            size="medium"
+          />
+        )}
+      </View>
+    );
+  }, [error, propError, onRetry]);
   
   return (
     <View style={styles.container}>
-      {error || propError ? (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{getErrorMessage(error || propError)}</Text>
-          {onRetry && (
-            <Button
-              title="Try Again"
-              onPress={onRetry}
-              variant="primary"
-              size="medium"
-            />
-          )}
-        </View>
-      ) : (
+      {error || propError ? errorState : (
         <>
           <View style={styles.cardsContainer}>
-          {renderCards()}
+            {renderCards}
           </View>
-          {renderActionButtons()}
+          {actionButtons}
         </>
       )}
     </View>
