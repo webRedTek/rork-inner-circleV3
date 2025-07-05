@@ -224,15 +224,15 @@ export const useUsageStore = create<UsageStore>()(
           
           if (isDebugMode) {
             addDebugLog({
-              event: 'Querying usage_stats table',
+              event: 'Querying user_daily_usage table',
               status: 'info',
-              details: `Executing query on usage_stats table for user ${userId}`,
+              details: `Executing query on user_daily_usage table for user ${userId}`,
               source: 'usage-store'
             });
           }
           
           const { data, error } = await supabase
-            .from('usage_stats')
+            .from('user_daily_usage')
             .select('*')
             .eq('user_id', userId)
             .single();
@@ -259,7 +259,7 @@ export const useUsageStore = create<UsageStore>()(
                 addDebugLog({
                   event: 'No usage stats found, using defaults',
                   status: 'warning',
-                  details: 'No usage_stats record found, creating default totals',
+                  details: 'No user_daily_usage record found, creating default totals',
                   source: 'usage-store',
                   data: { defaultTotals }
                 });
@@ -273,7 +273,7 @@ export const useUsageStore = create<UsageStore>()(
               addDebugLog({
                 event: 'Database query error',
                 status: 'error',
-                details: `Failed to fetch usage stats: ${error.message}`,
+                details: `Failed to fetch user daily usage: ${error.message}`,
                 source: 'usage-store',
                 data: { error, errorCode: error.code }
               });
@@ -286,7 +286,7 @@ export const useUsageStore = create<UsageStore>()(
             addDebugLog({
               event: 'Database totals fetched successfully',
               status: 'success',
-              details: `Retrieved usage stats from database`,
+              details: `Retrieved user daily usage from database`,
               source: 'usage-store',
               data: { 
                 totals: data,
