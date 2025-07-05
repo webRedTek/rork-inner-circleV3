@@ -290,7 +290,6 @@ export const useAuthStore = create<AuthState>()(
                 await useUsageStore.getState().syncUsageData(userId);
               }, 60 * 1000);
             } catch (error) {
-              console.warn('Usage store initialization failed, but continuing with login:', error);
               // Don't block authentication if usage store fails
             }
 
@@ -298,7 +297,6 @@ export const useAuthStore = create<AuthState>()(
             await get().validateAndRefreshCache(userId);
           });
         } catch (error) {
-          console.error('Login error:', error);
           const appError = handleError(error);
           set({ error: appError.userMessage });
           throw error;
@@ -664,48 +662,36 @@ export const useAuthStore = create<AuthState>()(
       },
 
       initializeTierSettings: async () => {
-        const { user, allTierSettings } = get();
-        
-        if (!user) {
-          console.warn('Cannot initialize tier settings: No user logged in');
-          return;
-        }
-
-        if (!allTierSettings) {
-          console.log('All tier settings not cached, fetching first...');
-          await get().fetchAllTierSettings();
-        }
-
-        const userTierSettings = get().allTierSettings?.[user.membershipTier];
-        if (!userTierSettings) {
-          const errorMessage = `No tier settings found for membership level: ${user.membershipTier}`;
-          console.error(errorMessage);
-          throw new Error(errorMessage);
-        }
-
-        // Cache the user's current tier settings
-        await AsyncStorage.setItem('currentTierSettings', JSON.stringify(userTierSettings));
-        
-        // Optional debug logging (non-blocking)
         try {
-          const { useDebugStore } = require('@/store/debug-store');
-          const { isDebugMode, addDebugLog } = useDebugStore.getState();
-          
-          if (isDebugMode) {
-            addDebugLog({
-              event: 'initializeTierSettings Success',
-              status: 'success',
-              details: `Tier settings initialized for ${user.membershipTier} membership`,
-              data: { 
-                tier: user.membershipTier,
-                settings: userTierSettings 
-              },
-              source: 'auth-store'
-            });
+          const { user } = get();
+          if (!user) {
+            // Don't block authentication if no user
+            return;
           }
-        } catch (debugError) {
+          
+          // Fetch fresh tier settings first
+          await get().fetchAllTierSettings();
+          
+          // Then load rate limits using the tier settings
+          await useUsageStore.getState().loadRateLimits(user.id);
+        } catch (error) {
           // Debug logging failure shouldn't block login
-          console.warn('Debug logging failed during tier settings initialization:', debugError);
+          try {
+            const { useDebugStore } = require('@/store/debug-store');
+            const { isDebugMode, addDebugLog } = useDebugStore.getState();
+            
+            if (isDebugMode) {
+              addDebugLog({
+                event: 'Tier settings initialization failed',
+                status: 'error',
+                details: 'Failed to initialize tier settings after authentication',
+                source: 'auth-store',
+                data: { error: error instanceof Error ? error.message : 'Unknown error' }
+              });
+            }
+          } catch (debugError) {
+            // Debug logging failure shouldn't block login
+          }
         }
       },
 
@@ -855,7 +841,6 @@ export const useAuthStore = create<AuthState>()(
                 await useUsageStore.getState().syncUsageData(userProfile.id);
               }, 60 * 1000);
             } catch (error) {
-              console.warn('Usage store initialization failed, but continuing with session:', error);
               // Don't block authentication if usage store fails
             }
           } else {

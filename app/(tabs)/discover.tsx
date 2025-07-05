@@ -110,10 +110,6 @@ export default function DiscoverScreen() {
   // Fetch potential matches when screen loads - ONLY ONCE per user
   useEffect(() => {
     if (user?.id) {
-      if (isDebugMode) {
-        console.log('[DiscoverScreen] Fetching potential matches on screen load');
-      }
-      
       // Fetch profiles (will use cache if available)
       fetchPotentialMatches();
     }
@@ -133,9 +129,6 @@ export default function DiscoverScreen() {
       
       // Add null check to prevent "Cannot read properties of null" error
       if (!allLimits) {
-        if (isDebugMode) {
-          console.log('[DiscoverScreen] checkAllLimits returned null - database totals or rate limits not available yet');
-        }
         // Set default "allowed" status while loading instead of null
         setLimitStatus({
           swipe: { isAllowed: true },
@@ -150,16 +143,7 @@ export default function DiscoverScreen() {
         match: allLimits.match,
         like: allLimits.like
       });
-      
-      if (isDebugMode) {
-        console.log('[DiscoverScreen] Updated limit status:', {
-          swipe: allLimits.swipe,
-          match: allLimits.match,
-          like: allLimits.like
-        });
-      }
     } catch (error) {
-      console.error('[DiscoverScreen] Error updating limit status:', error);
       // Set default "allowed" status on error instead of null
       setLimitStatus({
         swipe: { isAllowed: true },
@@ -167,7 +151,7 @@ export default function DiscoverScreen() {
         like: { isAllowed: true }
       });
     }
-  }, [user?.id, checkAllLimits, isDebugMode]);
+  }, [user?.id, checkAllLimits]);
 
   // Handle refresh with limit validation
   const handleRefresh = useCallback(async () => {
