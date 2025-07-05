@@ -1,44 +1,94 @@
 /**
+ * ==================================================================================
+ * 🚨 CRITICAL DOCUMENTATION - NEVER DELETE THIS SECTION 🚨
+ * ==================================================================================
+ * 
  * FILE: components/SwipeCards.tsx
- * LAST UPDATED: 2025-07-05 12:00
+ * LAST UPDATED: 2025-07-05 15:30
+ * CRITICAL FIXES APPLIED: 2025-07-05
  * 
- * INITIALIZATION ORDER:
- * 1. Initializes when rendered in discover screen
- * 2. Requires matches-store and user profiles to be loaded
- * 3. Sets up enhanced gesture handlers and optimized animations
- * 4. Parent components depend on swipe events
- * 5. Race condition: Must wait for profile data before rendering
+ * ⚠️  IMPORTANT: This documentation must NEVER be removed or modified without
+ *     updating the corresponding debug monitoring section in debug.tsx
  * 
- * CURRENT STATE:
- * FIXED: Card visibility and positioning issues resolved. Features:
- * - Cards now properly display on screen with correct positioning
- * - Simplified and optimized gesture handling for better responsiveness
- * - Enhanced visual feedback with dynamic indicators and micro-interactions
- * - Optimistic UI updates with rollback capability for better UX
- * - Performance optimizations with intelligent memoization and native driver usage
- * - Enhanced haptic feedback with contextual intensity and timing
- * - FIXED: Card stack rendering and z-index management
- * - FIXED: Container layout and card positioning
+ * ==================================================================================
+ * 🛠️  CRITICAL FIXES APPLIED (DO NOT REVERT THESE CHANGES)
+ * ==================================================================================
  * 
- * RECENT CHANGES:
- * - CRITICAL FIX: Resolved card visibility issues by fixing container layout and positioning
- * - ENHANCED: Simplified card stack management for better performance
- * - IMPROVED: Gesture handling optimization for smoother interactions
- * - FIXED: Animation performance and smoothness issues
- * - MAINTAINED: All existing functionality and external API
+ * 1. SCROLLVIEW GESTURE CONFLICT FIX:
+ *    - PROBLEM: ScrollView in discover.tsx was causing gesture conflicts with PanResponder
+ *    - SOLUTION: Removed ScrollView wrapper, replaced with simple View structure
+ *    - RESULT: SwipeCards gestures now work smoothly without freezing
+ *    - FILES CHANGED: discover.tsx (lines ~550-600)
  * 
- * FILE INTERACTIONS:
- * - Imports from: react-native, usage-store (unified limits), matches-store (profiles), types/user
- * - Exports to: discover screen
- * - Dependencies: react-native-reanimated for animations
- * - Data flow: Bidirectional with simplified matches-store and unified usage-store
+ * 2. IMAGE LOADING OVERLAY FIX:
+ *    - PROBLEM: absoluteFill overlay with zIndex:10 was covering images indefinitely
+ *    - SOLUTION: Replaced with relative positioned overlay with zIndex:1
+ *    - IMPLEMENTATION: imageContainer > Image + imageLoadingOverlay structure
+ *    - FALLBACK: Added 10-second timeout to prevent infinite loading
+ *    - FILES CHANGED: EntrepreneurCard.tsx (lines ~130-170)
  * 
- * KEY FUNCTIONS/COMPONENTS:
- * - SwipeCards: Main component with optimistic updates and enhanced animations
- * - onSwipeComplete: Enhanced swipe processing with rollback capability
- * - forceSwipe: Optimized swipe animations with velocity-based timing
- * - renderCards: FIXED card rendering with improved stack management
- * - Enhanced gesture handling with predictive motion and momentum
+ * 3. PULL-TO-REFRESH REMOVAL:
+ *    - PROBLEM: Pull-to-refresh was adding unnecessary complexity and conflicts
+ *    - SOLUTION: Removed all pull-to-refresh logic, kept simple manual refresh button
+ *    - RESULT: Simplified gesture handling, better performance
+ * 
+ * ==================================================================================
+ * 🔧 HOW SWIPECARDS COMPONENT WORKS (CURRENT ARCHITECTURE)
+ * ==================================================================================
+ * 
+ * RENDERING FLOW:
+ * 1. Component receives profiles[] array from matches-store
+ * 2. renderCards() creates max 3 card stack (current + next + background)
+ * 3. Current card gets PanResponder for gesture handling
+ * 4. Next cards are pre-positioned with scale/opacity animations
+ * 
+ * GESTURE HANDLING:
+ * 1. PanResponder.onMoveShouldSetPanResponder: Activates on 2px movement
+ * 2. onPanResponderGrant: Sets isGestureActive, resets indicators
+ * 3. onPanResponderMove: Updates position, shows like/pass indicators
+ * 4. onPanResponderRelease: Determines swipe direction, calls forceSwipe()
+ * 
+ * SWIPE DETECTION:
+ * - Horizontal threshold: SCREEN_WIDTH * 0.25 (25% of screen width)
+ * - Velocity threshold: 0.3 for quick swipes
+ * - Direction logic: dx > threshold = right, dx < -threshold = left
+ * 
+ * ANIMATION SYSTEM:
+ * - Uses Animated.ValueXY for position tracking
+ * - Spring animations for smooth card returns
+ * - Opacity/scale animations for card stack effect
+ * - Native driver enabled for 60fps performance
+ * 
+ * STATE MANAGEMENT:
+ * - currentIndex: Tracks which profile is currently shown
+ * - error: Handles component-level errors
+ * - isGestureActive: Prevents gesture conflicts
+ * 
+ * CARD STACK LOGIC:
+ * - Index 0 (current): Full interactivity with gestures
+ * - Index 1 (next): Scaled to 95%, opacity 80%
+ * - Index 2+ (background): Progressively smaller scale/opacity
+ * 
+ * ==================================================================================
+ * 🚨 CRITICAL DEBUGGING INFORMATION
+ * ==================================================================================
+ * 
+ * IF SWIPECARDS STOP WORKING, CHECK:
+ * 1. Debug tab > SwipeCards & Image Loading Status section
+ * 2. Ensure debug mode is enabled to see logs
+ * 3. Check profiles.length > 0 and currentIndex < profiles.length
+ * 4. Verify no ScrollView wrapper around SwipeCards in discover.tsx
+ * 5. Check EntrepreneurCard image loading doesn't have absoluteFill overlay
+ * 
+ * COMMON FAILURE MODES:
+ * - Cards not visible: Check container layout and positioning
+ * - Gestures not working: Check for ScrollView conflicts
+ * - Images not loading: Check EntrepreneurCard overlay logic
+ * - Performance issues: Check animation native driver usage
+ * 
+ * ==================================================================================
+ * 🎯 COMPONENT ARCHITECTURE (CURRENT STATE)
+ * ==================================================================================
  */
 
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';

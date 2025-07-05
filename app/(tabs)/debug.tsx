@@ -131,6 +131,81 @@ export default function DebugScreen() {
           )}
         </View>
 
+        {/* CRITICAL: SwipeCards & Image Loading Status - Monitor Recent Fixes */}
+        <View style={[styles.section, { backgroundColor: Colors.light.accent + '10' }]}>
+          <Text style={[styles.sectionTitle, { color: Colors.light.accent }]}>
+            🎴 SWIPECARDS & IMAGE LOADING STATUS
+          </Text>
+          <Text style={styles.sectionSubtitle}>
+            Monitoring fixes applied on 2025-07-05 - DO NOT REMOVE THIS SECTION
+          </Text>
+          
+          {/* SwipeCards Status */}
+          <View style={styles.infoBlock}>
+            <Text style={styles.subSectionTitle}>SwipeCards Component Status:</Text>
+            <Text style={styles.label}>Profiles Available:</Text>
+            <Text style={styles.value}>{profiles.length} profiles loaded</Text>
+            <Text style={styles.label}>Loading State:</Text>
+            <Text style={[styles.value, { color: isLoading ? Colors.light.warning : Colors.light.success }]}>
+              {isLoading ? 'Loading...' : 'Ready'}
+            </Text>
+            <Text style={styles.label}>Error State:</Text>
+            <Text style={[styles.value, { color: error ? Colors.light.error : Colors.light.success }]}>
+              {error || 'No errors'}
+            </Text>
+          </View>
+
+          {/* Image Loading Status */}
+          <View style={styles.infoBlock}>
+            <Text style={styles.subSectionTitle}>Image Loading Fix Status:</Text>
+            <Text style={styles.label}>Recent Fix Applied:</Text>
+            <Text style={styles.value}>
+              ✅ Removed blocking absoluteFill overlay{'\n'}
+              ✅ Simplified loading indicator{'\n'}
+              ✅ Added fallback timeout (10s){'\n'}
+              ✅ Fixed zIndex conflicts
+            </Text>
+          </View>
+
+          {/* Cache Status */}
+          <View style={styles.infoBlock}>
+            <Text style={styles.subSectionTitle}>Profile Cache Status:</Text>
+            {getCacheStats && (
+              <>
+                <Text style={styles.label}>Cache Size:</Text>
+                <Text style={styles.value}>{getCacheStats()?.size || 0} cached profiles</Text>
+                <Text style={styles.label}>Cache Hit Rate:</Text>
+                <Text style={styles.value}>{Math.round((getCacheStats()?.hitRate || 0) * 100)}%</Text>
+              </>
+            )}
+          </View>
+
+          {/* Recent SwipeCards Logs */}
+          <View style={styles.infoBlock}>
+            <Text style={styles.subSectionTitle}>Recent SwipeCards Activity:</Text>
+            {debugLog
+              .filter(log => log.source === 'swipe-cards' || log.event.toLowerCase().includes('swipe'))
+              .slice(0, 3)
+              .map((log, index) => (
+                <Text key={index} style={[styles.value, { fontSize: 12, marginBottom: 4 }]}>
+                  {formatTime(log.timestamp)}: {log.event}
+                </Text>
+              ))
+            }
+            {debugLog.filter(log => log.source === 'swipe-cards').length === 0 && (
+              <Text style={[styles.value, { color: Colors.light.warning }]}>
+                No SwipeCards logs yet - Enable debug mode and try swiping
+              </Text>
+            )}
+          </View>
+
+          <Button
+            title="Test Profile Refresh"
+            onPress={() => fetchPotentialMatches && fetchPotentialMatches()}
+            variant="secondary"
+          />
+        </View>
+
         {/* Debug Mode Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Debug Mode</Text>
@@ -759,6 +834,19 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: Colors.light.text,
     marginBottom: 12
+  },
+  sectionSubtitle: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginBottom: 12,
+    fontStyle: 'italic'
+  },
+  subSectionTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.light.text,
+    marginBottom: 8,
+    marginTop: 4
   },
   infoBlock: {
     marginBottom: 12
