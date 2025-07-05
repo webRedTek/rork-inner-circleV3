@@ -355,31 +355,52 @@ export const useUsageStore = create<UsageStore>()(
               return acc;
             }, {} as Record<string, number>);
             
-            // Apply updates to database using specific upsert functions
+            // Apply updates to database using direct SQL upsert
             for (const [actionType, count] of Object.entries(updates)) {
-              let rpcFunction: string;
+              let updateField: string;
               
               switch (actionType) {
                 case 'swipe':
-                  rpcFunction = 'upsert_swipe_count';
+                  updateField = 'swipe_count';
                   break;
                 case 'match':
-                  rpcFunction = 'upsert_match_count';
+                  updateField = 'match_count';
                   break;
                 case 'like':
-                  rpcFunction = 'upsert_like_count';
+                  updateField = 'like_count';
                   break;
                 case 'message':
-                  rpcFunction = 'upsert_message_count';
+                  updateField = 'message_count';
                   break;
                 default:
                   continue; // Skip unknown action types
               }
               
-              const { error } = await supabase.rpc(rpcFunction, {
-                p_user_id: userId,
-                p_count: count,
-              });
+              // Simple fetch-then-upsert approach
+              const today = new Date().toISOString().split('T')[0];
+              
+              // Get current record if it exists
+              const { data: existing } = await supabase
+                .from('user_daily_usage')
+                .select(updateField)
+                .eq('user_id', userId)
+                .eq('date', today)
+                .single();
+              
+              // Calculate new value (current + increment)
+              const currentValue = (existing?.[updateField as keyof typeof existing] as number) || 0;
+              const newValue = currentValue + count;
+              
+              // Upsert the record
+              const { error } = await supabase
+                .from('user_daily_usage')
+                .upsert({
+                  user_id: userId,
+                  date: today,
+                  [updateField]: newValue,
+                  last_updated: new Date().toISOString(),
+                  created_at: new Date().toISOString()
+                });
               
               if (error) {
                 logger.logDebug('Failed to sync usage data:', { actionType, error });
