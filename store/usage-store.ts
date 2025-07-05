@@ -149,9 +149,32 @@ export const useUsageStore = create<UsageStore>()(
       loadRateLimits: async (userId: string) => {
         try {
           const { useAuthStore } = require('@/store/auth-store');
-          const { getTierSettings } = useAuthStore.getState();
           
-          const tierSettings = await getTierSettings();
+          // Try multiple times in case tier settings aren't ready yet
+          let tierSettings = null;
+          let attempts = 0;
+          const maxAttempts = 3;
+          
+          while (!tierSettings && attempts < maxAttempts) {
+            const { getTierSettings, fetchAllTierSettings } = useAuthStore.getState();
+            tierSettings = getTierSettings(); // Remove await - this is synchronous
+            
+            if (!tierSettings && attempts === 0) {
+              // Try to fetch tier settings if not available
+              logger.logDebug('Tier settings not available, fetching...');
+              await fetchAllTierSettings();
+              tierSettings = getTierSettings();
+            }
+            
+            if (!tierSettings) {
+              attempts++;
+              if (attempts < maxAttempts) {
+                logger.logDebug(`Tier settings not ready, retrying in 1s (attempt ${attempts}/${maxAttempts})`);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+            }
+          }
+          
           if (tierSettings) {
             set({
               rateLimits: {
@@ -161,6 +184,15 @@ export const useUsageStore = create<UsageStore>()(
                 dailyMessageLimit: tierSettings.message_sending_limit || 0,
               }
             });
+            
+            logger.logDebug('Rate limits loaded successfully:', {
+              swipe: tierSettings.daily_swipe_limit,
+              match: tierSettings.daily_match_limit,
+              like: tierSettings.daily_like_limit,
+              message: tierSettings.message_sending_limit
+            });
+          } else {
+            logger.logDebug('Failed to load tier settings after multiple attempts');
           }
         } catch (error) {
           logger.logDebug('Failed to load rate limits:', { error });
