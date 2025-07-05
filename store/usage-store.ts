@@ -222,19 +222,22 @@ export const useUsageStore = create<UsageStore>()(
             throw new Error('Supabase is not configured');
           }
           
+          // Query for today's usage record
+          const today = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
+          
           if (isDebugMode) {
             addDebugLog({
               event: 'Querying user_daily_usage table',
               status: 'info',
-              details: `Executing query on user_daily_usage table for user ${userId}`,
+              details: `Executing query on user_daily_usage table for user ${userId} on date ${today}`,
               source: 'usage-store'
             });
           }
-          
           const { data, error } = await supabase
             .from('user_daily_usage')
             .select('*')
             .eq('user_id', userId)
+            .eq('date', today)
             .single();
           
           if (error) {
