@@ -61,8 +61,8 @@ export default function DebugScreen() {
 
   const { user, allTierSettings, tierSettingsTimestamp } = useAuthStore();
 
-  // Get debug logs
-  const { debugLog } = useDebugStore();
+  // Get debug logs and debug mode
+  const { debugLog, isDebugMode, toggleDebugMode } = useDebugStore();
 
   const { clearAllNotifications, notifications } = useNotificationStore();
 
@@ -103,6 +103,39 @@ export default function DebugScreen() {
       >
         <Text style={styles.title}>Debug Information</Text>
         <Text style={styles.subtitle}>Last Updated: {lastRefresh.toLocaleTimeString()}</Text>
+
+        {/* Debug Mode Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Debug Mode</Text>
+          <View style={styles.infoBlock}>
+            <Text style={styles.label}>Debug Mode:</Text>
+            <Text style={[
+              styles.value,
+              { color: isDebugMode ? Colors.light.success : Colors.light.error }
+            ]}>
+              {isDebugMode ? 'ENABLED' : 'DISABLED'}
+            </Text>
+          </View>
+          <View style={styles.infoBlock}>
+            <Text style={styles.label}>Debug Logs:</Text>
+            <Text style={styles.value}>
+              Total: {debugLog.length} entries{'\n'}
+              Timeline entries: {debugLog.filter(log => 
+                ['matches-store', 'usage-store', 'discover-screen'].includes(log.source)
+              ).length}
+            </Text>
+          </View>
+          <Button
+            title={isDebugMode ? 'Disable Debug Mode' : 'Enable Debug Mode'}
+            onPress={toggleDebugMode}
+            variant={isDebugMode ? 'danger' : 'primary'}
+          />
+          {!isDebugMode && (
+            <Text style={styles.warningText}>
+              ⚠️ Debug mode is disabled. Enable it to see operation timeline and detailed logs.
+            </Text>
+          )}
+        </View>
 
         {/* Timeline Section */}
         <View style={styles.section}>
@@ -711,6 +744,12 @@ const styles = StyleSheet.create({
   value: {
     fontSize: 14,
     color: Colors.light.text
+  },
+  warningText: {
+    fontSize: 12,
+    color: Colors.light.warning,
+    marginTop: 8,
+    fontStyle: 'italic'
   },
   timelineContainer: {
     marginTop: 8
