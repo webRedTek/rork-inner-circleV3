@@ -410,6 +410,96 @@ export default function DebugScreen() {
           </View>
 
           <View style={styles.debugSubsection}>
+            <Text style={styles.debugSubtitle}>Live Supabase Response</Text>
+            <View style={styles.supabaseResponseContainer}>
+              {(() => {
+                // Find the most recent database response in debug logs
+                const recentDbResponse = debugLog
+                  .filter(log => 
+                    log.source === 'matches-store' && 
+                    (log.event === 'Database RPC response received' || 
+                     log.event === 'Empty RPC response' ||
+                     log.event === 'Invalid RPC response format' ||
+                     log.event === 'Database RPC error')
+                  )
+                  .sort((a, b) => b.timestamp - a.timestamp)[0];
+
+                if (!recentDbResponse) {
+                  return (
+                    <Text style={styles.debugText}>
+                      No recent database response found.{'\n'}
+                      Trigger a refresh to see live Supabase response data.
+                    </Text>
+                  );
+                }
+
+                const isError = recentDbResponse.status === 'error';
+                const isWarning = recentDbResponse.status === 'warning';
+
+                return (
+                  <View>
+                    <Text style={[styles.debugText, { fontWeight: 'bold' }]}>
+                      Latest Response ({formatTime(recentDbResponse.timestamp)}):
+                    </Text>
+                    <Text style={[
+                      styles.debugText,
+                      { color: isError ? Colors.light.error : 
+                               isWarning ? Colors.light.warning : 
+                               Colors.light.success }
+                    ]}>
+                      Status: {recentDbResponse.event}{'\n'}
+                      Details: {recentDbResponse.details}{'\n'}
+                    </Text>
+                    
+                    {recentDbResponse.data && (
+                      <View style={styles.responseDataContainer}>
+                        <Text style={[styles.debugText, { fontWeight: 'bold' }]}>
+                          Raw Response Data:
+                        </Text>
+                        <Text style={styles.responseDataText}>
+                          {JSON.stringify(recentDbResponse.data, null, 2)}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Show processing results if available */}
+                    {(() => {
+                      const processingResult = debugLog
+                        .filter(log => 
+                          log.source === 'matches-store' && 
+                          log.event === 'Profile processing completed' &&
+                          log.timestamp > recentDbResponse.timestamp - 5000 // Within 5 seconds
+                        )
+                        .sort((a, b) => b.timestamp - a.timestamp)[0];
+
+                      if (processingResult?.data) {
+                        return (
+                          <View style={styles.processingResultContainer}>
+                            <Text style={[styles.debugText, { fontWeight: 'bold' }]}>
+                              Processing Results:
+                            </Text>
+                            <Text style={styles.debugText}>
+                              Processed: {processingResult.data.processedCount || 0}{'\n'}
+                              Rejected: {processingResult.data.rejectedCount || 0}{'\n'}
+                              {processingResult.data.processedIds && (
+                                `Profile IDs: ${processingResult.data.processedIds.slice(0, 3).join(', ')}${processingResult.data.processedIds.length > 3 ? '...' : ''}\n`
+                              )}
+                              {processingResult.data.rejectedReasons && processingResult.data.rejectedReasons.length > 0 && (
+                                `Rejection Reasons: ${processingResult.data.rejectedReasons.join(', ')}\n`
+                              )}
+                            </Text>
+                          </View>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </View>
+                );
+              })()}
+            </View>
+          </View>
+
+          <View style={styles.debugSubsection}>
             <Text style={styles.debugSubtitle}>Profile Processing Debug</Text>
             <Text style={styles.debugText}>
               Cache Size: {getCacheStats().size}{'\n'}
@@ -617,5 +707,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.light.textSecondary,
     marginTop: 4
+  },
+  supabaseResponseContainer: {
+    marginTop: 8
+  },
+  responseDataContainer: {
+    marginTop: 8
+  },
+  responseDataText: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginBottom: 4
+  },
+  processingResultContainer: {
+    marginTop: 8
   }
 }); 

@@ -99,6 +99,16 @@ export default function DiscoverScreen() {
     
     try {
       const allLimits = checkAllLimits();
+      
+      // Add null check to prevent "Cannot read properties of null" error
+      if (!allLimits) {
+        if (isDebugMode) {
+          console.log('[DiscoverScreen] checkAllLimits returned null - database totals or rate limits not available yet');
+        }
+        setLimitStatus(null);
+        return;
+      }
+      
       setLimitStatus({
         swipe: allLimits.swipe,
         match: allLimits.match,
@@ -114,6 +124,7 @@ export default function DiscoverScreen() {
       }
     } catch (error) {
       console.error('[DiscoverScreen] Error updating limit status:', error);
+      setLimitStatus(null);
     }
   }, [user?.id, checkAllLimits, isDebugMode]);
 
@@ -402,7 +413,13 @@ export default function DiscoverScreen() {
 
   // Render limit status indicators
   const renderLimitStatus = () => {
-    if (!limitStatus) return null;
+    if (!limitStatus || !limitStatus.swipe || !limitStatus.match || !limitStatus.like) {
+      return (
+        <View style={styles.limitStatusContainer}>
+          <Text style={styles.limitText}>Loading limits...</Text>
+        </View>
+      );
+    }
     
     return (
       <View style={styles.limitStatusContainer}>
