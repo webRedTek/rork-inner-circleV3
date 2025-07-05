@@ -413,35 +413,57 @@ export default function DiscoverScreen() {
 
   // Render limit status indicators
   const renderLimitStatus = () => {
-    if (!limitStatus || !limitStatus.swipe || !limitStatus.match || !limitStatus.like) {
-      return (
-        <View style={styles.limitStatusContainer}>
-          <Text style={styles.limitText}>Loading limits...</Text>
-        </View>
-      );
-    }
-    
     return (
       <View style={styles.limitStatusContainer}>
         <View style={styles.limitStatusRow}>
-          <View style={[styles.limitIndicator, !limitStatus.swipe.isAllowed && styles.limitReached]}>
-            <Heart size={16} color={!limitStatus.swipe.isAllowed ? Colors.dark.error : Colors.dark.success} />
-            <Text style={[styles.limitText, !limitStatus.swipe.isAllowed && styles.limitTextReached]}>
-              Swipes: {limitStatus.swipe.isAllowed ? 'Available' : 'Limit Reached'}
+          <View style={[
+            styles.limitIndicator,
+            !limitStatus || !limitStatus.swipe?.isAllowed ? styles.limitReached : {}
+          ]}>
+            <Heart size={16} color={
+              limitStatus && limitStatus.swipe?.isAllowed 
+                ? Colors.dark.success 
+                : Colors.dark.error
+            } />
+            <Text style={[
+              styles.limitText,
+              !limitStatus || !limitStatus.swipe?.isAllowed ? styles.limitTextReached : {}
+            ]}>
+              {limitStatus ? 'Swipe OK' : 'Loading...'}
             </Text>
           </View>
           
-          <View style={[styles.limitIndicator, !limitStatus.like.isAllowed && styles.limitReached]}>
-            <Zap size={16} color={!limitStatus.like.isAllowed ? Colors.dark.error : Colors.dark.success} />
-            <Text style={[styles.limitText, !limitStatus.like.isAllowed && styles.limitTextReached]}>
-              Likes: {limitStatus.like.isAllowed ? 'Available' : 'Limit Reached'}
+          <View style={[
+            styles.limitIndicator,
+            !limitStatus || !limitStatus.like?.isAllowed ? styles.limitReached : {}
+          ]}>
+            <Zap size={16} color={
+              limitStatus && limitStatus.like?.isAllowed 
+                ? Colors.dark.success 
+                : Colors.dark.error
+            } />
+            <Text style={[
+              styles.limitText,
+              !limitStatus || !limitStatus.like?.isAllowed ? styles.limitTextReached : {}
+            ]}>
+              {limitStatus ? 'Like OK' : 'Loading...'}
             </Text>
           </View>
           
-          <View style={[styles.limitIndicator, !limitStatus.match.isAllowed && styles.limitReached]}>
-            <Users size={16} color={!limitStatus.match.isAllowed ? Colors.dark.error : Colors.dark.success} />
-            <Text style={[styles.limitText, !limitStatus.match.isAllowed && styles.limitTextReached]}>
-              Matches: {limitStatus.match.isAllowed ? 'Available' : 'Limit Reached'}
+          <View style={[
+            styles.limitIndicator,
+            !limitStatus || !limitStatus.match?.isAllowed ? styles.limitReached : {}
+          ]}>
+            <MessageCircle size={16} color={
+              limitStatus && limitStatus.match?.isAllowed 
+                ? Colors.dark.success 
+                : Colors.dark.error
+            } />
+            <Text style={[
+              styles.limitText,
+              !limitStatus || !limitStatus.match?.isAllowed ? styles.limitTextReached : {}
+            ]}>
+              {limitStatus ? 'Match OK' : 'Loading...'}
             </Text>
           </View>
         </View>

@@ -417,7 +417,29 @@ export const useMatchesStore = create<MatchesStore>()(
                 matchesCount: matchesData?.count || 0,
                 isGlobal: matchesData?.is_global || false,
                 maxDistance: matchesData?.max_distance || null,
-                actualMatches: matchesData?.matches || []
+                actualMatches: matchesData?.matches || [],
+                timestamp: Date.now(),
+                processingStart: Date.now()
+              }
+            });
+
+            // Add specific log for Live Supabase Response display
+            addDebugLog({
+              event: 'Live Supabase Response',
+              status: 'success',
+              details: `Raw database response data (${Date.now()})`,
+              source: 'matches-store',
+              data: {
+                rpcFunction: 'fetch_potential_matches',
+                parameters: {
+                  userId: guard.user.id,
+                  isGlobalDiscovery: true,
+                  limit: 50,
+                  offset: 0
+                },
+                response: matchesData,
+                executionTime: Date.now() - Date.now(), // Will be updated properly
+                success: true
               }
             });
           }
@@ -613,10 +635,28 @@ export const useMatchesStore = create<MatchesStore>()(
             });
           }
 
+          logger.logDebug('Setting profiles in store', { 
+            profileCount: processedProfiles.length,
+            profileIds: processedProfiles.map(p => p.id),
+            firstProfile: processedProfiles[0] ? {
+              id: processedProfiles[0].id,
+              name: processedProfiles[0].name,
+              businessField: processedProfiles[0].businessField
+            } : null
+          });
+
           set({ 
             profiles: processedProfiles, 
             isLoading: false,
             error: null
+          });
+
+          // Log after setting to confirm state update
+          const currentState = get();
+          logger.logDebug('Store state updated', { 
+            profilesInStore: currentState.profiles.length,
+            isLoading: currentState.isLoading,
+            error: currentState.error
           });
 
           if (processedProfiles.length > 0) {
@@ -633,8 +673,9 @@ export const useMatchesStore = create<MatchesStore>()(
                   profiles: processedProfiles.map(p => ({
                     id: p.id,
                     name: p.name,
-                    age: p.age,
-                    location: p.location
+                    businessField: p.businessField,
+                    location: p.location,
+                    membershipTier: p.membershipTier
                   }))
                 }
               });
@@ -651,7 +692,7 @@ export const useMatchesStore = create<MatchesStore>()(
                 data: {
                   rawCount: matchesArray.length,
                   rejectedCount: rejectedProfiles.length,
-                  rejectedReasons: rejectedProfiles
+                  rejectedReasons: rejectedProfiles.map(r => r.reason).slice(0, 5) // Limit to prevent large objects
                 }
               });
             }
