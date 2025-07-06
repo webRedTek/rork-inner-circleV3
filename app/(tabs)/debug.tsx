@@ -445,10 +445,10 @@ export default function DebugScreen() {
                   {'\n'}
                   {userTier ? (
                     <>
-                      Swipe Limit: {userTier.daily_swipe_limit}{'\n'}
-                      Match Limit: {userTier.daily_match_limit}{'\n'}
-                      Like Limit: {userTier.daily_like_limit}{'\n'}
-                      Message Limit: {userTier.message_sending_limit}
+                      Swipe Limit: {(userTier as any).dailySwipeLimit || userTier.daily_swipe_limit}{'\n'}
+                      Match Limit: {(userTier as any).dailyMatchLimit || userTier.daily_match_limit}{'\n'}
+                      Like Limit: {(userTier as any).dailyLikeLimit || userTier.daily_like_limit}{'\n'}
+                      Message Limit: {(userTier as any).messageSendingLimit || userTier.message_sending_limit}
                     </>
                   ) : (
                     'No tier settings found - check if bronze tier exists in database'
