@@ -434,6 +434,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   // Enhanced swipe animation
   const forceSwipe = useCallback((direction: 'left' | 'right') => {
     const targetX = direction === 'right' ? SCREEN_WIDTH * 1.2 : -SCREEN_WIDTH * 1.2;
+    const currentProfileIndex = currentIndex;
     
     Animated.parallel([
       Animated.timing(position, {
@@ -447,25 +448,25 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
         useNativeDriver: true
       })
     ]).start(() => {
-      onSwipeComplete(direction);
+      onSwipeComplete(direction, currentProfileIndex);
     });
-  }, [position, opacity]);
+  }, [position, opacity, currentIndex]);
 
   // Enhanced swipe completion
-  const onSwipeComplete = useCallback(async (direction: 'left' | 'right') => {
-    const profile = profiles[currentIndex];
+  const onSwipeComplete = useCallback(async (direction: 'left' | 'right', profileIndex: number) => {
+    const profile = profiles[profileIndex];
     if (!profile) return;
     
     debugLog(
       'SwipeCards onSwipeComplete',
-      `Swipe ${direction} on profile ${profile.name} (index ${currentIndex}/${profiles.length})`,
+      `Swipe ${direction} on profile ${profile.name} (index ${profileIndex}/${profiles.length})`,
       {
         direction,
         profileId: profile.id,
         profileName: profile.name,
-        currentIndex,
+        profileIndex,
         totalProfiles: profiles.length,
-        nextIndex: currentIndex + 1
+        nextIndex: profileIndex + 1
       }
     );
     
