@@ -348,19 +348,16 @@ export const useMatchesStore = create<MatchesStore>()(
           return;
         }
 
-        // Clear cache on force refresh to get new profiles
-        if (force) {
-          logger.logDebug('Force refresh - clearing cache to get new profiles');
-          cache.clear();
-          set({ profiles: [], isLoading: false, error: null });
-        } else {
-          // Load profiles from cache first (single source of truth)
-          const cacheStats = cache.getStats();
-          if (cacheStats.size > 0) {
-            const cachedProfiles = cache.getAllProfiles();
-            if (cachedProfiles.length > 0) {
-              logger.logDebug('Loading profiles from cache', { count: cachedProfiles.length });
-              set({ profiles: cachedProfiles, isLoading: false, error: null });
+        // Load profiles from cache first (single source of truth)
+        const cacheStats = cache.getStats();
+        if (cacheStats.size > 0) {
+          const cachedProfiles = cache.getAllProfiles();
+          if (cachedProfiles.length > 0) {
+            logger.logDebug('Loading profiles from cache', { count: cachedProfiles.length });
+            set({ profiles: cachedProfiles, isLoading: false, error: null });
+            
+            // If not forcing refresh and we have profiles, we're done
+            if (!force) {
               return;
             }
           }
