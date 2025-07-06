@@ -510,7 +510,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       setError(`Failed to ${direction === 'right' ? 'like' : 'pass'} profile. Please try again.`);
       setTimeout(() => setError(null), 3000);
     }
-  }, [profiles, currentIndex, onSwipeRight, onSwipeLeft, onEmpty, triggerHapticFeedback, debugLog, endOfProfiles]);
+  }, [profiles, currentIndex, onSwipeRight, onSwipeLeft, onEmpty, onEndOfProfiles, triggerHapticFeedback, debugLog]);
 
   // Button-triggered swipe functions
   const handleButtonSwipe = useCallback((direction: 'left' | 'right') => {
