@@ -115,6 +115,7 @@ interface SwipeCardsProps {
   onSwipeLeft: (profile: UserProfile) => Promise<void>;
   onSwipeRight: (profile: UserProfile) => Promise<void>;
   onEmpty?: () => void;
+  onEndOfProfiles?: () => Promise<void>;
   onProfilePress: (profile: UserProfile) => void;
   error?: string | null;
   onRetry?: () => Promise<void>;
@@ -183,6 +184,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   onSwipeLeft,
   onSwipeRight,
   onEmpty,
+  onEndOfProfiles,
   onProfilePress,
   error: propError = null,
   onRetry,
@@ -247,26 +249,25 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     }
   }, [profiles.length, currentIndex, error, propError, debugLog]);
 
-  // Optimized currentIndex reset
+
+
+  // Optimized currentIndex reset - only when new profiles are actually loaded
   useEffect(() => {
     if (!profiles || profiles.length === 0) {
       return;
     }
 
-    // Reset currentIndex to 0 when profiles are loaded and currentIndex is out of bounds
-    if (currentIndex >= profiles.length) {
-      lastCurrentIndexRef.current = currentIndex;
-      
+    // Only reset currentIndex if we have profiles and currentIndex is 0 (fresh load)
+    // Don't reset when reaching end of profiles - that's handled by endOfProfiles
+    if (currentIndex === 0 && profiles.length > 0) {
       debugLog(
         'SwipeCards currentIndex reset',
-        `Resetting currentIndex from ${currentIndex} to 0 due to profiles change`,
+        `Profiles loaded, currentIndex already at 0`,
         { 
-          oldIndex: currentIndex, 
+          currentIndex, 
           profilesCount: profiles.length 
         }
       );
-      
-      setCurrentIndex(0);
     }
   }, [profiles.length, currentIndex, debugLog]);
 
@@ -480,8 +481,9 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
           }
         );
         
-        if (newIndex >= profiles.length && onEmpty) {
-          setTimeout(onEmpty, 100);
+        if (newIndex >= profiles.length) {
+          if (onEndOfProfiles) setTimeout(() => onEndOfProfiles(), 100);
+          if (onEmpty) setTimeout(onEmpty, 100);
         }
         
         return newIndex;
@@ -496,8 +498,9 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       setCurrentIndex(prevIndex => {
         const newIndex = prevIndex + 1;
         
-        if (newIndex >= profiles.length && onEmpty) {
-          setTimeout(onEmpty, 100);
+        if (newIndex >= profiles.length) {
+          if (onEndOfProfiles) setTimeout(() => onEndOfProfiles(), 100);
+          if (onEmpty) setTimeout(onEmpty, 100);
         }
         
         return newIndex;
@@ -507,7 +510,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       setError(`Failed to ${direction === 'right' ? 'like' : 'pass'} profile. Please try again.`);
       setTimeout(() => setError(null), 3000);
     }
-  }, [profiles, currentIndex, onSwipeRight, onSwipeLeft, onEmpty, triggerHapticFeedback, debugLog]);
+  }, [profiles, currentIndex, onSwipeRight, onSwipeLeft, onEmpty, triggerHapticFeedback, debugLog, endOfProfiles]);
 
   // Button-triggered swipe functions
   const handleButtonSwipe = useCallback((direction: 'left' | 'right') => {

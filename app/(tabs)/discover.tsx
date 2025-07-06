@@ -255,6 +255,40 @@ export default function DiscoverScreen() {
     );
   }, [user?.id, debugLog]);
 
+  // End of profiles handler - processes swipe batch and clears cache
+  const endOfProfiles = useCallback(async () => {
+    debugLog(
+      'Discover endOfProfiles',
+      'User reached end of profiles, processing swipe batch and clearing cache',
+      { 
+        profilesCount: profiles.length 
+      }
+    );
+    
+    try {
+      // 1. Process swipe batch first
+      await useMatchesStore.getState().processSwipeQueue();
+      
+      // 2. Clear cache
+      useMatchesStore.getState().cache.clear();
+      
+      debugLog(
+        'Discover endOfProfiles complete',
+        'Successfully processed swipe batch and cleared cache',
+        { 
+          profilesCount: profiles.length 
+        }
+      );
+      
+    } catch (error) {
+      debugLog(
+        'Discover endOfProfiles error',
+        'Failed to process end of profiles',
+        { error: error instanceof Error ? error.message : 'Unknown error' }
+      );
+    }
+  }, [profiles.length, debugLog]);
+
   // Optimized empty handler
   const handleEmpty = useCallback(() => {
     debugLog(
@@ -408,6 +442,7 @@ export default function DiscoverScreen() {
                     onSwipeLeft={handleSwipeLeft}
                     onSwipeRight={handleSwipeRight}
                     onEmpty={handleEmpty}
+                    onEndOfProfiles={endOfProfiles}
                     onProfilePress={handleProfilePress}
                     error={error}
                     onRefresh={handleRefresh}
