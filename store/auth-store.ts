@@ -70,6 +70,7 @@ import { useDebugStore } from './debug-store';
 interface AuthState {
   user: UserProfile | null;
   allTierSettings: Record<MembershipTier, TierSettings> | null;
+  userTierSettings: TierSettings | null;
   tierSettingsTimestamp: number | null;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -164,6 +165,7 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       user: null,
       allTierSettings: null,
+      userTierSettings: null,
       tierSettingsTimestamp: null,
       isAuthenticated: false,
       isLoading: false,
@@ -595,8 +597,12 @@ export const useAuthStore = create<AuthState>()(
               settings[tierData.tier as MembershipTier] = tierData as TierSettings;
             });
 
+            const { user } = get();
+            const userTierSettings = user ? settings[user.membershipTier] || null : null;
+            
             set({ 
               allTierSettings: settings,
+              userTierSettings: userTierSettings,
               tierSettingsTimestamp: Date.now()
             });
 
@@ -696,7 +702,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       getTierSettings: () => {
-        const { user, allTierSettings } = get();
+        const { userTierSettings } = get();
         const { useDebugStore } = require('@/store/debug-store');
         const { isDebugMode, addDebugLog } = useDebugStore.getState();
         
@@ -704,57 +710,13 @@ export const useAuthStore = create<AuthState>()(
           addDebugLog({
             event: 'getTierSettings Called',
             status: 'info',
-            details: `getTierSettings called for user: ${user?.name || 'unknown'} (${user?.membershipTier || 'unknown tier'})`,
-            data: { userId: user?.id, membershipTier: user?.membershipTier },
+            details: `getTierSettings called - returning cached user tier settings`,
+            data: { hasUserTierSettings: !!userTierSettings },
             source: 'auth-store'
           });
         }
         
-        if (!allTierSettings) {
-          if (isDebugMode) {
-            addDebugLog({
-              event: 'getTierSettings Failed',
-              status: 'error',
-              details: 'allTierSettings is null - tier settings not loaded yet',
-              source: 'auth-store'
-            });
-          }
-          return null;
-        }
-        
-        const tierSettings = allTierSettings[user!.membershipTier];
-        if (!tierSettings) {
-          if (isDebugMode) {
-            addDebugLog({
-              event: 'getTierSettings Failed',
-              status: 'error',
-              details: `No tier settings found for membership level: ${user!.membershipTier}`,
-              data: { availableTiers: Object.keys(allTierSettings), requestedTier: user!.membershipTier },
-              source: 'auth-store'
-            });
-          }
-          return null;
-        }
-        
-        if (isDebugMode) {
-          addDebugLog({
-            event: 'getTierSettings Success',
-            status: 'success',
-            details: `Successfully retrieved tier settings for ${user!.membershipTier}`,
-            data: {
-              tier: user!.membershipTier,
-              limits: {
-                swipe: tierSettings.daily_swipe_limit,
-                match: tierSettings.daily_match_limit,
-                message: tierSettings.message_sending_limit,
-                like: tierSettings.daily_like_limit
-              }
-            },
-            source: 'auth-store'
-          });
-        }
-        
-        return tierSettings;
+        return userTierSettings;
       },
 
       invalidateTierSettingsCache: async () => {
