@@ -63,7 +63,7 @@ export default function DiscoverScreen() {
 
   // Memoize debug logging to prevent excessive calls
   const debugLog = useCallback((event: string, details: string, data?: any) => {
-    if (isDebugMode) {
+      if (isDebugMode) {
       addDebugLog({
         event,
         status: 'info',
@@ -85,11 +85,11 @@ export default function DiscoverScreen() {
     
     // Debounce limit status updates
     limitUpdateTimeoutRef.current = setTimeout(() => {
-      try {
-        const allLimits = checkAllLimits();
+    try {
+      const allLimits = checkAllLimits();
         
         if (!allLimits) {
-          setLimitStatus({
+      setLimitStatus({
             swipe: { isAllowed: true },
             match: { isAllowed: true },
             like: { isAllowed: true }
@@ -442,16 +442,16 @@ export default function DiscoverScreen() {
                     ))}
                   </View>
                 ) : (
-                  <SwipeCards
-                    profiles={profiles}
-                    onSwipeLeft={handleSwipeLeft}
-                    onSwipeRight={handleSwipeRight}
-                    onEmpty={handleEmpty}
+                <SwipeCards
+                  profiles={profiles}
+                  onSwipeLeft={handleSwipeLeft}
+                  onSwipeRight={handleSwipeRight}
+                  onEmpty={handleEmpty}
                     onEndOfProfiles={endOfProfiles}
-                    onProfilePress={handleProfilePress}
-                    error={error}
-                    onRefresh={handleRefresh}
-                  />
+                  onProfilePress={handleProfilePress}
+                  error={error}
+                  onRefresh={handleRefresh}
+                />
                 )
               )}
             </>
