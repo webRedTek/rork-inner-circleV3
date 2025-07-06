@@ -201,7 +201,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   // Use refs to prevent unnecessary re-renders
   const lastProfileCountRef = useRef(profiles.length);
   const lastCurrentIndexRef = useRef(currentIndex);
-  const debugTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debugTimeoutRef = useRef<number | null>(null);
 
   // Simplified animated values for better performance
   const position = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
@@ -251,23 +251,24 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
 
 
 
-  // Optimized currentIndex reset - only when new profiles are actually loaded
+  // Reset currentIndex when new profiles are loaded (after refresh or cache clear)
   useEffect(() => {
     if (!profiles || profiles.length === 0) {
       return;
     }
 
-    // Only reset currentIndex if we have profiles and currentIndex is 0 (fresh load)
-    // Don't reset when reaching end of profiles - that's handled by endOfProfiles
-    if (currentIndex === 0 && profiles.length > 0) {
+    // Reset currentIndex when we have new profiles and currentIndex is beyond the array
+    if (currentIndex >= profiles.length && profiles.length > 0) {
       debugLog(
         'SwipeCards currentIndex reset',
-        `Profiles loaded, currentIndex already at 0`,
+        `Resetting currentIndex from ${currentIndex} to 0 for ${profiles.length} new profiles`,
         { 
-          currentIndex, 
+          oldIndex: currentIndex, 
+          newIndex: 0,
           profilesCount: profiles.length 
         }
       );
+      setCurrentIndex(0);
     }
   }, [profiles.length, currentIndex, debugLog]);
 
