@@ -59,7 +59,7 @@ export default function DiscoverScreen() {
   // Use refs to prevent unnecessary re-renders
   const lastProfileCountRef = useRef(profiles.length);
   const lastErrorRef = useRef(error);
-  const limitUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const limitUpdateTimeoutRef = useRef<number | null>(null);
 
   // Memoize debug logging to prevent excessive calls
   const debugLog = useCallback((event: string, details: string, data?: any) => {
@@ -284,7 +284,12 @@ export default function DiscoverScreen() {
       debugLog(
         'Discover endOfProfiles error',
         'Failed to process end of profiles',
-        { error: error instanceof Error ? error.message : 'Unknown error' }
+        { 
+          error: error instanceof Error ? error.message : 'Unknown error',
+          errorType: error?.constructor?.name,
+          errorDetails: error,
+          errorStack: error instanceof Error ? error.stack : undefined
+        }
       );
     }
   }, [profiles.length, debugLog]);

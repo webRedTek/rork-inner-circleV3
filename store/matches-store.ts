@@ -771,7 +771,12 @@ export const useMatchesStore = create<MatchesStore>()(
 
         } catch (error) {
           const errorMessage = safeStringifyError(error);
-          logger.logDebug('Failed to process swipe queue', { error: errorMessage });
+          logger.logDebug('Failed to process swipe queue', { 
+            error: errorMessage,
+            errorType: error?.constructor?.name,
+            errorDetails: error,
+            queueSize: localSwipeQueue.length
+          });
           // Keep swipes in queue if processing fails
           throw error;
         }
