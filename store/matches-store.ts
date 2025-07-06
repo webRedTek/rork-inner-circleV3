@@ -348,47 +348,19 @@ export const useMatchesStore = create<MatchesStore>()(
           return;
         }
 
-        // If no profiles in state but cache has profiles, load from cache
-        if (!force && profiles.length === 0) {
-          const cacheStats = cache.getStats();
-          
-          if (cacheStats.size > 0) {
-            logger.logDebug('Loading profiles from cache', { cacheSize: cacheStats.size });
+        // Always load profiles from cache first (single source of truth)
+        const cacheStats = cache.getStats();
+        if (cacheStats.size > 0) {
+          const cachedProfiles = cache.getAllProfiles();
+          if (cachedProfiles.length > 0) {
+            logger.logDebug('Loading profiles from cache', { count: cachedProfiles.length });
+            set({ profiles: cachedProfiles, isLoading: false, error: null });
             
-            const cachedProfiles = cache.getAllProfiles();
-            
-            if (cachedProfiles.length > 0) {
-              logger.logDebug('Loaded profiles from cache to state', { count: cachedProfiles.length });
-              
-              // Throttled debug logging
-              const { useDebugStore } = require('@/store/debug-store');
-              const { isDebugMode, addDebugLog } = useDebugStore.getState();
-              
-              if (isDebugMode) {
-                addDebugLog({
-                  event: 'Profiles loaded from cache',
-                  status: 'success',
-                  details: `${cachedProfiles.length} profiles loaded from cache to state`,
-                  source: 'matches-store',
-                  data: {
-                    profileCount: cachedProfiles.length,
-                    profileIds: cachedProfiles.slice(0, 3).map(p => p.id), // Limit to first 3 IDs
-                    cacheSize: cacheStats.size
-                  }
-                });
-              }
-              
-              set({ profiles: cachedProfiles, isLoading: false, error: null });
+            // If not forcing refresh and we have profiles, we're done
+            if (!force) {
               return;
             }
           }
-        }
-
-        // Simple fix: If we already have profiles (from cache), don't fetch from database
-        const { profiles: currentProfiles } = get();
-        if (!force && currentProfiles.length > 0) {
-          logger.logDebug('Profiles already loaded, skipping database fetch');
-          return;
         }
 
         // Throttled debug logging for fetch start
@@ -529,8 +501,10 @@ export const useMatchesStore = create<MatchesStore>()(
             originalCount: matchesArray.length
           });
 
+          // Load profiles from cache into state (single source of truth)
+          const finalProfiles = cache.getAllProfiles();
           set({ 
-            profiles: processedProfiles, 
+            profiles: finalProfiles, 
             isLoading: false,
             error: null
           });
