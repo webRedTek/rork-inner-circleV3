@@ -734,8 +734,9 @@ export const useMatchesStore = create<MatchesStore>()(
       processSwipeQueue: async () => {
         logger.logFunctionCall('processSwipeQueue');
         
-        const guard = guardStoreOperation('processSwipeQueue');
-        if (!guard) return;
+        // Skip guard for processSwipeQueue to test if it's causing the error
+        // const guard = guardStoreOperation('processSwipeQueue');
+        // if (!guard) return;
 
         const { localSwipeQueue } = get();
         
