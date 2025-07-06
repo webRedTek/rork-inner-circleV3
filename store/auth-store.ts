@@ -272,16 +272,14 @@ export const useAuthStore = create<AuthState>()(
 
             const userProfile = supabaseToUserProfile(profileData);
             
-            // Initialize tier settings after successful login
-            await get().fetchAllTierSettings();
-            
             set({ 
               user: userProfile,
               isAuthenticated: true,
               isReady: true
             });
 
-            // Initialize user's specific tier settings
+            // Initialize tier settings AFTER user is set
+            await get().fetchAllTierSettings();
             await get().initializeTierSettings();
 
             // Initialize usage store AFTER successful authentication (non-blocking)
@@ -597,14 +595,16 @@ export const useAuthStore = create<AuthState>()(
               settings[tierData.tier as MembershipTier] = tierData as TierSettings;
             });
 
-            const { user } = get();
-            const userTierSettings = user ? settings[user.membershipTier] || null : null;
-            
             set({ 
               allTierSettings: settings,
-              userTierSettings: userTierSettings,
               tierSettingsTimestamp: Date.now()
             });
+            
+            // Update userTierSettings if user exists
+            const { user } = get();
+            if (user && settings[user.membershipTier]) {
+              set({ userTierSettings: settings[user.membershipTier] });
+            }
 
             if (isDebugMode) {
               addDebugLog({
@@ -794,6 +794,10 @@ export const useAuthStore = create<AuthState>()(
               isAuthenticated: true,
               isReady: true,
             });
+
+            // Initialize tier settings AFTER user is set
+            await get().fetchAllTierSettings();
+            await get().initializeTierSettings();
 
             // Initialize usage tracking AFTER successful authentication (non-blocking)
             try {
