@@ -384,6 +384,13 @@ export const useMatchesStore = create<MatchesStore>()(
           }
         }
 
+        // Simple fix: If we already have profiles (from cache), don't fetch from database
+        const { profiles: currentProfiles } = get();
+        if (!force && currentProfiles.length > 0) {
+          logger.logDebug('Profiles already loaded, skipping database fetch');
+          return;
+        }
+
         // Throttled debug logging for fetch start
         const { useDebugStore } = require('@/store/debug-store');
         const { isDebugMode, addDebugLog } = useDebugStore.getState();

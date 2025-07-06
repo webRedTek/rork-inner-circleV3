@@ -554,7 +554,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
 
   // Optimized card rendering with memoization
   const renderCards = useMemo(() => {
-    if (profiles.length === 0) {
+    if (profiles.length === 0 || currentIndex >= profiles.length) {
       return (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyTitle}>No More Profiles</Text>
@@ -678,7 +678,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
 
   // Memoized action buttons
   const actionButtons = useMemo(() => {
-    if (currentIndex >= profiles.length) return null;
+    if (currentIndex >= profiles.length || profiles.length === 0) return null;
 
     return (
       <View style={styles.actionButtons}>
