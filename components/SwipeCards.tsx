@@ -253,21 +253,20 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       return;
     }
 
-    if (currentIndex >= profiles.length && currentIndex !== lastCurrentIndexRef.current) {
+    // Reset currentIndex to 0 when profiles are loaded and currentIndex is out of bounds
+    if (currentIndex >= profiles.length) {
       lastCurrentIndexRef.current = currentIndex;
       
       debugLog(
         'SwipeCards currentIndex reset',
-        `Resetting currentIndex due to profiles change`,
+        `Resetting currentIndex from ${currentIndex} to 0 due to profiles change`,
         { 
           oldIndex: currentIndex, 
           profilesCount: profiles.length 
         }
       );
       
-      setTimeout(() => {
-        setCurrentIndex(0);
-      }, 0);
+      setCurrentIndex(0);
     }
   }, [profiles.length, currentIndex, debugLog]);
 
