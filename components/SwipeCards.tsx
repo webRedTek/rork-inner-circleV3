@@ -191,7 +191,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   onRefresh
 }) => {
   const { isDebugMode, addDebugLog } = useDebugStore();
-  const [countIndex, setCountIndex] = useState(profiles.length);
+  const [countIndex, setCountIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isGestureActive, setIsGestureActive] = useState(false);
 
@@ -254,6 +254,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   // Reset countIndex when new profiles are loaded (after refresh or cache clear)
   useEffect(() => {
     if (!profiles || profiles.length === 0) {
+      setCountIndex(0);
       return;
     }
 
@@ -577,7 +578,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     const maxCards = Math.min(3, countIndex);
 
     for (let i = 0; i < maxCards; i++) {
-      const index = profiles.length - countIndex + i;
+      const index = (profiles.length - countIndex) + i;
       const profile = profiles[index];
       
       if (!profile) continue;
