@@ -432,20 +432,69 @@ export default function DebugScreen() {
 
           {(() => {
             const userTier = getTierSettings();
-            if (!userTier) return null;
+            const { user, allTierSettings, userTierSettings } = useAuthStore();
             
             return (
               <View style={styles.infoBlock}>
                 <Text style={styles.label}>Current User Tier Settings:</Text>
                 <Text style={styles.value}>
-                  Swipe Limit: {userTier.daily_swipe_limit}{'\n'}
-                  Match Limit: {userTier.daily_match_limit}{'\n'}
-                  Like Limit: {userTier.daily_like_limit}{'\n'}
-                  Message Limit: {userTier.message_sending_limit}
+                  User Tier: {user?.membershipTier || 'N/A'}{'\n'}
+                  All Tier Settings Available: {allTierSettings ? 'Yes' : 'No'}{'\n'}
+                  User Tier Settings Available: {userTierSettings ? 'Yes' : 'No'}{'\n'}
+                  Available Tiers: {allTierSettings ? Object.keys(allTierSettings).join(', ') : 'None'}{'\n'}
+                  {'\n'}
+                  {userTier ? (
+                    <>
+                      Swipe Limit: {userTier.daily_swipe_limit}{'\n'}
+                      Match Limit: {userTier.daily_match_limit}{'\n'}
+                      Like Limit: {userTier.daily_like_limit}{'\n'}
+                      Message Limit: {userTier.message_sending_limit}
+                    </>
+                  ) : (
+                    'No tier settings found - check if bronze tier exists in database'
+                  )}
                 </Text>
               </View>
             );
           })()}
+        </View>
+
+        {/* Tier Settings Debug Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Tier Settings Debug</Text>
+          <Text style={styles.subtitle}>
+            Raw tier settings data to diagnose display issues
+          </Text>
+          
+          <View style={styles.debugSubsection}>
+            <Text style={styles.debugSubtitle}>Raw Tier Settings Data</Text>
+            <Text style={styles.debugText}>
+              {(() => {
+                const { allTierSettings, userTierSettings, user, fetchAllTierSettings, invalidateTierSettingsCache } = useAuthStore();
+                return (
+                  <>
+                    User Membership Tier: {user?.membershipTier || 'N/A'}{'\n'}
+                    All Tier Settings: {allTierSettings ? JSON.stringify(allTierSettings, null, 2) : 'null'}{'\n'}
+                    User Tier Settings: {userTierSettings ? JSON.stringify(userTierSettings, null, 2) : 'null'}
+                  </>
+                );
+              })()}
+            </Text>
+            <View style={styles.buttonContainer}>
+              <Button
+                title="Refresh Tier Settings"
+                onPress={() => useAuthStore.getState().fetchAllTierSettings()}
+                variant="secondary"
+                size="small"
+              />
+              <Button
+                title="Invalidate Cache"
+                onPress={() => useAuthStore.getState().invalidateTierSettingsCache()}
+                variant="danger"
+                size="small"
+              />
+            </View>
+          </View>
         </View>
 
         {/* Notifications Section */}
@@ -1031,5 +1080,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.light.textSecondary,
     marginTop: 4
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 16,
   }
 }); 
