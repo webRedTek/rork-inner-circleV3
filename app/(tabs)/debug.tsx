@@ -62,7 +62,7 @@ export default function DebugScreen() {
     cache,
   } = useMatchesStore();
 
-  const { user, allTierSettings, tierSettingsTimestamp } = useAuthStore();
+  const { user, allTierSettings, tierSettingsTimestamp, getTierSettings } = useAuthStore();
 
   // Get debug logs and debug mode
   const { debugLog, isDebugMode, toggleDebugMode, addDebugLog, clearDebugLog, useSimpleProfileView, toggleSimpleProfileView } = useDebugStore();
@@ -430,18 +430,22 @@ export default function DebugScreen() {
             </Text>
           </View>
 
-          {allTierSettings && user?.membershipTier && (
-            <View style={styles.infoBlock}>
-              <Text style={styles.label}>Current User Tier Settings:</Text>
-              <Text style={styles.value}>
-                {(() => {
-                  const userTier = allTierSettings[user.membershipTier];
-                  if (!userTier) return 'No settings found for current tier';
-                  return `Swipe Limit: ${userTier.daily_swipe_limit}${'\n'}Match Limit: ${userTier.daily_match_limit}${'\n'}Like Limit: ${userTier.daily_like_limit}${'\n'}Message Limit: ${userTier.message_sending_limit}`;
-                })()}
-              </Text>
-            </View>
-          )}
+          {(() => {
+            const userTier = getTierSettings();
+            if (!userTier) return null;
+            
+            return (
+              <View style={styles.infoBlock}>
+                <Text style={styles.label}>Current User Tier Settings:</Text>
+                <Text style={styles.value}>
+                  Swipe Limit: {userTier.daily_swipe_limit}{'\n'}
+                  Match Limit: {userTier.daily_match_limit}{'\n'}
+                  Like Limit: {userTier.daily_like_limit}{'\n'}
+                  Message Limit: {userTier.message_sending_limit}
+                </Text>
+              </View>
+            );
+          })()}
         </View>
 
         {/* Notifications Section */}
