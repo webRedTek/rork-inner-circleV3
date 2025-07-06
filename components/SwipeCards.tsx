@@ -191,7 +191,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
   onRefresh
 }) => {
   const { isDebugMode, addDebugLog } = useDebugStore();
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [countIndex, setCountIndex] = useState(profiles.length);
   const [error, setError] = useState<string | null>(null);
   const [isGestureActive, setIsGestureActive] = useState(false);
 
@@ -200,7 +200,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
 
   // Use refs to prevent unnecessary re-renders
   const lastProfileCountRef = useRef(profiles.length);
-  const lastCurrentIndexRef = useRef(currentIndex);
+  const lastCountIndexRef = useRef(countIndex);
   const debugTimeoutRef = useRef<number | null>(null);
 
   // Simplified animated values for better performance
@@ -238,53 +238,50 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
       
       debugLog(
         'SwipeCards Component Render',
-        `SwipeCards received ${profiles.length} profiles, currentIndex: ${currentIndex}`,
+        `SwipeCards received ${profiles.length} profiles, countIndex: ${countIndex}`,
         {
           profileCount: profiles.length,
-          currentIndex,
+          countIndex,
           hasError: !!(error || propError),
-          currentProfile: profiles[currentIndex]?.name || 'None'
+          currentProfile: profiles[profiles.length - countIndex]?.name || 'None'
         }
       );
     }
-  }, [profiles.length, currentIndex, error, propError, debugLog]);
+  }, [profiles.length, countIndex, error, propError, debugLog]);
 
 
 
-  // Reset currentIndex when new profiles are loaded (after refresh or cache clear)
+  // Reset countIndex when new profiles are loaded (after refresh or cache clear)
   useEffect(() => {
     if (!profiles || profiles.length === 0) {
       return;
     }
 
-    // Reset currentIndex when we have new profiles and currentIndex is beyond the array
-    if (currentIndex >= profiles.length && profiles.length > 0) {
-      debugLog(
-        'SwipeCards currentIndex reset',
-        `Resetting currentIndex from ${currentIndex} to 0 for ${profiles.length} new profiles`,
-        { 
-          oldIndex: currentIndex, 
-          newIndex: 0,
-          profilesCount: profiles.length 
-        }
-      );
-      setCurrentIndex(0);
-    }
-  }, [profiles.length, currentIndex, debugLog]);
+    // Reset countIndex to the number of new profiles loaded
+    setCountIndex(profiles.length);
+    debugLog(
+      'SwipeCards countIndex reset',
+      `Reset countIndex to ${profiles.length} for new profiles`,
+      { 
+        newCountIndex: profiles.length,
+        profilesCount: profiles.length 
+      }
+    );
+  }, [profiles.length, debugLog]);
 
   // Optimized profile validation
   useEffect(() => {
-    if (!profiles || profiles.length === 0 || currentIndex >= profiles.length) {
+    if (!profiles || profiles.length === 0 || countIndex <= 0) {
       return;
     }
 
-    const currentProfile = profiles[currentIndex];
+    const currentProfile = profiles[profiles.length - countIndex];
     if (!currentProfile || !currentProfile.id || !currentProfile.name) {
       debugLog(
         'SwipeCards invalid profile',
         'Invalid profile data detected',
         {
-          index: currentIndex,
+          index: profiles.length - countIndex,
           hasProfile: !!currentProfile,
           profileData: currentProfile ? {
             id: currentProfile.id,
@@ -298,7 +295,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     }
 
     setError(null);
-  }, [profiles, currentIndex, debugLog]);
+  }, [profiles, countIndex, debugLog]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -402,7 +399,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
         likeOpacity.setValue(0);
         passOpacity.setValue(0);
         
-        if (error || !profiles[currentIndex]) {
+        if (error || !profiles[profiles.length - countIndex]) {
           resetPosition();
           return;
         }
@@ -442,19 +439,19 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
 
   // Enhanced swipe completion
   const onSwipeComplete = useCallback(async (direction: 'left' | 'right') => {
-    const profile = profiles[currentIndex];
+    const profile = profiles[profiles.length - countIndex];
     if (!profile) return;
     
     debugLog(
       'SwipeCards onSwipeComplete',
-      `Swipe ${direction} on profile ${profile.name} (index ${currentIndex}/${profiles.length})`,
+      `Swipe ${direction} on profile ${profile.name} (countIndex ${countIndex}/${profiles.length})`,
       {
         direction,
         profileId: profile.id,
         profileName: profile.name,
-        currentIndex,
+        countIndex,
         totalProfiles: profiles.length,
-        nextIndex: currentIndex + 1
+        nextCount: countIndex - 1
       }
     );
     
@@ -467,27 +464,27 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
         await onSwipeLeft(profile);
       }
       
-      // Move to next card
-      setCurrentIndex(prevIndex => {
-        const newIndex = prevIndex + 1;
+      // Decrease count
+      setCountIndex(prevCount => {
+        const newCount = prevCount - 1;
         
         debugLog(
-          'SwipeCards currentIndex update',
-          `CurrentIndex updated from ${prevIndex} to ${newIndex}`,
+          'SwipeCards countIndex update',
+          `CountIndex updated from ${prevCount} to ${newCount}`,
           {
-            oldIndex: prevIndex, 
-            newIndex,
+            oldCount: prevCount, 
+            newCount,
             totalProfiles: profiles.length,
-            nextProfile: profiles[newIndex] ? profiles[newIndex].name : 'No more profiles'
+            nextProfile: newCount > 0 ? profiles[profiles.length - newCount]?.name : 'No more profiles'
           }
         );
         
-        if (newIndex >= profiles.length) {
+        if (newCount <= 0) {
           if (onEndOfProfiles) setTimeout(() => onEndOfProfiles(), 100);
           if (onEmpty) setTimeout(onEmpty, 100);
         }
         
-        return newIndex;
+        return newCount;
       });
       
       resetToInitialPosition();
@@ -495,34 +492,34 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     } catch (error) {
       triggerHapticFeedback('error');
       
-      // Move to next card anyway to prevent getting stuck
-      setCurrentIndex(prevIndex => {
-        const newIndex = prevIndex + 1;
+      // Decrease count anyway to prevent getting stuck
+      setCountIndex(prevCount => {
+        const newCount = prevCount - 1;
         
-        if (newIndex >= profiles.length) {
+        if (newCount <= 0) {
           if (onEndOfProfiles) setTimeout(() => onEndOfProfiles(), 100);
           if (onEmpty) setTimeout(onEmpty, 100);
         }
         
-        return newIndex;
+        return newCount;
       });
       
       resetToInitialPosition();
       setError(`Failed to ${direction === 'right' ? 'like' : 'pass'} profile. Please try again.`);
       setTimeout(() => setError(null), 3000);
     }
-  }, [profiles, currentIndex, onSwipeRight, onSwipeLeft, onEmpty, onEndOfProfiles, triggerHapticFeedback, debugLog]);
+  }, [profiles, countIndex, onSwipeRight, onSwipeLeft, onEmpty, onEndOfProfiles, triggerHapticFeedback, debugLog]);
 
   // Button-triggered swipe functions
   const handleButtonSwipe = useCallback((direction: 'left' | 'right') => {
-    if (error || !profiles[currentIndex]) {
+    if (error || !profiles[profiles.length - countIndex]) {
       triggerHapticFeedback('error');
       return;
     }
     
     triggerHapticFeedback('selection');
     forceSwipe(direction);
-  }, [error, profiles, currentIndex, triggerHapticFeedback, forceSwipe]);
+  }, [error, profiles, countIndex, triggerHapticFeedback, forceSwipe]);
 
   // Position reset function
   const resetPosition = useCallback(() => {
@@ -557,7 +554,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
 
   // Optimized card rendering with memoization
   const renderCards = useMemo(() => {
-    if (profiles.length === 0 || currentIndex >= profiles.length) {
+    if (profiles.length === 0 || countIndex <= 0) {
       return (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyTitle}>No More Profiles</Text>
@@ -577,10 +574,10 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     }
 
     const cardsToRender = [];
-    const maxCards = Math.min(3, profiles.length - currentIndex);
+    const maxCards = Math.min(3, countIndex);
 
     for (let i = 0; i < maxCards; i++) {
-      const index = currentIndex + i;
+      const index = profiles.length - countIndex + i;
       const profile = profiles[index];
       
       if (!profile) continue;
@@ -677,11 +674,11 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     }
 
     return cardsToRender;
-  }, [profiles, currentIndex, position.x, position.y, opacity, animatedStyles, nextCardScale, panResponder.panHandlers, onProfilePress, onRefresh]);
+  }, [profiles, countIndex, position.x, position.y, opacity, animatedStyles, nextCardScale, panResponder.panHandlers, onProfilePress, onRefresh]);
 
   // Memoized action buttons
   const actionButtons = useMemo(() => {
-    if (currentIndex >= profiles.length || profiles.length === 0) return null;
+    if (countIndex <= 0 || profiles.length === 0) return null;
 
     return (
       <View style={styles.actionButtons}>
@@ -702,7 +699,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
         </TouchableOpacity>
       </View>
     );
-  }, [currentIndex, profiles.length, handleButtonSwipe]);
+  }, [countIndex, profiles.length, handleButtonSwipe]);
 
   // Memoized error state
   const errorState = useMemo(() => {
