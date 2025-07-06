@@ -59,11 +59,11 @@ export default function DiscoverScreen() {
   // Use refs to prevent unnecessary re-renders
   const lastProfileCountRef = useRef(profiles.length);
   const lastErrorRef = useRef(error);
-  const limitUpdateTimeoutRef = useRef<number | null>(null);
+  const limitUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Memoize debug logging to prevent excessive calls
   const debugLog = useCallback((event: string, details: string, data?: any) => {
-      if (isDebugMode) {
+    if (isDebugMode) {
       addDebugLog({
         event,
         status: 'info',
@@ -85,11 +85,11 @@ export default function DiscoverScreen() {
     
     // Debounce limit status updates
     limitUpdateTimeoutRef.current = setTimeout(() => {
-    try {
-      const allLimits = checkAllLimits();
+      try {
+        const allLimits = checkAllLimits();
         
         if (!allLimits) {
-      setLimitStatus({
+          setLimitStatus({
             swipe: { isAllowed: true },
             match: { isAllowed: true },
             like: { isAllowed: true }
@@ -255,11 +255,11 @@ export default function DiscoverScreen() {
     );
   }, [user?.id, debugLog]);
 
-  // End of profiles handler - processes swipe batch and clears cache
+  // End of profiles handler - processes swipe batch and clears cache and profiles
   const endOfProfiles = useCallback(async () => {
     debugLog(
       'Discover endOfProfiles',
-      'User reached end of profiles, processing swipe batch and clearing cache',
+      'User reached end of profiles, processing swipe batch and clearing cache and profiles',
       { 
         profilesCount: profiles.length 
       }
@@ -272,9 +272,12 @@ export default function DiscoverScreen() {
       // 2. Clear cache
       useMatchesStore.getState().cache.clear();
       
+      // 3. Clear profiles array to trigger "No More Profiles" message
+      useMatchesStore.getState().clearProfiles();
+      
       debugLog(
         'Discover endOfProfiles complete',
-        'Successfully processed swipe batch and cleared cache',
+        'Successfully processed swipe batch and cleared cache and profiles',
         { 
           profilesCount: profiles.length 
         }
@@ -284,12 +287,7 @@ export default function DiscoverScreen() {
       debugLog(
         'Discover endOfProfiles error',
         'Failed to process end of profiles',
-        { 
-          error: error instanceof Error ? error.message : 'Unknown error',
-          errorType: error?.constructor?.name,
-          errorDetails: error,
-          errorStack: error instanceof Error ? error.stack : undefined
-        }
+        { error: error instanceof Error ? error.message : 'Unknown error' }
       );
     }
   }, [profiles.length, debugLog]);
@@ -442,16 +440,16 @@ export default function DiscoverScreen() {
                     ))}
                   </View>
                 ) : (
-                <SwipeCards
-                  profiles={profiles}
-                  onSwipeLeft={handleSwipeLeft}
-                  onSwipeRight={handleSwipeRight}
-                  onEmpty={handleEmpty}
+                  <SwipeCards
+                    profiles={profiles}
+                    onSwipeLeft={handleSwipeLeft}
+                    onSwipeRight={handleSwipeRight}
+                    onEmpty={handleEmpty}
                     onEndOfProfiles={endOfProfiles}
-                  onProfilePress={handleProfilePress}
-                  error={error}
-                  onRefresh={handleRefresh}
-                />
+                    onProfilePress={handleProfilePress}
+                    error={error}
+                    onRefresh={handleRefresh}
+                  />
                 )
               )}
             </>

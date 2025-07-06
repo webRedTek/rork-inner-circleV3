@@ -734,9 +734,8 @@ export const useMatchesStore = create<MatchesStore>()(
       processSwipeQueue: async () => {
         logger.logFunctionCall('processSwipeQueue');
         
-        // Skip guard for processSwipeQueue to test if it's causing the error
-        // const guard = guardStoreOperation('processSwipeQueue');
-        // if (!guard) return;
+        const guard = guardStoreOperation('processSwipeQueue');
+        if (!guard) return;
 
         const { localSwipeQueue } = get();
         
@@ -771,12 +770,7 @@ export const useMatchesStore = create<MatchesStore>()(
 
         } catch (error) {
           const errorMessage = safeStringifyError(error);
-          logger.logDebug('Failed to process swipe queue', { 
-            error: errorMessage,
-            errorType: error?.constructor?.name,
-            errorDetails: error,
-            queueSize: localSwipeQueue.length
-          });
+          logger.logDebug('Failed to process swipe queue', { error: errorMessage });
           // Keep swipes in queue if processing fails
           throw error;
         }
