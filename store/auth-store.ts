@@ -703,19 +703,6 @@ export const useAuthStore = create<AuthState>()(
 
       getTierSettings: () => {
         const { userTierSettings } = get();
-        const { useDebugStore } = require('@/store/debug-store');
-        const { isDebugMode, addDebugLog } = useDebugStore.getState();
-        
-        if (isDebugMode) {
-          addDebugLog({
-            event: 'getTierSettings Called',
-            status: 'info',
-            details: `getTierSettings called - returning cached user tier settings`,
-            data: { hasUserTierSettings: !!userTierSettings },
-            source: 'auth-store'
-          });
-        }
-        
         return userTierSettings;
       },
 
