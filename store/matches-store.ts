@@ -281,6 +281,7 @@ export interface MatchesStore {
   cacheTimeout: number;
   retryCount: number;
   maxRetries: number;
+  localSwipeQueue: Array<{ swiper_id: string; swipee_id: string; direction: 'left' | 'right'; swipe_timestamp: number }>;
   
   // Core match management without duplicate limit checking
   fetchPotentialMatches: (force?: boolean) => Promise<void>;
@@ -295,6 +296,11 @@ export interface MatchesStore {
   addOptimisticUpdate: (update: OptimisticUpdate) => void;
   removeOptimisticUpdate: (id: string) => void;
   rollbackOptimisticUpdate: (id: string) => void;
+  
+  // Swipe queue management
+  addToSwipeQueue: (swipe: { swiper_id: string; swipee_id: string; direction: 'left' | 'right'; swipe_timestamp: number }) => void;
+  clearSwipeQueue: () => void;
+  processSwipeQueue: () => Promise<void>;
   
   // Utility functions
   reset: () => void;
@@ -322,6 +328,7 @@ export const useMatchesStore = create<MatchesStore>()(
       cacheTimeout: 0,
       retryCount: 0,
       maxRetries: 0,
+      localSwipeQueue: [],
 
       fetchPotentialMatches: async (force = false) => {
         logger.logFunctionCall('fetchPotentialMatches', { force });
@@ -729,6 +736,63 @@ export const useMatchesStore = create<MatchesStore>()(
       getLastFetchTime: () => {
         const { lastFetch } = get();
         return lastFetch;
+      },
+
+      addToSwipeQueue: (swipe: { swiper_id: string; swipee_id: string; direction: 'left' | 'right'; swipe_timestamp: number }) => {
+        logger.logFunctionCall('addToSwipeQueue', { swipe });
+        set(state => ({
+          localSwipeQueue: [...state.localSwipeQueue, swipe]
+        }));
+      },
+
+      clearSwipeQueue: () => {
+        logger.logFunctionCall('clearSwipeQueue');
+        set({ localSwipeQueue: [] });
+      },
+
+      processSwipeQueue: async () => {
+        logger.logFunctionCall('processSwipeQueue');
+        
+        const guard = guardStoreOperation('processSwipeQueue');
+        if (!guard) return;
+
+        const { localSwipeQueue } = get();
+        
+        if (localSwipeQueue.length === 0) {
+          logger.logDebug('No swipes in queue to process');
+          return;
+        }
+
+        try {
+          logger.logDebug('Processing swipe queue', { queueSize: localSwipeQueue.length });
+          
+          if (!supabase) {
+            throw new Error('Supabase client not initialized');
+          }
+          
+          const { data, error } = await supabase.rpc('process_swipe_batch', {
+            p_swipe_actions: localSwipeQueue
+          });
+
+          if (error) {
+            logger.logDebug('Error processing swipe batch', { error });
+            throw error;
+          }
+
+          logger.logDebug('Swipe batch processed successfully', { 
+            processedSwipes: data?.processed_swipes?.length || 0,
+            newMatches: data?.new_matches?.length || 0
+          });
+
+          // Clear the queue after successful processing
+          set({ localSwipeQueue: [] });
+
+        } catch (error) {
+          const errorMessage = safeStringifyError(error);
+          logger.logDebug('Failed to process swipe queue', { error: errorMessage });
+          // Keep swipes in queue if processing fails
+          throw error;
+        }
       }
     }),
     {

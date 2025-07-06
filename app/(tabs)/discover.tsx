@@ -222,8 +222,16 @@ export default function DiscoverScreen() {
   const handleSwipeLeft = useCallback(async (profile: UserProfile) => {
     if (!user?.id) return;
     
+    // Add to local swipe queue
+    useMatchesStore.getState().addToSwipeQueue({
+      swiper_id: user.id,
+      swipee_id: profile.id,
+      direction: 'left',
+      swipe_timestamp: Date.now()
+    });
+    
     debugLog(
-      'Swipe left initiated',
+      'Swipe left queued',
       `User swiped left (pass) on ${profile.name}`,
       { profileId: profile.id, profileName: profile.name, action: 'pass' }
     );
@@ -232,8 +240,16 @@ export default function DiscoverScreen() {
   const handleSwipeRight = useCallback(async (profile: UserProfile) => {
     if (!user?.id) return;
     
+    // Add to local swipe queue
+    useMatchesStore.getState().addToSwipeQueue({
+      swiper_id: user.id,
+      swipee_id: profile.id,
+      direction: 'right',
+      swipe_timestamp: Date.now()
+    });
+    
     debugLog(
-      'Swipe right initiated',
+      'Swipe right queued',
       `User swiped right (like) on ${profile.name}`,
       { profileId: profile.id, profileName: profile.name, action: 'like' }
     );
