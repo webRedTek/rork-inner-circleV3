@@ -1,3 +1,11 @@
+/*
+ * CHANGES (2025-07-08):
+ * - Added logic to check for existing referral links on component load.
+ * - If user already has a referral code, it displays the existing code and hides the generate button.
+ * - Added hasExistingLink state to track whether user has already generated a referral link.
+ * - Updated UI conditions to show referral code, link, and QR code when existing link is found.
+ * - Imported isSupabaseConfigured and supabase for database queries.
+ */
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,6 +16,7 @@ import Colors from '@/constants/colors';
 import { Button } from '@/components/Button';
 import { Gift, Copy, Share2 } from 'lucide-react-native';
 import QRCode from 'react-native-qrcode-svg';
+import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 export default function AffiliateDashboardScreen() {
   const router = useRouter();
@@ -15,14 +24,39 @@ export default function AffiliateDashboardScreen() {
   const { stats, referralHistory, isLoading, error, fetchAffiliateData, generateReferralLink } = useAffiliateStore();
   const [referralLink, setReferralLink] = useState<string>('');
   const [referralCode, setReferralCode] = useState<string>('');
+  const [hasExistingLink, setHasExistingLink] = useState<boolean>(false);
 
   useEffect(() => {
     if (user?.membershipTier !== 'silver' && user?.membershipTier !== 'gold') {
       router.replace('/(tabs)/profile');
     } else {
       fetchAffiliateData();
+      checkExistingReferralLink();
     }
   }, []);
+
+  const checkExistingReferralLink = async () => {
+    try {
+      if (isSupabaseConfigured() && supabase && user) {
+        const { data: linkData, error: linkError } = await supabase
+          .from('affiliate_links')
+          .select('referral_code')
+          .eq('user_id', user.id)
+          .single();
+          
+        if (linkData && linkData.referral_code) {
+          setHasExistingLink(true);
+          setReferralCode(linkData.referral_code);
+          setReferralLink(`https://app.example.com/referral/${linkData.referral_code}`);
+        } else {
+          setHasExistingLink(false);
+        }
+      }
+    } catch (error) {
+      console.log('No existing referral link found');
+      setHasExistingLink(false);
+    }
+  };
 
   const loadReferralLink = async () => {
     try {
@@ -32,6 +66,7 @@ export default function AffiliateDashboardScreen() {
       // Extract the referral code from the link
       const code = link.split('/').pop() || '';
       setReferralCode(code);
+      setHasExistingLink(true); // Mark as having existing link after generation
     } catch (err) {
       Alert.alert('Error', 'Failed to generate referral link. Please try again.');
     }
@@ -118,8 +153,8 @@ export default function AffiliateDashboardScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Referral Link</Text>
           
-          {/* Generate Button */}
-          {!referralLink && (
+          {/* Generate Button - Only show if no existing link */}
+          {!hasExistingLink && !referralLink && (
             <View style={styles.generateContainer}>
               <Button
                 title="Generate Link"
@@ -131,8 +166,8 @@ export default function AffiliateDashboardScreen() {
             </View>
           )}
           
-          {/* Referral Code */}
-          {referralCode && (
+          {/* Referral Code - Show if exists or generated */}
+          {(referralCode || hasExistingLink) && (
             <View style={styles.codeContainer}>
               <Text style={styles.codeLabel}>Your Referral Code:</Text>
               <View style={styles.codeDisplay}>
@@ -149,8 +184,8 @@ export default function AffiliateDashboardScreen() {
             </View>
           )}
           
-          {/* Full Referral Link */}
-          {referralLink && (
+          {/* Full Referral Link - Show if exists or generated */}
+          {(referralLink || hasExistingLink) && (
             <View style={styles.linkContainer}>
               <Text style={styles.linkLabel}>Full Referral Link:</Text>
               <Text style={styles.linkText}>{referralLink}</Text>
@@ -177,7 +212,7 @@ export default function AffiliateDashboardScreen() {
           
           {/* QR Code */}
           <View style={styles.qrContainer}>
-            {referralLink ? (
+            {(referralLink || hasExistingLink) ? (
               <QRCode
                 value={referralLink}
                 size={200}
