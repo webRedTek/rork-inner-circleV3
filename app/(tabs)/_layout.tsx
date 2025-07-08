@@ -1,9 +1,3 @@
-/*
- * CHANGES (2025-07-08):
- * - Added conditional rendering for debug tab based on isDebugEnabled setting.
- * - Debug tab is now completely invisible when debug mode is disabled in admin settings.
- * - Imported useDebugStore to access debug state.
- */
 import React from 'react';
 import { Tabs } from 'expo-router';
 import Colors from '@/constants/colors';
@@ -70,15 +64,14 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => <User size={size} color={color} />,
         }}
       />
-      {isDebugEnabled && (
-        <Tabs.Screen
-          name="debug"
-          options={{
-            title: 'Debug',
-            tabBarIcon: ({ color, size }) => <Bug size={size} color={color} />,
-          }}
-        />
-      )}
+      <Tabs.Screen
+        name="debug"
+        options={{
+          title: 'Debug',
+          tabBarIcon: ({ color, size }) => <Bug size={size} color={color} />,
+          href: isDebugEnabled ? undefined : null, // Hide tab when debug is disabled
+        }}
+      />
     </Tabs>
   );
 }

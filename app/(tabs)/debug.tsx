@@ -425,33 +425,26 @@ export default function DebugScreen() {
             </Text>
           </View>
 
-          {(() => {
-            const userTier = getTierSettings();
-            const { user, allTierSettings, userTierSettings } = useAuthStore();
-            
-            return (
-              <View style={styles.infoBlock}>
-                <Text style={styles.label}>Current User Tier Settings:</Text>
-                <Text style={styles.value}>
-                  User Tier: {user?.membershipTier || 'N/A'}{'\n'}
-                  All Tier Settings Available: {allTierSettings ? 'Yes' : 'No'}{'\n'}
-                  User Tier Settings Available: {userTierSettings ? 'Yes' : 'No'}{'\n'}
-                  Available Tiers: {allTierSettings ? Object.keys(allTierSettings).join(', ') : 'None'}{'\n'}
-                  {'\n'}
-                  {userTier ? (
-                    <>
-                      Swipe Limit: {(userTier as any).dailySwipeLimit || userTier.daily_swipe_limit}{'\n'}
-                      Match Limit: {(userTier as any).dailyMatchLimit || userTier.daily_match_limit}{'\n'}
-                      Like Limit: {(userTier as any).dailyLikeLimit || userTier.daily_like_limit}{'\n'}
-                      Message Limit: {(userTier as any).messageSendingLimit || userTier.message_sending_limit}
-                    </>
-                  ) : (
-                    'No tier settings found - check if bronze tier exists in database'
-                  )}
-                </Text>
-              </View>
-            );
-          })()}
+          <View style={styles.infoBlock}>
+            <Text style={styles.label}>Current User Tier Settings:</Text>
+            <Text style={styles.value}>
+              User Tier: {user?.membershipTier || 'N/A'}{'\n'}
+              All Tier Settings Available: {allTierSettings ? 'Yes' : 'No'}{'\n'}
+              User Tier Settings Available: {getTierSettings() ? 'Yes' : 'No'}{'\n'}
+              Available Tiers: {allTierSettings ? Object.keys(allTierSettings).join(', ') : 'None'}{'\n'}
+              {'\n'}
+              {getTierSettings() ? (
+                <>
+                  Swipe Limit: {(getTierSettings() as any).dailySwipeLimit || getTierSettings()?.daily_swipe_limit}{'\n'}
+                  Match Limit: {(getTierSettings() as any).dailyMatchLimit || getTierSettings()?.daily_match_limit}{'\n'}
+                  Like Limit: {(getTierSettings() as any).dailyLikeLimit || getTierSettings()?.daily_like_limit}{'\n'}
+                  Message Limit: {(getTierSettings() as any).messageSendingLimit || getTierSettings()?.message_sending_limit}
+                </>
+              ) : (
+                'No tier settings found - check if bronze tier exists in database'
+              )}
+            </Text>
+          </View>
         </View>
 
         {/* Tier Settings Debug Section */}
@@ -464,16 +457,9 @@ export default function DebugScreen() {
           <View style={styles.debugSubsection}>
             <Text style={styles.debugSubtitle}>Raw Tier Settings Data</Text>
             <Text style={styles.debugText}>
-              {(() => {
-                const { allTierSettings, userTierSettings, user, fetchAllTierSettings, invalidateTierSettingsCache } = useAuthStore();
-                return (
-                  <>
-                    User Membership Tier: {user?.membershipTier || 'N/A'}{'\n'}
-                    All Tier Settings: {allTierSettings ? JSON.stringify(allTierSettings, null, 2) : 'null'}{'\n'}
-                    User Tier Settings: {userTierSettings ? JSON.stringify(userTierSettings, null, 2) : 'null'}
-                  </>
-                );
-              })()}
+              User Membership Tier: {user?.membershipTier || 'N/A'}{'\n'}
+              All Tier Settings: {allTierSettings ? JSON.stringify(allTierSettings, null, 2) : 'null'}{'\n'}
+              User Tier Settings: {getTierSettings() ? JSON.stringify(getTierSettings(), null, 2) : 'null'}
             </Text>
             <View style={styles.buttonContainer}>
               <Button
