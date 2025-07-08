@@ -16,13 +16,7 @@ export default function TabsLayout() {
         tabBarLabelStyle: {
           fontSize: 12,
         },
-        headerStyle: {
-          backgroundColor: Colors.dark.card,
-        },
-        headerTintColor: Colors.dark.text,
-        headerTitleStyle: {
-          fontWeight: 'bold',
-        },
+        headerShown: false,
       }}
     >
       <Tabs.Screen
