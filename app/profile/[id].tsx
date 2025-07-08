@@ -258,7 +258,7 @@ export default function ProfileDetailScreen() {
             style={styles.actionButton}
           />
           <Button
-            title="Like"
+            title="Connect"
             onPress={handleLike}
             variant="primary"
             size="large"
