@@ -29,6 +29,11 @@
  *    - SOLUTION: Debounced and optimized debug logging calls
  *    - RESULT: Better performance while maintaining debugging capability
  * 
+ * 4. CARD POSITIONING FIX:
+ *    - PROBLEM: Cards not visible on screen due to absolute positioning without coordinates
+ *    - SOLUTION: Added explicit centering coordinates for card positioning
+ *    - RESULT: Cards now properly centered and visible on screen
+ * 
  * ==================================================================================
  * 🔧 HOW SWIPECARDS COMPONENT WORKS (OPTIMIZED ARCHITECTURE)
  * ==================================================================================
@@ -134,6 +139,10 @@ const CARD_ROTATION_RANGE = 15;
 // Card dimensions - fixed and consistent
 const CARD_WIDTH = SCREEN_WIDTH * 0.9;
 const CARD_HEIGHT = CARD_WIDTH * 1.4;
+
+// Card positioning - centered on screen
+const CARD_LEFT = (SCREEN_WIDTH - CARD_WIDTH) / 2;
+const CARD_TOP_OFFSET = 60; // Offset from top to account for header
 
 // Optimized spring configurations for natural physics
 const SPRING_CONFIG = {
@@ -591,6 +600,21 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     const cardsToRender = [];
     const maxCards = Math.min(3, profiles.length - currentIndex);
 
+    // Debug logging for card rendering
+    if (isDebugMode && maxCards > 0) {
+      debugLog(
+        'SwipeCards renderCards',
+        `Rendering ${maxCards} cards, currentIndex: ${currentIndex}, profiles: ${profiles.length}`,
+        {
+          maxCards,
+          currentIndex,
+          profilesLength: profiles.length,
+          firstProfileId: profiles[currentIndex]?.id,
+          firstProfileName: profiles[currentIndex]?.name
+        }
+      );
+    }
+
     for (let i = 0; i < maxCards; i++) {
       const index = currentIndex + i;
       const profile = profiles[index];
@@ -689,7 +713,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
     }
 
     return cardsToRender;
-  }, [profiles, currentIndex, position.x, position.y, opacity, animatedStyles, nextCardScale, panResponder.panHandlers, onProfilePress, onRefresh]);
+  }, [profiles, currentIndex, position.x, position.y, opacity, animatedStyles, nextCardScale, panResponder.panHandlers, onProfilePress, onRefresh, isDebugMode, debugLog]);
 
   // Memoized action buttons
   const actionButtons = useMemo(() => {
@@ -765,7 +789,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
+    left: CARD_LEFT,
+    top: CARD_TOP_OFFSET,
     borderRadius: 20,
+    backgroundColor: Colors.dark.card,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
