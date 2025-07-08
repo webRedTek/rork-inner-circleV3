@@ -64,14 +64,15 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => <User size={size} color={color} />,
         }}
       />
-      <Tabs.Screen
-        name="debug"
-        options={{
-          title: 'Debug',
-          tabBarIcon: ({ color, size }) => <Bug size={size} color={color} />,
-          href: isDebugEnabled ? undefined : null, // Hide tab when debug is disabled
-        }}
-      />
+      {isDebugEnabled && (
+        <Tabs.Screen
+          name="debug"
+          options={{
+            title: 'Debug',
+            tabBarIcon: ({ color, size }) => <Bug size={size} color={color} />,
+          }}
+        />
+      )}
     </Tabs>
   );
 }
