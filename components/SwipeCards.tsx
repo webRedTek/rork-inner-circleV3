@@ -852,7 +852,7 @@ const styles = StyleSheet.create({
   actionButton: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: 8,
     backgroundColor: '#000000',
     justifyContent: 'center',
     alignItems: 'center',
@@ -864,9 +864,13 @@ const styles = StyleSheet.create({
   },
   passButton: {
     backgroundColor: '#000000',
+    borderWidth: 2,
+    borderColor: Colors.dark.error,
   },
   likeButton: {
     backgroundColor: '#000000',
+    borderWidth: 2,
+    borderColor: Colors.dark.primary,
   },
   connectIcon: {
     width: 40,
