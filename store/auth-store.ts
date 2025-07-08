@@ -357,6 +357,11 @@ export const useAuthStore = create<AuthState>()(
 
             // Create affiliate referral if referral code was provided
             if (referralCode && referralCode.trim() && data.user?.id) {
+              console.log('Attempting to create affiliate referral:', {
+                referralCode: referralCode.trim(),
+                userId: data.user.id
+              });
+              
               try {
                 const { data: referralResult, error: referralError } = await supabase.rpc(
                   'create_affiliate_referral',
@@ -368,14 +373,27 @@ export const useAuthStore = create<AuthState>()(
 
                 if (referralError) {
                   console.warn('Failed to create affiliate referral:', referralError);
+                  console.warn('Error details:', {
+                    message: referralError.message,
+                    details: referralError.details,
+                    hint: referralError.hint
+                  });
                   // Don't fail signup if referral creation fails
                 } else {
                   console.log('Affiliate referral created successfully:', referralResult);
                 }
               } catch (referralError) {
                 console.warn('Error creating affiliate referral:', referralError);
+                console.warn('Exception details:', referralError);
                 // Don't fail signup if referral creation fails
               }
+            } else {
+              console.log('No referral code provided or missing user ID:', {
+                hasReferralCode: !!referralCode,
+                referralCodeLength: referralCode?.length,
+                hasUserId: !!data.user?.id,
+                userId: data.user?.id
+              });
             }
 
             set({
