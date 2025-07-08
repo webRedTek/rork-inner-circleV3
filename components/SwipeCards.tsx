@@ -142,7 +142,7 @@ const CARD_HEIGHT = CARD_WIDTH * 1.4;
 
 // Card positioning - centered on screen
 const CARD_LEFT = (SCREEN_WIDTH - CARD_WIDTH) / 2;
-const CARD_TOP_OFFSET = 60; // Offset from top to account for header
+const CARD_TOP_OFFSET = 20; // Reduced offset from top for better centering
 
 // Optimized spring configurations for natural physics
 const SPRING_CONFIG = {
@@ -782,8 +782,8 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 40,
+    paddingHorizontal: 10,
+    paddingTop: 10,
   },
   cardContainer: {
     position: 'absolute',

@@ -314,65 +314,7 @@ export default function DiscoverScreen() {
     router.push(`/profile/${profile.id}`);
   }, [router, debugLog]);
 
-  // Memoized limit status indicators to prevent re-renders
-  const limitStatusIndicators = useMemo(() => {
-    return (
-      <View style={styles.limitStatusContainer}>
-        <View style={styles.limitStatusRow}>
-          <View style={[
-            styles.limitIndicator,
-            limitStatus && !limitStatus.swipe?.isAllowed ? styles.limitReached : {}
-          ]}>
-            <Heart size={16} color={
-              limitStatus && limitStatus.swipe?.isAllowed 
-                ? Colors.dark.success 
-                : Colors.dark.error
-            } />
-            <Text style={[
-              styles.limitText,
-              limitStatus && !limitStatus.swipe?.isAllowed ? styles.limitTextReached : {}
-            ]}>
-              {limitStatus && limitStatus.swipe?.isAllowed ? 'Swipe OK' : 'Swipe Limit'}
-            </Text>
-          </View>
-          
-          <View style={[
-            styles.limitIndicator,
-            limitStatus && !limitStatus.like?.isAllowed ? styles.limitReached : {}
-          ]}>
-            <Zap size={16} color={
-              limitStatus && limitStatus.like?.isAllowed 
-                ? Colors.dark.success 
-                : Colors.dark.error
-            } />
-            <Text style={[
-              styles.limitText,
-              limitStatus && !limitStatus.like?.isAllowed ? styles.limitTextReached : {}
-            ]}>
-              {limitStatus && limitStatus.like?.isAllowed ? 'Like OK' : 'Like Limit'}
-            </Text>
-          </View>
-          
-          <View style={[
-            styles.limitIndicator,
-            limitStatus && !limitStatus.match?.isAllowed ? styles.limitReached : {}
-          ]}>
-            <MessageCircle size={16} color={
-              limitStatus && limitStatus.match?.isAllowed 
-                ? Colors.dark.success 
-                : Colors.dark.error
-            } />
-            <Text style={[
-              styles.limitText,
-              limitStatus && !limitStatus.match?.isAllowed ? styles.limitTextReached : {}
-            ]}>
-              {limitStatus && limitStatus.match?.isAllowed ? 'Match OK' : 'Match Limit'}
-            </Text>
-          </View>
-        </View>
-      </View>
-    );
-  }, [limitStatus]);
+
 
   // Memoized error state
   const errorState = useMemo(() => {
@@ -425,8 +367,6 @@ export default function DiscoverScreen() {
           </Text>
         </View>
 
-        {limitStatusIndicators}
-
         <View style={styles.swipeContainer}>
           {error ? errorState : (
             <>
@@ -469,8 +409,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    padding: 20,
-    paddingBottom: 10,
+    padding: 15,
+    paddingBottom: 5,
   },
   title: {
     fontSize: 32,
@@ -482,39 +422,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.dark.textSecondary,
   },
-  limitStatusContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 15,
-  },
-  limitStatusRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  limitIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.dark.card,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-    minWidth: 100,
-  },
-  limitReached: {
-    borderColor: Colors.dark.error,
-    backgroundColor: Colors.dark.error + '20',
-  },
-  limitText: {
-    fontSize: 12,
-    color: Colors.dark.textSecondary,
-    marginLeft: 6,
-    fontWeight: '600',
-  },
-  limitTextReached: {
-    color: Colors.dark.error,
-  },
+
   swipeContainer: {
     flex: 1,
     paddingHorizontal: 20,
