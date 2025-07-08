@@ -20,7 +20,7 @@ import { useNotificationStore } from '@/store/notification-store';
 export default function AdminSettingsScreen() {
   const router = useRouter();
   const { user, invalidateTierSettingsCache } = useAuthStore();
-  const { isDebugMode, setDebugMode } = useDebugStore();
+  const { isDebugEnabled, setDebugEnabled } = useDebugStore();
   const { addNotification } = useNotificationStore();
   const [settingsByTier, setSettingsByTier] = useState<Record<MembershipTier, Record<string, any>>>({
     bronze: {},
@@ -565,8 +565,8 @@ export default function AdminSettingsScreen() {
               <Text style={styles.settingLabel}>Debug Mode</Text>
               <Text style={styles.settingDescription}>Enable debug logging and UI elements for troubleshooting</Text>
               <Switch
-                value={isDebugMode}
-                onValueChange={setDebugMode}
+                value={isDebugEnabled}
+                onValueChange={setDebugEnabled}
                 trackColor={{ false: Colors.dark.textSecondary, true: Colors.dark.primary }}
                 thumbColor={Colors.dark.background}
               />

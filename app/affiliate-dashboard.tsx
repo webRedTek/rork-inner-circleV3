@@ -14,6 +14,7 @@ export default function AffiliateDashboardScreen() {
   const { user } = useAuthStore();
   const { stats, referralHistory, isLoading, error, fetchAffiliateData, generateReferralLink } = useAffiliateStore();
   const [referralLink, setReferralLink] = useState<string>('');
+  const [referralCode, setReferralCode] = useState<string>('');
 
   useEffect(() => {
     if (user?.membershipTier !== 'silver' && user?.membershipTier !== 'gold') {
@@ -27,6 +28,10 @@ export default function AffiliateDashboardScreen() {
     try {
       const link = await generateReferralLink();
       setReferralLink(link);
+      
+      // Extract the referral code from the link
+      const code = link.split('/').pop() || '';
+      setReferralCode(code);
     } catch (err) {
       Alert.alert('Error', 'Failed to generate referral link. Please try again.');
     }
@@ -35,6 +40,11 @@ export default function AffiliateDashboardScreen() {
   const handleCopyLink = () => {
     // In a real app, this would copy to clipboard
     Alert.alert('Copied', 'Referral link copied to clipboard!');
+  };
+
+  const handleCopyCode = () => {
+    // In a real app, this would copy to clipboard
+    Alert.alert('Copied', 'Referral code copied to clipboard!');
   };
 
   const handleShare = () => {
@@ -107,43 +117,65 @@ export default function AffiliateDashboardScreen() {
         {/* Referral Link */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Referral Link</Text>
-          <View style={styles.linkContainer}>
-            {referralLink ? (
-              <Text style={styles.linkText}>{referralLink}</Text>
-            ) : (
-              <Text style={styles.linkText}>Not generated yet. Click below to generate.</Text>
-            )}
-            <View style={styles.linkActions}>
-              {referralLink ? (
-                <>
-                  <Button
-                    title="Copy"
-                    onPress={handleCopyLink}
-                    variant="outline"
-                    size="small"
-                    icon={<Copy size={16} color={Colors.dark.text} />}
-                    style={styles.linkButton}
-                  />
-                  <Button
-                    title="Share"
-                    onPress={handleShare}
-                    variant="outline"
-                    size="small"
-                    icon={<Share2 size={16} color={Colors.dark.text} />}
-                    style={styles.linkButton}
-                  />
-                </>
-              ) : (
+          
+          {/* Generate Button */}
+          {!referralLink && (
+            <View style={styles.generateContainer}>
+              <Button
+                title="Generate Link"
+                onPress={handleGenerateLink}
+                variant="primary"
+                size="medium"
+                style={styles.generateButton}
+              />
+            </View>
+          )}
+          
+          {/* Referral Code */}
+          {referralCode && (
+            <View style={styles.codeContainer}>
+              <Text style={styles.codeLabel}>Your Referral Code:</Text>
+              <View style={styles.codeDisplay}>
+                <Text style={styles.codeText}>{referralCode}</Text>
                 <Button
-                  title="Generate Link"
-                  onPress={handleGenerateLink}
-                  variant="primary"
+                  title="Copy Code"
+                  onPress={handleCopyCode}
+                  variant="outline"
                   size="small"
+                  icon={<Copy size={16} color={Colors.dark.text} />}
+                  style={styles.copyCodeButton}
+                />
+              </View>
+            </View>
+          )}
+          
+          {/* Full Referral Link */}
+          {referralLink && (
+            <View style={styles.linkContainer}>
+              <Text style={styles.linkLabel}>Full Referral Link:</Text>
+              <Text style={styles.linkText}>{referralLink}</Text>
+              <View style={styles.linkActions}>
+                <Button
+                  title="Copy Link"
+                  onPress={handleCopyLink}
+                  variant="outline"
+                  size="small"
+                  icon={<Copy size={16} color={Colors.dark.text} />}
                   style={styles.linkButton}
                 />
-              )}
+                <Button
+                  title="Share"
+                  onPress={handleShare}
+                  variant="outline"
+                  size="small"
+                  icon={<Share2 size={16} color={Colors.dark.text} />}
+                  style={styles.linkButton}
+                />
+              </View>
             </View>
-          </View>
+          )}
+          
+          {/* QR Code */}
           <View style={styles.qrContainer}>
             {referralLink ? (
               <QRCode
@@ -282,6 +314,44 @@ const styles = StyleSheet.create({
   linkButton: {
     flex: 1,
     marginHorizontal: 4,
+  },
+  generateContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  generateButton: {
+    width: 200,
+  },
+  codeContainer: {
+    backgroundColor: Colors.dark.background,
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  codeLabel: {
+    fontSize: 14,
+    color: Colors.dark.textSecondary,
+    marginBottom: 8,
+  },
+  codeDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  codeText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: Colors.dark.primary,
+    flex: 1,
+    marginRight: 12,
+  },
+  copyCodeButton: {
+    minWidth: 120,
+  },
+  linkLabel: {
+    fontSize: 14,
+    color: Colors.dark.textSecondary,
+    marginBottom: 8,
   },
   qrContainer: {
     alignItems: 'center',

@@ -65,7 +65,7 @@ export default function DebugScreen() {
   const { user, allTierSettings, tierSettingsTimestamp, getTierSettings } = useAuthStore();
 
   // Get debug logs and debug mode
-  const { debugLog, isDebugMode, toggleDebugMode, addDebugLog, clearDebugLog, useSimpleProfileView, toggleSimpleProfileView } = useDebugStore();
+  const { debugLog, isDebugMode, isDebugEnabled, toggleDebugMode, addDebugLog, clearDebugLog, useSimpleProfileView, toggleSimpleProfileView } = useDebugStore();
 
   const { clearAllNotifications, notifications } = useNotificationStore();
 
@@ -92,6 +92,20 @@ export default function DebugScreen() {
     clearAllNotifications();
     console.log('All notifications cleared');
   };
+
+  // Don't show debug screen if debug is disabled
+  if (!isDebugEnabled) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 40 }]}>
+          <Text style={[styles.title, { textAlign: 'center' }]}>Debug Mode Disabled</Text>
+          <Text style={[styles.subtitle, { textAlign: 'center' }]}>
+            Debug features are currently disabled in admin settings.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -234,18 +248,9 @@ export default function DebugScreen() {
           />
         </View>
 
-        {/* Debug Mode Section */}
+        {/* Debug Logs Status */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Debug Mode</Text>
-          <View style={styles.infoBlock}>
-            <Text style={styles.label}>Debug Mode:</Text>
-            <Text style={[
-              styles.value,
-              { color: isDebugMode ? Colors.light.success : Colors.light.error }
-            ]}>
-              {isDebugMode ? 'ENABLED' : 'DISABLED'}
-            </Text>
-          </View>
+          <Text style={styles.sectionTitle}>Debug Logs Status</Text>
           <View style={styles.infoBlock}>
             <Text style={styles.label}>Debug Logs:</Text>
             <Text style={styles.value}>
@@ -255,16 +260,6 @@ export default function DebugScreen() {
               ).length}
             </Text>
           </View>
-          <Button
-            title={isDebugMode ? 'Disable Debug Mode' : 'Enable Debug Mode'}
-            onPress={toggleDebugMode}
-            variant={isDebugMode ? 'danger' : 'primary'}
-          />
-          {!isDebugMode && (
-            <Text style={styles.warningText}>
-              ⚠️ Debug mode is disabled. Enable it to see operation timeline and detailed logs.
-            </Text>
-          )}
         </View>
 
         {/* Timeline Section */}

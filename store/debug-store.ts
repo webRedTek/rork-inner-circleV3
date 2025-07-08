@@ -44,9 +44,11 @@ export interface DebugLogEntry {
 
 interface DebugStore {
   isDebugMode: boolean;
+  isDebugEnabled: boolean; // Admin setting - controls if debug features are available
   debugLog: DebugLogEntry[];
   useSimpleProfileView: boolean;
   toggleDebugMode: () => void;
+  setDebugEnabled: (enabled: boolean) => void; // Admin function
   toggleSimpleProfileView: () => void;
   addDebugLog: (entry: Omit<DebugLogEntry, 'id' | 'timestamp'>) => void;
   clearDebugLog: () => void;
@@ -58,11 +60,16 @@ export const useDebugStore = create<DebugStore>()(
   persist(
     (set, get) => ({
       isDebugMode: false,
+      isDebugEnabled: true, // Default to true as requested
       debugLog: [],
       useSimpleProfileView: false,
       
       toggleDebugMode: () => {
         set((state) => ({ isDebugMode: !state.isDebugMode }));
+      },
+      
+      setDebugEnabled: (enabled: boolean) => {
+        set({ isDebugEnabled: enabled, isDebugMode: enabled ? get().isDebugMode : false });
       },
       
       toggleSimpleProfileView: () => {
