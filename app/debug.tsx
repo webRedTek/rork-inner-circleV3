@@ -65,7 +65,7 @@ export default function DebugScreen() {
   const { user, allTierSettings, tierSettingsTimestamp, getTierSettings } = useAuthStore();
 
   // Get debug logs and debug mode
-  const { debugLog, isDebugMode, isDebugEnabled, toggleDebugMode, addDebugLog, clearDebugLog, useSimpleProfileView, toggleSimpleProfileView } = useDebugStore();
+  const { debugLog, isDebugMode, toggleDebugMode, addDebugLog, clearDebugLog, useSimpleProfileView, toggleSimpleProfileView } = useDebugStore();
 
   const { clearAllNotifications, notifications } = useNotificationStore();
 
@@ -134,31 +134,22 @@ export default function DebugScreen() {
           </Text>
         </View>
 
-        {/* CRITICAL: Debug Mode Status - Always Visible */}
-        <View style={[styles.section, { backgroundColor: isDebugMode ? Colors.light.success + '20' : Colors.light.error + '20' }]}>
-          <Text style={[styles.sectionTitle, { color: isDebugMode ? Colors.light.success : Colors.light.error }]}>
+        {/* CRITICAL: Debug Mode Status - Always ON */}
+        <View style={[styles.section, { backgroundColor: Colors.light.success + '20' }]}>
+          <Text style={[styles.sectionTitle, { color: Colors.light.success }]}>
             🚨 DEBUG MODE STATUS
           </Text>
           <View style={styles.infoBlock}>
             <Text style={[styles.value, { fontSize: 18, fontWeight: 'bold' }]}>
-              {isDebugMode ? '✅ DEBUG MODE ENABLED' : '❌ DEBUG MODE DISABLED'}
+              ✅ DEBUG MODE ALWAYS ENABLED
             </Text>
             <Text style={styles.label}>
-              {isDebugMode 
-                ? 'All systems are logging. Operation timeline will populate.' 
-                : 'NO LOGS GENERATED - This is why operation timeline is blank and cards may not show!'}
+              All systems are logging. Operation timeline will populate.
             </Text>
           </View>
-          <Button
-            title={isDebugMode ? 'Disable Debug Mode' : 'ENABLE DEBUG MODE NOW'}
-            onPress={toggleDebugMode}
-            variant={isDebugMode ? 'danger' : 'primary'}
-          />
-          {!isDebugMode && (
-            <Text style={styles.warningText}>
-              ⚠️ IMPORTANT: Enable debug mode to see what's happening with your profiles and SwipeCards!
-            </Text>
-          )}
+          <Text style={styles.warningText}>
+            💡 Debug mode is always ON for comprehensive monitoring. Accessible only to admin users.
+          </Text>
         </View>
 
         {/* CRITICAL: SwipeCards & Image Loading Status - Monitor Recent Fixes */}

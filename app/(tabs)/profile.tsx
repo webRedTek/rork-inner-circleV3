@@ -9,7 +9,7 @@ import { ProfileHeader } from '@/components/ProfileHeader';
 import { ProfileDetailCard } from '@/components/ProfileDetailCard';
 import { SupabaseStatus } from '@/components/SupabaseStatus';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { Settings, Edit, LogOut, Database, RefreshCw, MapPin, Shield, Gift } from 'lucide-react-native';
+import { Settings, Edit, LogOut, Database, RefreshCw, MapPin, Shield, Gift, Bug } from 'lucide-react-native';
 import { useMatchesStore } from '@/store/matches-store';
 import { useUsageStore } from '@/store/usage-store';
 import { useGroupsStore } from '@/store/groups-store';
@@ -157,6 +157,10 @@ export default function ProfileScreen() {
       const appError = handleError(err);
       Alert.alert('Error', appError.userMessage);
     }
+  };
+
+  const handleDebugScreen = () => {
+    router.push('/debug');
   };
 
   if (!user) {
@@ -322,6 +326,14 @@ export default function ProfileScreen() {
               variant="outline"
               size="large"
               icon={<RefreshCw size={18} color={Colors.dark.accent} />}
+              style={styles.adminButton}
+            />
+            <Button
+              title="Debug Screen"
+              onPress={handleDebugScreen}
+              variant="outline"
+              size="large"
+              icon={<Bug size={18} color={Colors.dark.warning} />}
               style={styles.adminButton}
             />
             <Button

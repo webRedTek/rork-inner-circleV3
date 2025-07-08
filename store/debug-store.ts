@@ -1,37 +1,34 @@
 /**
  * FILE: store/debug-store.ts
- * LAST UPDATED: 2025-07-08 15:00
+ * LAST UPDATED: 2025-07-08 15:30
  * 
  * CURRENT STATE:
- * Debug state management store using Zustand. Controls debug mode across the app
- * to enable/disable debug logging and UI elements. Can be toggled from admin settings.
+ * Debug state management store using Zustand. Debug mode is always ON for monitoring.
+ * Debug screen is accessible via admin section in profile (hidden for non-admins).
  * 
  * RELEASE STRATEGY:
- * - Debug mode ENABLED by default for first month of app release
- * - This allows comprehensive monitoring of user onboarding and app performance
- * - After first month, debug mode will be disabled for regular users
- * - Admin users can still access debug features through admin settings
+ * - Debug mode ALWAYS ON for comprehensive monitoring
+ * - Debug screen accessible only to admin users via profile
+ * - No debug tab in bottom navigation (cleaner UI)
+ * - Debug logging always active for troubleshooting
  * 
  * RECENT CHANGES:
- * - Changed default debug mode to ENABLED (true) for first month monitoring
- * - Debug tab is now conditionally rendered based on isDebugEnabled setting
- * - Provides isDebugMode state and toggleDebugMode function
- * - Persists debug state across app sessions
- * - Used by matches-store and discover screen for conditional debug output
- * - Added debug log functionality for tier settings tracking
+ * - Removed debug tab from bottom navigation
+ * - Added debug link to admin section in profile
+ * - Simplified debug store - removed isDebugEnabled switch
+ * - Debug mode always ON for monitoring
+ * - Debug screen accessible via /debug route for admins
  * 
  * FILE INTERACTIONS:
  * - Imports from: AsyncStorage (persistence), Zustand (state management)
  * - Exports to: All stores and screens that need debug functionality
  * - Dependencies: AsyncStorage (persistence), Zustand (state management)
- * - Data flow: Provides debug state to components, can be toggled from admin settings
+ * - Data flow: Provides debug state to components, debug screen accessible via profile
  * 
  * KEY FUNCTIONS/COMPONENTS:
- * - isDebugMode: Boolean state indicating if debug mode is enabled
- * - isDebugEnabled: Boolean state indicating if debug features are available (admin setting)
- * - toggleDebugMode: Function to toggle debug mode on/off
- * - setDebugEnabled: Function to enable/disable debug features (admin only)
- * - resetDebugMode: Function to reset debug mode to false
+ * - isDebugMode: Boolean state indicating if debug mode is enabled (always true)
+ * - toggleDebugMode: Function to toggle debug mode on/off (for testing)
+ * - toggleSimpleProfileView: Function to toggle simple profile view for testing
  * - addDebugLog: Function to add debug events to the log
  * - clearDebugLog: Function to clear the debug log
  * - debugLog: Array of debug events with timestamps
@@ -53,11 +50,9 @@ export interface DebugLogEntry {
 
 interface DebugStore {
   isDebugMode: boolean;
-  isDebugEnabled: boolean; // Admin setting - controls if debug features are available
   debugLog: DebugLogEntry[];
   useSimpleProfileView: boolean;
   toggleDebugMode: () => void;
-  setDebugEnabled: (enabled: boolean) => void; // Admin function
   toggleSimpleProfileView: () => void;
   addDebugLog: (entry: Omit<DebugLogEntry, 'id' | 'timestamp'>) => void;
   clearDebugLog: () => void;
@@ -68,17 +63,12 @@ interface DebugStore {
 export const useDebugStore = create<DebugStore>()(
   persist(
     (set, get) => ({
-      isDebugMode: true, // ENABLED by default for first month monitoring
-      isDebugEnabled: true, // ENABLED by default for first month monitoring
+      isDebugMode: true, // ALWAYS ON for monitoring
       debugLog: [],
       useSimpleProfileView: false,
       
       toggleDebugMode: () => {
         set((state) => ({ isDebugMode: !state.isDebugMode }));
-      },
-      
-      setDebugEnabled: (enabled: boolean) => {
-        set({ isDebugEnabled: enabled, isDebugMode: enabled ? get().isDebugMode : false });
       },
       
       toggleSimpleProfileView: () => {

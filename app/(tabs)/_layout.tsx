@@ -1,12 +1,9 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import Colors from '@/constants/colors';
-import { Home, Users, MessageCircle, User, UsersRound, Bug } from 'lucide-react-native';
-import { useDebugStore } from '@/store/debug-store';
+import { Home, Users, MessageCircle, User, UsersRound } from 'lucide-react-native';
 
 export default function TabsLayout() {
-  const { isDebugEnabled } = useDebugStore();
-  
   return (
     <Tabs
       screenOptions={{
@@ -64,16 +61,6 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => <User size={size} color={color} />,
         }}
       />
-      {/* Debug tab - only show when debug mode is enabled */}
-      {isDebugEnabled && (
-        <Tabs.Screen
-          name="debug"
-          options={{
-            title: 'Debug',
-            tabBarIcon: ({ color, size }) => <Bug size={size} color={color} />,
-          }}
-        />
-      )}
     </Tabs>
   );
 }
