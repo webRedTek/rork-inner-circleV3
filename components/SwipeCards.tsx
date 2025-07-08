@@ -140,10 +140,6 @@ const CARD_ROTATION_RANGE = 15;
 const CARD_WIDTH = SCREEN_WIDTH * 0.9;
 const CARD_HEIGHT = CARD_WIDTH * 1.4;
 
-// Card positioning - centered on screen
-const CARD_LEFT = (SCREEN_WIDTH - CARD_WIDTH) / 2;
-const CARD_TOP_OFFSET = 20; // Reduced offset from top for better centering
-
 // Optimized spring configurations for natural physics
 const SPRING_CONFIG = {
   tension: 120,
@@ -789,8 +785,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
-    left: CARD_LEFT,
-    top: CARD_TOP_OFFSET,
     borderRadius: 20,
     backgroundColor: Colors.dark.card,
     shadowColor: '#000',
