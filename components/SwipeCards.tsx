@@ -640,13 +640,15 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
             ]}
             {...panResponder.panHandlers}
           >
-            {/* Like Indicator */}
+            {/* Connect Indicator */}
             <Animated.View style={[
               styles.likeContainer, 
               { opacity: animatedStyles.likeOpacityInterpolated }
             ]}>
               <View style={styles.likeLabel}>
-                <Heart size={40} color={Colors.dark.success} fill={Colors.dark.success} />
+                <View style={styles.connectIcon}>
+                  <Text style={styles.connectIconText}>C</Text>
+                </View>
                 <Text style={styles.likeText}>CONNECT</Text>
               </View>
             </Animated.View>
@@ -730,7 +732,9 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
           onPress={() => handleButtonSwipe('right')}
           activeOpacity={0.7}
         >
-          <Heart size={32} color={Colors.dark.success} />
+          <View style={styles.connectIconButton}>
+            <Text style={styles.connectIconButtonText}>C</Text>
+          </View>
         </TouchableOpacity>
         </View>
     );
@@ -812,10 +816,10 @@ const styles = StyleSheet.create({
   },
   likeLabel: {
     alignItems: 'center',
-    backgroundColor: 'rgba(76, 175, 80, 0.15)',
+    backgroundColor: 'rgba(37, 99, 235, 0.15)',
     borderRadius: 20,
     borderWidth: 3,
-    borderColor: Colors.dark.success,
+    borderColor: Colors.dark.primary,
     paddingVertical: 12,
     paddingHorizontal: 16,
   },
@@ -829,7 +833,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   likeText: {
-    color: Colors.dark.success,
+    color: Colors.dark.primary,
     fontSize: 16,
     fontWeight: 'bold',
     marginTop: 4,
@@ -870,7 +874,33 @@ const styles = StyleSheet.create({
   likeButton: {
     backgroundColor: Colors.dark.card,
     borderWidth: 2,
-    borderColor: Colors.dark.success,
+    borderColor: Colors.dark.primary,
+  },
+  connectIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.dark.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  connectIconText: {
+    color: Colors.dark.text,
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  connectIconButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.dark.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  connectIconButtonText: {
+    color: Colors.dark.text,
+    fontSize: 20,
+    fontWeight: 'bold',
   },
   emptyContainer: {
     flex: 1,
