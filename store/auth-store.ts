@@ -79,7 +79,7 @@ interface AuthState {
   networkStatus: { isConnected: boolean | null; type?: string | null; } | null;
   updateNetworkStatus: (status: { isConnected: boolean | null; type?: string | null; }) => void;
   login: (email: string, password: string) => Promise<void>;
-  signup: (userData: Partial<UserProfile>, password: string) => Promise<void>;
+  signup: (userData: Partial<UserProfile>, password: string, referralCode?: string) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (data: Partial<UserProfile>) => Promise<void>;
   updateMembership: (tier: MembershipTier) => Promise<void>;
@@ -305,7 +305,7 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      signup: async (userData: Partial<UserProfile>, password: string) => {
+      signup: async (userData: Partial<UserProfile>, password: string, referralCode?: string) => {
         set({ isLoading: true, error: null });
         
         try {
@@ -354,6 +354,29 @@ export const useAuthStore = create<AuthState>()(
             );
 
             if (profileError) throw profileError;
+
+            // Create affiliate referral if referral code was provided
+            if (referralCode && referralCode.trim() && data.user?.id) {
+              try {
+                const { data: referralResult, error: referralError } = await supabase.rpc(
+                  'create_affiliate_referral',
+                  {
+                    p_referral_code: referralCode.trim(),
+                    p_referred_user_id: data.user.id
+                  }
+                );
+
+                if (referralError) {
+                  console.warn('Failed to create affiliate referral:', referralError);
+                  // Don't fail signup if referral creation fails
+                } else {
+                  console.log('Affiliate referral created successfully:', referralResult);
+                }
+              } catch (referralError) {
+                console.warn('Error creating affiliate referral:', referralError);
+                // Don't fail signup if referral creation fails
+              }
+            }
 
             set({
               user: newUser,

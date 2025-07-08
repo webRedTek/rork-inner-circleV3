@@ -12,6 +12,13 @@ import { SingleSelect } from '@/components/SingleSelect';
 import { isSupabaseConfigured, testSupabaseConnection } from '@/lib/supabase';
 import { useAffiliateStore } from '@/store/affiliate-store';
 
+/*
+ * CHANGES (2025-07-08):
+ * - Signup now passes the referral code to the signup function in the auth store.
+ * - If a referral code is provided and valid, it will be used to create an affiliate referral record in the backend.
+ * - No commission or payout logic is handled here (per user instruction).
+ */
+
 export default function SignupScreen() {
   const router = useRouter();
   const { signup, isAuthenticated, isLoading, error, clearError } = useAuthStore();
@@ -271,7 +278,8 @@ export default function SignupScreen() {
             joinedGroups: [],
             createdAt: Date.now()
           },
-          password
+          password,
+          referralCode.trim() || undefined
         );
       } catch (err) {
         console.error('Signup error in component:', 
