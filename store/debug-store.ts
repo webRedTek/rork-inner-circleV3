@@ -12,6 +12,7 @@
  * - Persists debug state across app sessions
  * - Used by matches-store and discover screen for conditional debug output
  * - Added debug log functionality for tier settings tracking
+ * - Default debug mode is disabled (isDebugEnabled: false) for production safety
  * 
  * FILE INTERACTIONS:
  * - Imports from: AsyncStorage (persistence), Zustand (state management)
@@ -60,7 +61,7 @@ export const useDebugStore = create<DebugStore>()(
   persist(
     (set, get) => ({
       isDebugMode: false,
-      isDebugEnabled: true, // Default to true as requested
+      isDebugEnabled: false, // Default to false - debug features disabled by default
       debugLog: [],
       useSimpleProfileView: false,
       
