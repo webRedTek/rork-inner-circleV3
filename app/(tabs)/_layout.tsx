@@ -2,10 +2,7 @@ import React from 'react';
 import { Tabs } from 'expo-router';
 import Colors from '@/constants/colors';
 import { Home, Users, MessageCircle, User, UsersRound, Bug } from 'lucide-react-native';
-import { useDebugStore } from '@/store/debug-store';
-
 export default function TabsLayout() {
-  const { isDebugEnabled } = useDebugStore();
   
   return (
     <Tabs
@@ -64,15 +61,13 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => <User size={size} color={color} />,
         }}
       />
-      {isDebugEnabled && (
-        <Tabs.Screen
-          name="debug"
-          options={{
-            title: 'Debug',
-            tabBarIcon: ({ color, size }) => <Bug size={size} color={color} />,
-          }}
-        />
-      )}
+      <Tabs.Screen
+        name="debug"
+        options={{
+          title: 'Debug',
+          tabBarIcon: ({ color, size }) => <Bug size={size} color={color} />,
+        }}
+      />
     </Tabs>
   );
 }
