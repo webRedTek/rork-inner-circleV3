@@ -93,19 +93,7 @@ export default function DebugScreen() {
     console.log('All notifications cleared');
   };
 
-  // Don't show debug screen if debug is disabled
-  if (!isDebugEnabled) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 40 }]}>
-          <Text style={[styles.title, { textAlign: 'center' }]}>Debug Mode Disabled</Text>
-          <Text style={[styles.subtitle, { textAlign: 'center' }]}>
-            Debug features are currently disabled in admin settings.
-          </Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  // Debug screen is only accessible when debug is enabled (tab is hidden otherwise)
 
   return (
     <SafeAreaView style={styles.container}>

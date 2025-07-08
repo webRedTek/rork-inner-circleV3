@@ -1,18 +1,24 @@
 /**
  * FILE: store/debug-store.ts
- * LAST UPDATED: 2024-12-19 16:25
+ * LAST UPDATED: 2025-07-08 15:00
  * 
  * CURRENT STATE:
  * Debug state management store using Zustand. Controls debug mode across the app
  * to enable/disable debug logging and UI elements. Can be toggled from admin settings.
  * 
+ * RELEASE STRATEGY:
+ * - Debug mode ENABLED by default for first month of app release
+ * - This allows comprehensive monitoring of user onboarding and app performance
+ * - After first month, debug mode will be disabled for regular users
+ * - Admin users can still access debug features through admin settings
+ * 
  * RECENT CHANGES:
- * - Created new debug store for centralized debug state management
+ * - Changed default debug mode to ENABLED (true) for first month monitoring
+ * - Debug tab is now conditionally rendered based on isDebugEnabled setting
  * - Provides isDebugMode state and toggleDebugMode function
  * - Persists debug state across app sessions
  * - Used by matches-store and discover screen for conditional debug output
  * - Added debug log functionality for tier settings tracking
- * - Default debug mode is disabled (isDebugEnabled: false) for production safety
  * 
  * FILE INTERACTIONS:
  * - Imports from: AsyncStorage (persistence), Zustand (state management)
@@ -22,7 +28,9 @@
  * 
  * KEY FUNCTIONS/COMPONENTS:
  * - isDebugMode: Boolean state indicating if debug mode is enabled
+ * - isDebugEnabled: Boolean state indicating if debug features are available (admin setting)
  * - toggleDebugMode: Function to toggle debug mode on/off
+ * - setDebugEnabled: Function to enable/disable debug features (admin only)
  * - resetDebugMode: Function to reset debug mode to false
  * - addDebugLog: Function to add debug events to the log
  * - clearDebugLog: Function to clear the debug log
@@ -60,8 +68,8 @@ interface DebugStore {
 export const useDebugStore = create<DebugStore>()(
   persist(
     (set, get) => ({
-      isDebugMode: false,
-      isDebugEnabled: false, // Default to false - debug features disabled by default
+      isDebugMode: true, // ENABLED by default for first month monitoring
+      isDebugEnabled: true, // ENABLED by default for first month monitoring
       debugLog: [],
       useSimpleProfileView: false,
       
