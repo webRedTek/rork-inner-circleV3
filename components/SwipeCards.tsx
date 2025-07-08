@@ -724,7 +724,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
           onPress={() => handleButtonSwipe('left')}
           activeOpacity={0.7}
         >
-          <X size={32} color={Colors.dark.error} />
+          <X size={24} color={Colors.dark.error} />
         </TouchableOpacity>
         
         <TouchableOpacity
@@ -732,9 +732,7 @@ export const SwipeCards: React.FC<SwipeCardsProps> = ({
           onPress={() => handleButtonSwipe('right')}
           activeOpacity={0.7}
         >
-          <View style={styles.connectIconButton}>
-            <Text style={styles.connectIconButtonText}>C</Text>
-          </View>
+          <Text style={styles.actionButtonText}>C</Text>
         </TouchableOpacity>
         </View>
     );
@@ -852,29 +850,23 @@ const styles = StyleSheet.create({
     gap: 60,
   },
   actionButton: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#000000',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowRadius: 6,
+    elevation: 6,
   },
   passButton: {
-    backgroundColor: Colors.dark.card,
-    borderWidth: 2,
-    borderColor: Colors.dark.error,
+    backgroundColor: '#000000',
   },
   likeButton: {
-    backgroundColor: Colors.dark.card,
-    borderWidth: 2,
-    borderColor: Colors.dark.primary,
+    backgroundColor: '#000000',
   },
   connectIcon: {
     width: 40,
@@ -889,17 +881,9 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
   },
-  connectIconButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.dark.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  connectIconButtonText: {
-    color: Colors.dark.text,
-    fontSize: 20,
+  actionButtonText: {
+    color: Colors.dark.primary,
+    fontSize: 18,
     fontWeight: 'bold',
   },
   emptyContainer: {
