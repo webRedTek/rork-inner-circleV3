@@ -194,4 +194,179 @@ export default function SubscriptionDetailsScreen() {
                 <View>
                   <Text style={styles.planName}>
                     {user.membershipTier.charAt(0).toUpperCase() + user.membershipTier.slice(1)} Plan
-                  </Text>\n                  <Text style={styles.planStatus}>{subscriptionInfo.status}</Text>\n                </View>\n              </View>\n            </View>\n          </LinearGradient>\n        </View>\n\n        {/* Subscription Details */}\n        <View style={styles.section}>\n          <Text style={styles.sectionTitle}>Subscription Details</Text>\n          \n          <View style={styles.detailRow}>\n            <Calendar size={20} color={Colors.dark.accent} />\n            <View style={styles.detailContent}>\n              <Text style={styles.detailLabel}>Status</Text>\n              <Text style={styles.detailValue}>{subscriptionInfo.status}</Text>\n            </View>\n          </View>\n\n          {subscriptionInfo.nextBilling && (\n            <View style={styles.detailRow}>\n              <CreditCard size={20} color={Colors.dark.accent} />\n              <View style={styles.detailContent}>\n                <Text style={styles.detailLabel}>Next Billing</Text>\n                <Text style={styles.detailValue}>\n                  {new Date(subscriptionInfo.nextBilling).toLocaleDateString()}\n                </Text>\n              </View>\n            </View>\n          )}\n\n          {subscriptionInfo.product && (\n            <View style={styles.detailRow}>\n              <Settings size={20} color={Colors.dark.accent} />\n              <View style={styles.detailContent}>\n                <Text style={styles.detailLabel}>Product</Text>\n                <Text style={styles.detailValue}>{subscriptionInfo.product}</Text>\n              </View>\n            </View>\n          )}\n        </View>\n\n        {/* Actions */}\n        <View style={styles.section}>\n          <Text style={styles.sectionTitle}>Actions</Text>\n          \n          {user.membershipTier === 'bronze' && (\n            <Button\n              title=\"Upgrade Plan\"\n              onPress={handleUpgrade}\n              variant=\"primary\"\n              size=\"large\"\n              style={styles.actionButton}\n              icon={<Crown size={18} color={Colors.dark.text} />}\n            />\n          )}\n\n          {Platform.OS !== 'web' && subscriptionInfo.status === 'Active' && (\n            <Button\n              title=\"Manage Subscription\"\n              onPress={handleManageSubscription}\n              variant=\"outline\"\n              size=\"large\"\n              style={styles.actionButton}\n              icon={<ExternalLink size={18} color={Colors.dark.text} />}\n            />\n          )}\n\n          {Platform.OS !== 'web' && (\n            <Button\n              title=\"Restore Purchases\"\n              onPress={handleRestorePurchases}\n              variant=\"outline\"\n              size=\"large\"\n              loading={isRestoring}\n              style={styles.actionButton}\n              icon={<RotateCcw size={18} color={Colors.dark.text} />}\n            />\n          )}\n        </View>\n\n        {/* Help Text */}\n        <View style={styles.section}>\n          <Text style={styles.helpTitle}>Need Help?</Text>\n          <Text style={styles.helpText}>\n            If you're experiencing issues with your subscription, try restoring purchases first. \n            For billing questions, contact your device's app store support.\n          </Text>\n          \n          {Platform.OS === 'web' && (\n            <Text style={styles.helpText}>\n              Subscription management is only available on mobile devices. \n              Please use the iOS or Android app to manage your subscription.\n            </Text>\n          )}\n        </View>\n      </ScrollView>\n    </SafeAreaView>\n  );\n}\n\nconst styles = StyleSheet.create({\n  container: {\n    flex: 1,\n    backgroundColor: Colors.dark.background,\n  },\n  loadingContainer: {\n    flex: 1,\n    justifyContent: 'center',\n    alignItems: 'center',\n    padding: 20,\n  },\n  scrollView: {\n    flex: 1,\n  },\n  section: {\n    backgroundColor: Colors.dark.card,\n    borderRadius: 12,\n    marginHorizontal: 16,\n    marginBottom: 16,\n    overflow: 'hidden',\n  },\n  sectionTitle: {\n    fontSize: 18,\n    fontWeight: 'bold',\n    color: Colors.dark.text,\n    marginBottom: 16,\n    paddingHorizontal: 16,\n    paddingTop: 16,\n  },\n  planGradient: {\n    padding: 16,\n  },\n  planHeader: {\n    flexDirection: 'row',\n    justifyContent: 'space-between',\n    alignItems: 'center',\n  },\n  planTitleRow: {\n    flexDirection: 'row',\n    alignItems: 'center',\n    gap: 12,\n  },\n  planName: {\n    fontSize: 20,\n    fontWeight: 'bold',\n    color: '#FFFFFF',\n  },\n  planStatus: {\n    fontSize: 14,\n    color: 'rgba(255, 255, 255, 0.8)',\n    marginTop: 2,\n  },\n  detailRow: {\n    flexDirection: 'row',\n    alignItems: 'center',\n    paddingHorizontal: 16,\n    paddingVertical: 12,\n    gap: 12,\n  },\n  detailContent: {\n    flex: 1,\n  },\n  detailLabel: {\n    fontSize: 14,\n    color: Colors.dark.textSecondary,\n    marginBottom: 2,\n  },\n  detailValue: {\n    fontSize: 16,\n    color: Colors.dark.text,\n    fontWeight: '500',\n  },\n  actionButton: {\n    marginHorizontal: 16,\n    marginBottom: 12,\n  },\n  helpTitle: {\n    fontSize: 16,\n    fontWeight: '600',\n    color: Colors.dark.text,\n    marginBottom: 8,\n    paddingHorizontal: 16,\n    paddingTop: 16,\n  },\n  helpText: {\n    fontSize: 14,\n    color: Colors.dark.textSecondary,\n    lineHeight: 20,\n    paddingHorizontal: 16,\n    paddingBottom: 16,\n    marginBottom: 8,\n  },\n  errorText: {\n    color: Colors.dark.error,\n    fontSize: 16,\n    textAlign: 'center',\n  },\n});
+                  </Text>
+                  <Text style={styles.planStatus}>{subscriptionInfo.status}</Text>
+                </View>
+              </View>
+            </View>
+          </LinearGradient>
+        </View>
+
+        {/* Subscription Details */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Subscription Details</Text>
+          
+          <View style={styles.detailRow}>
+            <Calendar size={20} color={Colors.dark.accent} />
+            <View style={styles.detailContent}>
+              <Text style={styles.detailLabel}>Status</Text>
+              <Text style={styles.detailValue}>{subscriptionInfo.status}</Text>
+            </View>
+          </View>
+
+          {subscriptionInfo.nextBilling && (
+            <View style={styles.detailRow}>
+              <CreditCard size={20} color={Colors.dark.accent} />
+              <View style={styles.detailContent}>
+                <Text style={styles.detailLabel}>Next Billing</Text>
+                <Text style={styles.detailValue}>
+                  {new Date(subscriptionInfo.nextBilling).toLocaleDateString()}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {subscriptionInfo.product && (
+            <View style={styles.detailRow}>
+              <Settings size={20} color={Colors.dark.accent} />
+              <View style={styles.detailContent}>
+                <Text style={styles.detailLabel}>Product</Text>
+                <Text style={styles.detailValue}>{subscriptionInfo.product}</Text>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* Actions */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Actions</Text>
+          
+          {user.membershipTier === 'bronze' && (
+            <Button
+              title="Upgrade Plan"
+              onPress={handleUpgrade}
+              variant="primary"
+              size="large"
+              style={styles.actionButton}
+            />
+          )}
+
+          <Button
+            title="Manage Subscription"
+            onPress={handleManageSubscription}
+            variant="secondary"
+            size="large"
+            style={styles.actionButton}
+            icon={<ExternalLink size={20} color={Colors.dark.text} />}
+          />
+
+          {Platform.OS !== 'web' && (
+            <Button
+              title="Restore Purchases"
+              onPress={handleRestorePurchases}
+              variant="secondary"
+              size="large"
+              style={styles.actionButton}
+              loading={isRestoring}
+              icon={<RotateCcw size={20} color={Colors.dark.text} />}
+            />
+          )}
+        </View>
+
+        {/* Help Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Need Help?</Text>
+          <Text style={styles.helpText}>
+            If you're experiencing issues with your subscription or have questions about billing, 
+            please contact our support team.
+          </Text>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.dark.background,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    color: Colors.dark.textSecondary,
+    fontSize: 16,
+  },
+  section: {
+    marginHorizontal: 20,
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.dark.text,
+    marginBottom: 16,
+  },
+  planGradient: {
+    borderRadius: 16,
+    padding: 20,
+  },
+  planHeader: {
+    alignItems: 'center',
+  },
+  planTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  planName: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: Colors.dark.text,
+    marginBottom: 4,
+  },
+  planStatus: {
+    fontSize: 16,
+    color: Colors.dark.textSecondary,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: Colors.dark.card,
+    borderRadius: 12,
+    marginBottom: 8,
+    gap: 12,
+  },
+  detailContent: {
+    flex: 1,
+  },
+  detailLabel: {
+    fontSize: 14,
+    color: Colors.dark.textSecondary,
+    marginBottom: 2,
+  },
+  detailValue: {
+    fontSize: 16,
+    color: Colors.dark.text,
+    fontWeight: '500',
+  },
+  actionButton: {
+    marginBottom: 12,
+  },
+  helpText: {
+    fontSize: 14,
+    color: Colors.dark.textSecondary,
+    lineHeight: 20,
+    backgroundColor: Colors.dark.card,
+    padding: 16,
+    borderRadius: 12,
+  },
+});
