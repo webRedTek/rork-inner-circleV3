@@ -165,28 +165,34 @@ export default function AdminSettingsScreen() {
         try {
           if (settings.id) {
             console.log(`Updating settings for tier ${tier} with ID: ${settings.id}`);
-            const { error: updateError } = await supabase
+            const { data, error: updateError } = await supabase
               .from('app_settings')
               .update(settingsToSave)
-              .eq('id', settings.id);
+              .eq('id', settings.id)
+              .select();
 
             if (updateError) {
+              console.error(`Update error for ${tier}:`, updateError);
               const appError = handleError(updateError);
               throw new Error(`Failed to update settings for ${tier}: ${appError.userMessage}`);
             }
+            console.log(`Successfully updated ${tier} settings:`, data);
           } else {
             console.log(`Inserting new settings for tier ${tier}`);
-            const { error: insertError } = await supabase
+            const { data, error: insertError } = await supabase
               .from('app_settings')
               .insert({
                 ...settingsToSave,
                 created_at: new Date().toISOString()
-              });
+              })
+              .select();
 
             if (insertError) {
+              console.error(`Insert error for ${tier}:`, insertError);
               const appError = handleError(insertError);
               throw new Error(`Failed to insert settings for ${tier}: ${appError.userMessage}`);
             }
+            console.log(`Successfully inserted ${tier} settings:`, data);
           }
         } catch (dbError: any) {
           console.error(`Database error for tier ${tier}:`, dbError);
