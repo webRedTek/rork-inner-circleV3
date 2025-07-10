@@ -46,7 +46,16 @@ interface EntrepreneurCardProps {
 
 const { width } = Dimensions.get('window');
 
-const CARD_WIDTH = Math.min(width * 0.9, 400);
+// Card dimensions - responsive with different percentages for different screen sizes
+const getCardWidth = () => {
+  if (width >= 768) {
+    return width * 0.6; // 60% for tablets
+  } else {
+    return width * 0.9; // 90% for phones
+  }
+};
+
+const CARD_WIDTH = getCardWidth();
 
 export const EntrepreneurCard: FC<EntrepreneurCardProps> = ({
   profile,

@@ -136,8 +136,16 @@ const SWIPE_VELOCITY_THRESHOLD = 0.3;
 const SWIPE_OUT_DURATION = 250;
 const CARD_ROTATION_RANGE = 15;
 
-// Card dimensions - responsive with reasonable maximum for large screens
-const CARD_WIDTH = Math.min(SCREEN_WIDTH * 0.9, 400);
+// Card dimensions - responsive with different percentages for different screen sizes
+const getCardWidth = () => {
+  if (SCREEN_WIDTH >= 768) {
+    return SCREEN_WIDTH * 0.6; // 60% for tablets
+  } else {
+    return SCREEN_WIDTH * 0.9; // 90% for phones
+  }
+};
+
+const CARD_WIDTH = getCardWidth();
 const CARD_HEIGHT = CARD_WIDTH * 1.4;
 
 // Optimized spring configurations for natural physics
