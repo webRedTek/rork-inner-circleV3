@@ -9,6 +9,7 @@ import { Button } from '@/components/Button';
 import { ProfileHeader } from '@/components/ProfileHeader';
 import { ProfileDetailCard } from '@/components/ProfileDetailCard';
 import { SupabaseStatus } from '@/components/SupabaseStatus';
+import { SubscriptionCard } from '@/components/SubscriptionCard';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { Settings, Edit, LogOut, Database, RefreshCw, MapPin, Shield, Gift, Bug } from 'lucide-react-native';
 import { useMatchesStore } from '@/store/matches-store';
@@ -182,6 +183,11 @@ export default function ProfileScreen() {
     <SafeAreaView style={styles.container} edges={UNIVERSAL_SAFE_AREA_EDGES}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <ProfileHeader />
+        
+        {/* Subscription Card */}
+        <View style={styles.section}>
+          <SubscriptionCard style={styles.subscriptionCard} />
+        </View>
         
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>About</Text>
@@ -411,6 +417,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginHorizontal: 16,
     marginBottom: 16,
+  },
+  subscriptionCard: {
+    marginHorizontal: 0,
   },
   sectionTitle: {
     fontSize: 18,

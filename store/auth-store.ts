@@ -66,6 +66,7 @@ import { useGroupsStore } from './groups-store';
 import { useMessagesStore } from './messages-store';
 import { useAffiliateStore } from './affiliate-store';
 import { useDebugStore } from './debug-store';
+import { useSubscriptionStore } from './subscription-store';
 
 interface AuthState {
   user: UserProfile | null;
@@ -293,6 +294,14 @@ export const useAuthStore = create<AuthState>()(
               // Don't block authentication if usage store fails
             }
 
+            // Initialize subscription store AFTER successful authentication (non-blocking)
+            try {
+              await useSubscriptionStore.getState().initialize(userId);
+            } catch (error) {
+              // Don't block authentication if subscription store fails
+              console.warn('Failed to initialize subscription store:', error);
+            }
+
             // Validate and refresh cache for the new user
             await get().validateAndRefreshCache(userId);
           });
@@ -407,6 +416,13 @@ export const useAuthStore = create<AuthState>()(
               await get().fetchAllTierSettings();
               await get().initializeTierSettings();
               await useUsageStore.getState().initializeUsage(data.user.id);
+              
+              // Initialize subscription store for new user (non-blocking)
+              try {
+                await useSubscriptionStore.getState().initialize(data.user.id);
+              } catch (error) {
+                console.warn('Failed to initialize subscription store for new user:', error);
+              }
             }
           });
         } catch (error) {
@@ -836,6 +852,14 @@ export const useAuthStore = create<AuthState>()(
               }, 60 * 1000);
             } catch (error) {
               // Don't block authentication if usage store fails
+            }
+
+            // Initialize subscription store AFTER successful authentication (non-blocking)
+            try {
+              await useSubscriptionStore.getState().initialize(userProfile.id);
+            } catch (error) {
+              // Don't block authentication if subscription store fails
+              console.warn('Failed to initialize subscription store:', error);
             }
           } else {
             set({
