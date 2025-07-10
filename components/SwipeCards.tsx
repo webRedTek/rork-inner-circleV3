@@ -136,9 +136,28 @@ const SWIPE_VELOCITY_THRESHOLD = 0.3;
 const SWIPE_OUT_DURATION = 250;
 const CARD_ROTATION_RANGE = 15;
 
-// Card dimensions - fixed and consistent
-const CARD_WIDTH = SCREEN_WIDTH * 0.9;
-const CARD_HEIGHT = CARD_WIDTH * 1.4;
+// Card dimensions - responsive with maximum limits for tablets
+const getDeviceType = () => {
+  if (SCREEN_WIDTH >= 768) return 'tablet';
+  if (SCREEN_WIDTH >= 428) return 'large-phone';
+  return 'phone';
+};
+
+const deviceType = getDeviceType();
+
+// Responsive card sizing with maximum limits
+let CARD_WIDTH: number;
+let CARD_HEIGHT: number;
+
+if (deviceType === 'tablet') {
+  // For tablets, limit maximum card size
+  CARD_WIDTH = Math.min(SCREEN_WIDTH * 0.9, 500); // Max 500px width on tablets
+  CARD_HEIGHT = CARD_WIDTH * 1.4;
+} else {
+  // For phones, use original sizing
+  CARD_WIDTH = SCREEN_WIDTH * 0.9;
+  CARD_HEIGHT = CARD_WIDTH * 1.4;
+}
 
 // Optimized spring configurations for natural physics
 const SPRING_CONFIG = {
