@@ -1,4 +1,4 @@
-import NetInfo from '@react-native-community/netinfo';
+import { Platform } from 'react-native';
 
 /**
  * Checks the current network status.
@@ -10,12 +10,34 @@ export async function checkNetworkStatus(): Promise<{
   isInternetReachable?: boolean | null;
 }> {
   try {
-    const netInfo = await NetInfo.fetch();
-    return {
-      isConnected: netInfo.isConnected,
-      type: netInfo.type,
-      isInternetReachable: netInfo.isInternetReachable,
-    };
+    // Platform-specific network checking
+    if (Platform.OS === 'web') {
+      // Web environment - use browser API
+      const isConnected = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      return {
+        isConnected,
+        type: 'wifi', // Assume wifi for web
+        isInternetReachable: isConnected,
+      };
+    } else {
+      // Native environment - try to use NetInfo
+      try {
+        const NetInfo = await import('@react-native-community/netinfo');
+        const netInfo = await NetInfo.default.fetch();
+        return {
+          isConnected: netInfo.isConnected,
+          type: netInfo.type,
+          isInternetReachable: netInfo.isInternetReachable,
+        };
+      } catch (netInfoError) {
+        console.warn('NetInfo not available, assuming connected:', netInfoError);
+        return {
+          isConnected: true,
+          type: 'wifi',
+          isInternetReachable: true,
+        };
+      }
+    }
   } catch (error) {
     console.error('Error checking network status:', error);
     return { isConnected: null };
