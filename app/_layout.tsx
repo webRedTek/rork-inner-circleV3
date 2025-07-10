@@ -28,7 +28,92 @@ export default function RootLayout() {
                 backgroundColor: Colors.dark.background,
               },
             }}
-          />
+          >
+            <Stack.Screen 
+              name="membership" 
+              options={{ 
+                headerShown: true,
+                title: 'Membership Plans',
+                headerStyle: {
+                  backgroundColor: Colors.dark.background,
+                },
+                headerTintColor: Colors.dark.text,
+                headerTitleStyle: {
+                  fontWeight: 'bold',
+                },
+              }} 
+            />
+            <Stack.Screen 
+              name="edit-profile" 
+              options={{ 
+                headerShown: true,
+                title: 'Edit Profile',
+                headerStyle: {
+                  backgroundColor: Colors.dark.background,
+                },
+                headerTintColor: Colors.dark.text,
+                headerTitleStyle: {
+                  fontWeight: 'bold',
+                },
+              }} 
+            />
+            <Stack.Screen 
+              name="affiliate-dashboard" 
+              options={{ 
+                headerShown: true,
+                title: 'Affiliate Dashboard',
+                headerStyle: {
+                  backgroundColor: Colors.dark.background,
+                },
+                headerTintColor: Colors.dark.text,
+                headerTitleStyle: {
+                  fontWeight: 'bold',
+                },
+              }} 
+            />
+            <Stack.Screen 
+              name="admin-settings" 
+              options={{ 
+                headerShown: true,
+                title: 'Admin Settings',
+                headerStyle: {
+                  backgroundColor: Colors.dark.background,
+                },
+                headerTintColor: Colors.dark.text,
+                headerTitleStyle: {
+                  fontWeight: 'bold',
+                },
+              }} 
+            />
+            <Stack.Screen 
+              name="supabase-setup" 
+              options={{ 
+                headerShown: true,
+                title: 'Supabase Setup',
+                headerStyle: {
+                  backgroundColor: Colors.dark.background,
+                },
+                headerTintColor: Colors.dark.text,
+                headerTitleStyle: {
+                  fontWeight: 'bold',
+                },
+              }} 
+            />
+            <Stack.Screen 
+              name="debug" 
+              options={{ 
+                headerShown: true,
+                title: 'Debug',
+                headerStyle: {
+                  backgroundColor: Colors.dark.background,
+                },
+                headerTintColor: Colors.dark.text,
+                headerTitleStyle: {
+                  fontWeight: 'bold',
+                },
+              }} 
+            />
+          </Stack>
         </NotificationProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

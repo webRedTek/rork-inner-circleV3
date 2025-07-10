@@ -8,6 +8,7 @@ import { ProfileHeader } from '@/components/ProfileHeader';
 import { Button } from '@/components/Button';
 import { MatchWithProfile } from '@/types/user';
 import { useMatchesStore } from '@/store/matches-store';
+import { responsiveFont, responsiveSpacing } from '@/utils/responsive-text';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -41,7 +42,7 @@ export default function HomeScreen() {
   
   if (!isReady || initialLoad) {
     return (
-      <SafeAreaView style={styles.loadingContainer} edges={['bottom']}>
+      <SafeAreaView style={styles.loadingContainer} edges={['top', 'bottom']}>
         <Text style={styles.loadingText}>Loading...</Text>
       </SafeAreaView>
     );
@@ -49,7 +50,7 @@ export default function HomeScreen() {
   
   if (!user) {
     return (
-      <SafeAreaView style={styles.errorContainer} edges={['bottom']}>
+      <SafeAreaView style={styles.errorContainer} edges={['top', 'bottom']}>
         <Text style={styles.errorText}>Not authenticated</Text>
         <Button
           title="Login"
@@ -62,7 +63,7 @@ export default function HomeScreen() {
   }
   
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.content}
@@ -179,7 +180,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.dark.background,
   },
   loadingText: {
-    fontSize: 16,
+    fontSize: responsiveFont(16),
     color: Colors.dark.textSecondary,
   },
   errorContainer: {
@@ -189,9 +190,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.dark.background,
   },
   errorText: {
-    fontSize: 18,
+    fontSize: responsiveFont(18),
     color: Colors.dark.text,
-    marginBottom: 16,
+    marginBottom: responsiveSpacing(16),
   },
   retryButton: {
     minWidth: 150,
@@ -200,61 +201,61 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
-    paddingBottom: 32,
+    padding: responsiveSpacing(16),
+    paddingBottom: responsiveSpacing(32),
   },
   header: {
-    marginBottom: 24,
+    marginBottom: responsiveSpacing(24),
   },
   greeting: {
-    fontSize: 16,
+    fontSize: responsiveFont(16),
     color: Colors.dark.textSecondary,
   },
   name: {
-    fontSize: 28,
+    fontSize: responsiveFont(28),
     fontWeight: 'bold',
     color: Colors.dark.text,
   },
   section: {
-    marginBottom: 24,
+    marginBottom: responsiveSpacing(24),
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: responsiveFont(20),
     fontWeight: 'bold',
     color: Colors.dark.text,
-    marginBottom: 16,
+    marginBottom: responsiveSpacing(16),
   },
   membershipCard: {
     backgroundColor: Colors.dark.primary,
     borderRadius: 12,
-    padding: 16,
-    marginTop: 16,
+    padding: responsiveSpacing(16),
+    marginTop: responsiveSpacing(16),
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   membershipTitle: {
-    fontSize: 18,
+    fontSize: responsiveFont(18),
     fontWeight: 'bold',
     color: Colors.dark.text,
-    marginBottom: 4,
+    marginBottom: responsiveSpacing(4),
   },
   membershipDescription: {
-    fontSize: 14,
+    fontSize: responsiveFont(14),
     color: Colors.dark.textSecondary,
     maxWidth: '80%',
   },
   emptyState: {
     backgroundColor: Colors.dark.card,
     borderRadius: 12,
-    padding: 24,
+    padding: responsiveSpacing(24),
     alignItems: 'center',
   },
   emptyStateText: {
-    fontSize: 16,
+    fontSize: responsiveFont(16),
     color: Colors.dark.textSecondary,
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: responsiveSpacing(16),
   },
   discoverButton: {
     minWidth: 150,

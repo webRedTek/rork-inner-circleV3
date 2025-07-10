@@ -45,8 +45,7 @@ export default function MembershipScreen() {
   
   if (tierSettingsLoading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <Stack.Screen options={{ title: 'Membership Plans' }} />
+      <SafeAreaView style={styles.container} edges={['bottom']}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.dark.accent} />
           <Text style={styles.loadingText}>Loading membership plans...</Text>
@@ -57,8 +56,7 @@ export default function MembershipScreen() {
 
   if (!allTierSettings) {
     return (
-      <SafeAreaView style={styles.container}>
-        <Stack.Screen options={{ title: 'Membership Plans' }} />
+      <SafeAreaView style={styles.container} edges={['bottom']}>
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>Error: Membership settings are not available. Please try again later.</Text>
           <Button
@@ -118,8 +116,7 @@ export default function MembershipScreen() {
   );
   
   return (
-    <SafeAreaView style={styles.container}>
-      <Stack.Screen options={{ title: 'Membership Plans' }} />
+    <SafeAreaView style={styles.container} edges={['bottom']}>
       
       <ScrollView style={styles.scrollView}>
         <View style={styles.header}>

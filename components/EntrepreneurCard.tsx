@@ -34,6 +34,7 @@ import Colors from '@/constants/colors';
 import { ChevronDown, AlertCircle, MapPin, User } from 'lucide-react-native';
 import { withErrorHandling } from '@/utils/error-utils';
 import * as Haptics from 'expo-haptics';
+import { responsiveFont, responsiveSpacing } from '@/utils/responsive-text';
 
 interface EntrepreneurCardProps {
   profile: UserProfile;
@@ -298,9 +299,9 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   loadingText: {
-    marginTop: 20,
+    marginTop: responsiveSpacing(20),
     color: Colors.dark.text,
-    fontSize: 18,
+    fontSize: responsiveFont(18),
     fontWeight: '500',
   },
   loadingDots: {
@@ -329,18 +330,18 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   errorTitle: {
-    marginTop: 16,
+    marginTop: responsiveSpacing(16),
     color: Colors.dark.error,
-    fontSize: 20,
+    fontSize: responsiveFont(20),
     fontWeight: 'bold',
     textAlign: 'center',
   },
   errorText: {
-    marginTop: 8,
+    marginTop: responsiveSpacing(8),
     color: Colors.dark.textSecondary,
-    fontSize: 16,
+    fontSize: responsiveFont(16),
     textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: responsiveSpacing(22),
   },
   retryButton: {
     marginTop: 20,
@@ -408,7 +409,7 @@ const styles = StyleSheet.create({
   },
   name: {
     color: Colors.dark.text,
-    fontSize: 26,
+    fontSize: responsiveFont(26),
     fontWeight: '700',
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 1, height: 1 },
@@ -416,7 +417,7 @@ const styles = StyleSheet.create({
   },
   field: {
     color: Colors.dark.textSecondary,
-    fontSize: 16,
+    fontSize: responsiveFont(16),
     fontWeight: '500',
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 1, height: 1 },
@@ -429,7 +430,7 @@ const styles = StyleSheet.create({
   },
   locationText: {
     color: Colors.dark.textSecondary,
-    fontSize: 14,
+    fontSize: responsiveFont(14),
     fontWeight: '500',
     flex: 1,
   },
@@ -448,7 +449,7 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
   },
   tagText: {
-    fontSize: 13,
+    fontSize: responsiveFont(13),
     color: Colors.dark.text,
     fontWeight: '500',
     textShadowColor: 'rgba(0, 0, 0, 0.3)',

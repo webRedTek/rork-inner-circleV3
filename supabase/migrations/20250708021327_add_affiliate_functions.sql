@@ -137,3 +137,4 @@ begin
   return v_result;
 end;
 $$ language plpgsql security definer;
+

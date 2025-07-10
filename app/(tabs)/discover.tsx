@@ -358,7 +358,7 @@ export default function DiscoverScreen() {
 
   // Main render
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.content}>
         <View style={styles.header}>
           <Text style={styles.title}>Discover</Text>

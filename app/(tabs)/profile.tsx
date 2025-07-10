@@ -165,7 +165,7 @@ export default function ProfileScreen() {
 
   if (!user) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.dark.accent} />
         </View>
@@ -178,7 +178,7 @@ export default function ProfileScreen() {
   const tierSettings = user && allTierSettings ? allTierSettings[user.membershipTier] : null;
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <ProfileHeader />
         

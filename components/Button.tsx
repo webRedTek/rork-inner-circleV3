@@ -11,6 +11,7 @@ import {
 import Colors from '@/constants/colors';
 import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
+import { responsiveFont, responsiveSpacing } from '@/utils/responsive-text';
 
 interface ButtonProps {
   title?: string;
@@ -94,22 +95,22 @@ export const Button: React.FC<ButtonProps> = ({
       case 'small':
         buttonStyle = {
           ...buttonStyle,
-          paddingVertical: 8,
-          paddingHorizontal: 16,
+          paddingVertical: responsiveSpacing(8),
+          paddingHorizontal: responsiveSpacing(16),
         };
         break;
       case 'medium':
         buttonStyle = {
           ...buttonStyle,
-          paddingVertical: 12,
-          paddingHorizontal: 24,
+          paddingVertical: responsiveSpacing(12),
+          paddingHorizontal: responsiveSpacing(24),
         };
         break;
       case 'large':
         buttonStyle = {
           ...buttonStyle,
-          paddingVertical: 16,
-          paddingHorizontal: 32,
+          paddingVertical: responsiveSpacing(16),
+          paddingHorizontal: responsiveSpacing(32),
         };
         break;
     }
@@ -160,19 +161,19 @@ export const Button: React.FC<ButtonProps> = ({
       case 'small':
         textStyleObj = {
           ...textStyleObj,
-          fontSize: 14,
+          fontSize: responsiveFont(14),
         };
         break;
       case 'medium':
         textStyleObj = {
           ...textStyleObj,
-          fontSize: 16,
+          fontSize: responsiveFont(16),
         };
         break;
       case 'large':
         textStyleObj = {
           ...textStyleObj,
-          fontSize: 18,
+          fontSize: responsiveFont(18),
         };
         break;
     }
