@@ -855,20 +855,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingBottom: 40,
-    gap: 240, // 60 * 4 = 240
+    gap: 180, // 60 * 3 = 180
   },
   actionButton: {
-    width: 176, // 44 * 4 = 176
-    height: 176, // 44 * 4 = 176
-    borderRadius: 32, // 8 * 4 = 32
+    width: 132, // 44 * 3 = 132
+    height: 132, // 44 * 3 = 132
+    borderRadius: 24, // 8 * 3 = 24
     backgroundColor: '#000000',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 }, // 2 * 4 = 8
+    shadowOffset: { width: 0, height: 6 }, // 2 * 3 = 6
     shadowOpacity: 0.3,
-    shadowRadius: 24, // 6 * 4 = 24
-    elevation: 24, // 6 * 4 = 24
+    shadowRadius: 18, // 6 * 3 = 18
+    elevation: 18, // 6 * 3 = 18
   },
   passButton: {
     backgroundColor: '#000000',
@@ -895,7 +895,7 @@ const styles = StyleSheet.create({
   },
   actionButtonText: {
     color: Colors.dark.primary,
-    fontSize: 72, // 18 * 4 = 72
+    fontSize: 54, // 18 * 3 = 54
     fontWeight: 'bold',
   },
   emptyContainer: {
