@@ -46,23 +46,7 @@ interface EntrepreneurCardProps {
 
 const { width } = Dimensions.get('window');
 
-// Responsive card sizing with maximum limits for tablets
-const getDeviceType = () => {
-  if (width >= 768) return 'tablet';
-  if (width >= 428) return 'large-phone';
-  return 'phone';
-};
-
-const deviceType = getDeviceType();
-
-let CARD_WIDTH: number;
-if (deviceType === 'tablet') {
-  // For tablets, limit maximum card size
-  CARD_WIDTH = Math.min(width * 0.9, 500); // Max 500px width on tablets
-} else {
-  // For phones, use original sizing
-  CARD_WIDTH = width * 0.9;
-}
+const CARD_WIDTH = width * 0.9;
 
 export const EntrepreneurCard: FC<EntrepreneurCardProps> = ({
   profile,
