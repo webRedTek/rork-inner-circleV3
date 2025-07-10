@@ -6,7 +6,7 @@ import Colors from '@/constants/colors';
 import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
 import { useAuthStore } from '@/store/auth-store';
-import NetInfo from '@react-native-community/netinfo';
+import { checkNetworkStatus } from '@/utils/network-utils';
 import { WifiOff, RefreshCw } from 'lucide-react-native';
 
 export default function LoginScreen() {
@@ -35,7 +35,7 @@ export default function LoginScreen() {
   const checkNetwork = async () => {
     setCheckingNetwork(true);
     try {
-      const state = await NetInfo.fetch();
+      const state = await checkNetworkStatus();
       setNetworkStatus({ isConnected: state.isConnected });
     } catch (error) {
       console.error('Error checking network:', error);
@@ -80,7 +80,7 @@ export default function LoginScreen() {
   const handleLogin = async () => {
     if (validateForm()) {
       try {
-        const state = await NetInfo.fetch();
+        const state = await checkNetworkStatus();
         setNetworkStatus({ isConnected: state.isConnected });
         
         if (state.isConnected === false) {
