@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Colors from '@/constants/colors';
 import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
+import { AUTH_SAFE_AREA_EDGES } from '@/constants/safeArea';
 import { useAuthStore } from '@/store/auth-store';
 import { checkNetworkStatus } from '@/utils/network-utils';
 import { WifiOff, RefreshCw } from 'lucide-react-native';
@@ -108,7 +109,7 @@ export default function LoginScreen() {
   };
   
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={AUTH_SAFE_AREA_EDGES}>
       <View style={styles.content}>
         <View style={styles.header}>
           <Text style={styles.title}>Welcome Back</Text>

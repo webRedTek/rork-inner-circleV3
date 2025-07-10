@@ -7,6 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import NotificationProvider from '@/components/NotificationProvider';
 import { useAuthStore } from '@/store/auth-store';
 import Colors from '@/constants/colors';
+import { Platform } from 'react-native';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -27,6 +28,9 @@ export default function RootLayout() {
               contentStyle: {
                 backgroundColor: Colors.dark.background,
               },
+              // Global safe area configuration
+              statusBarBackgroundColor: Colors.dark.background,
+              statusBarStyle: 'light',
             }}
           >
             <Stack.Screen 

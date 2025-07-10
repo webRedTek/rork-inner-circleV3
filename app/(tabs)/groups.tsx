@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Colors from '@/constants/colors';
+import { UNIVERSAL_SAFE_AREA_EDGES } from '@/constants/safeArea';
 import { useAuthStore } from '@/store/auth-store';
 import { useGroupsStore } from '@/store/groups-store';
 import { Group } from '@/types/user';
@@ -221,7 +222,7 @@ export default function GroupsScreen() {
   }
   
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.container} edges={UNIVERSAL_SAFE_AREA_EDGES}>
       <ScrollView 
         style={styles.scrollView} 
         contentContainerStyle={styles.scrollViewContent}

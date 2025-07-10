@@ -9,6 +9,7 @@ import { Button } from '@/components/Button';
 import { MatchWithProfile } from '@/types/user';
 import { useMatchesStore } from '@/store/matches-store';
 import { responsiveFont, responsiveSpacing } from '@/utils/responsive-text';
+import { UNIVERSAL_SAFE_AREA_EDGES } from '@/constants/safeArea';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -42,7 +43,7 @@ export default function HomeScreen() {
   
   if (!isReady || initialLoad) {
     return (
-      <SafeAreaView style={styles.loadingContainer} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.loadingContainer} edges={UNIVERSAL_SAFE_AREA_EDGES}>
         <Text style={styles.loadingText}>Loading...</Text>
       </SafeAreaView>
     );
@@ -50,7 +51,7 @@ export default function HomeScreen() {
   
   if (!user) {
     return (
-      <SafeAreaView style={styles.errorContainer} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.errorContainer} edges={UNIVERSAL_SAFE_AREA_EDGES}>
         <Text style={styles.errorText}>Not authenticated</Text>
         <Button
           title="Login"
@@ -63,7 +64,7 @@ export default function HomeScreen() {
   }
   
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.container} edges={UNIVERSAL_SAFE_AREA_EDGES}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.content}

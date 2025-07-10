@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { UNIVERSAL_SAFE_AREA_EDGES } from '@/constants/safeArea';
 import { useAuthStore } from '@/store/auth-store';
 import Colors from '@/constants/colors';
 import { Button } from '@/components/Button';
@@ -178,7 +179,7 @@ export default function ProfileScreen() {
   const tierSettings = user && allTierSettings ? allTierSettings[user.membershipTier] : null;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.container} edges={UNIVERSAL_SAFE_AREA_EDGES}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <ProfileHeader />
         

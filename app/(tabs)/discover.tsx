@@ -41,6 +41,7 @@ import { Heart, X, RotateCcw, AlertCircle, TrendingUp, Users, MessageCircle, Zap
 
 import { notify } from '@/store/notification-store';
 import { handleError, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
+import { UNIVERSAL_SAFE_AREA_EDGES } from '@/constants/safeArea';
 
 export default function DiscoverScreen() {
   const router = useRouter();
@@ -358,7 +359,7 @@ export default function DiscoverScreen() {
 
   // Main render
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.container} edges={UNIVERSAL_SAFE_AREA_EDGES}>
       <View style={styles.content}>
         <View style={styles.header}>
           <Text style={styles.title}>Discover</Text>
