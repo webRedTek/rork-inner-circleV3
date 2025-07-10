@@ -38,6 +38,7 @@ export default function RootLayout() {
               options={{ 
                 headerShown: true,
                 title: 'Membership Plans',
+                headerBackTitle: 'Profile',
                 headerStyle: {
                   backgroundColor: Colors.dark.background,
                 },
@@ -52,6 +53,7 @@ export default function RootLayout() {
               options={{ 
                 headerShown: true,
                 title: 'Edit Profile',
+                headerBackTitle: 'Profile',
                 headerStyle: {
                   backgroundColor: Colors.dark.background,
                 },
@@ -66,6 +68,7 @@ export default function RootLayout() {
               options={{ 
                 headerShown: true,
                 title: 'Affiliate Dashboard',
+                headerBackTitle: 'Profile',
                 headerStyle: {
                   backgroundColor: Colors.dark.background,
                 },
@@ -80,6 +83,7 @@ export default function RootLayout() {
               options={{ 
                 headerShown: true,
                 title: 'Admin Settings',
+                headerBackTitle: 'Profile',
                 headerStyle: {
                   backgroundColor: Colors.dark.background,
                 },
@@ -94,6 +98,7 @@ export default function RootLayout() {
               options={{ 
                 headerShown: true,
                 title: 'Supabase Setup',
+                headerBackTitle: 'Profile',
                 headerStyle: {
                   backgroundColor: Colors.dark.background,
                 },
@@ -108,6 +113,7 @@ export default function RootLayout() {
               options={{ 
                 headerShown: true,
                 title: 'Debug',
+                headerBackTitle: 'Profile',
                 headerStyle: {
                   backgroundColor: Colors.dark.background,
                 },
