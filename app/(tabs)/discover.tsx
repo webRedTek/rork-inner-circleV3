@@ -26,7 +26,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform, Modal, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { SwipeCards } from '@/components/SwipeCards';
@@ -56,6 +56,8 @@ export default function DiscoverScreen() {
     match: { isAllowed: boolean };
     like: { isAllowed: boolean };
   } | null>(null);
+  const [selectedProfile, setSelectedProfile] = useState<UserProfile | null>(null);
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   // Use refs to prevent unnecessary re-renders
   const lastProfileCountRef = useRef(profiles.length);
@@ -312,8 +314,15 @@ export default function DiscoverScreen() {
       { profileId: profile.id, profileName: profile.name }
     );
     
-    router.push(`/profile/${profile.id}`);
-  }, [router, debugLog]);
+    setSelectedProfile(profile);
+    setShowProfileModal(true);
+  }, [debugLog]);
+
+  // Close profile modal
+  const closeProfileModal = useCallback(() => {
+    setShowProfileModal(false);
+    setSelectedProfile(null);
+  }, []);
 
 
 
@@ -397,6 +406,37 @@ export default function DiscoverScreen() {
           )}
         </View>
       </View>
+
+      {/* Profile Detail Modal */}
+      <Modal
+        visible={showProfileModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={closeProfileModal}
+      >
+        <SafeAreaView style={styles.modalContainer} edges={UNIVERSAL_SAFE_AREA_EDGES}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={closeProfileModal} style={styles.closeButton}>
+              <X size={24} color={Colors.dark.text} />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Profile Details</Text>
+            <View style={styles.placeholder} />
+          </View>
+          
+          {selectedProfile && (
+            <View style={styles.modalContent}>
+              <Text style={styles.profileName}>{selectedProfile.name}</Text>
+              <Text style={styles.profileBio}>{selectedProfile.bio || 'No bio available'}</Text>
+              <Text style={styles.profileDetails}>
+                {selectedProfile.industry && `Industry: ${selectedProfile.industry}`}
+              </Text>
+              <Text style={styles.profileDetails}>
+                {selectedProfile.location && `Location: ${selectedProfile.location}`}
+              </Text>
+            </View>
+          )}
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -475,5 +515,50 @@ const styles = StyleSheet.create({
   refreshButton: {
     backgroundColor: Colors.dark.primary,
     minWidth: 160,
+  },
+  // Modal styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: Colors.dark.background,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.dark.border,
+  },
+  closeButton: {
+    padding: 8,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: Colors.dark.text,
+  },
+  placeholder: {
+    width: 40,
+  },
+  modalContent: {
+    flex: 1,
+    padding: 20,
+  },
+  profileName: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: Colors.dark.text,
+    marginBottom: 12,
+  },
+  profileBio: {
+    fontSize: 16,
+    color: Colors.dark.textSecondary,
+    lineHeight: 24,
+    marginBottom: 16,
+  },
+  profileDetails: {
+    fontSize: 14,
+    color: Colors.dark.textSecondary,
+    marginBottom: 8,
   },
 });
