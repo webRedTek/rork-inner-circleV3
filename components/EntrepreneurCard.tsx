@@ -46,7 +46,7 @@ interface EntrepreneurCardProps {
 
 const { width } = Dimensions.get('window');
 
-const CARD_WIDTH = width * 0.9;
+const CARD_WIDTH = Math.min(width * 0.9, 400);
 
 export const EntrepreneurCard: FC<EntrepreneurCardProps> = ({
   profile,
