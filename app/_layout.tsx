@@ -123,6 +123,21 @@ export default function RootLayout() {
                 },
               }} 
             />
+            <Stack.Screen 
+              name="profile/[id]" 
+              options={{ 
+                headerShown: true,
+                title: 'Profile',
+                headerBackTitle: 'Discover',
+                headerStyle: {
+                  backgroundColor: Colors.dark.background,
+                },
+                headerTintColor: Colors.dark.text,
+                headerTitleStyle: {
+                  fontWeight: 'bold',
+                },
+              }} 
+            />
           </Stack>
         </NotificationProvider>
       </SafeAreaProvider>

@@ -163,14 +163,6 @@ export default function ProfileDetailScreen() {
     <ScrollView style={styles.container}>
       <Stack.Screen 
         options={{
-          headerLeft: () => (
-            <TouchableOpacity 
-              onPress={() => router.back()}
-              style={styles.headerButton}
-            >
-              <ArrowLeft size={24} color={Colors.dark.text} />
-            </TouchableOpacity>
-          ),
           headerRight: isMatch ? () => (
             <TouchableOpacity 
             onPress={handleMessage}
