@@ -367,51 +367,51 @@ export const checkNetworkStatus = async (): Promise<{
       try {
         const NetInfo = await import('@react-native-community/netinfo');
         const netInfo = await NetInfo.default.fetch();
-        
-        // Assess connection quality
-        let quality: 'excellent' | 'good' | 'poor' | 'offline' = 'offline';
-        
-        if (netInfo.isConnected) {
-          if (netInfo.type === 'wifi') {
-            quality = 'excellent';
-          } else if (netInfo.type === 'cellular') {
-            // Could add more sophisticated cellular quality detection here
-            quality = 'good';
-          } else {
-            quality = 'poor';
-          }
-          
-          connectionState.consecutiveFailures = 0;
-          connectionState.adaptiveTimeout = Math.max(
-            connectionState.adaptiveTimeout * 0.9,
-            MIN_TIMEOUT
-          );
-        } else {
-          quality = 'offline';
-          connectionState.consecutiveFailures++;
-          connectionState.adaptiveTimeout = Math.min(
-            connectionState.adaptiveTimeout * 1.5,
-            MAX_TIMEOUT
-          );
-        }
-        
-        connectionState.isOnline = !!netInfo.isConnected;
-        connectionState.quality = quality;
-        
+    
+    // Assess connection quality
+    let quality: 'excellent' | 'good' | 'poor' | 'offline' = 'offline';
+    
+    if (netInfo.isConnected) {
+      if (netInfo.type === 'wifi') {
+        quality = 'excellent';
+      } else if (netInfo.type === 'cellular') {
+        // Could add more sophisticated cellular quality detection here
+        quality = 'good';
+      } else {
+        quality = 'poor';
+      }
+      
+      connectionState.consecutiveFailures = 0;
+      connectionState.adaptiveTimeout = Math.max(
+        connectionState.adaptiveTimeout * 0.9,
+        MIN_TIMEOUT
+      );
+    } else {
+      quality = 'offline';
+      connectionState.consecutiveFailures++;
+      connectionState.adaptiveTimeout = Math.min(
+        connectionState.adaptiveTimeout * 1.5,
+        MAX_TIMEOUT
+      );
+    }
+    
+    connectionState.isOnline = !!netInfo.isConnected;
+    connectionState.quality = quality;
+    
         console.log('[Enhanced Supabase] Network status check (native):', {
-          isConnected: netInfo.isConnected,
-          type: netInfo.type,
-          quality,
-          consecutiveFailures: connectionState.consecutiveFailures,
-          adaptiveTimeout: connectionState.adaptiveTimeout
-        });
-        
-        return {
-          isConnected: netInfo.isConnected,
-          type: netInfo.type,
-          isInternetReachable: netInfo.isInternetReachable,
-          quality
-        };
+      isConnected: netInfo.isConnected,
+      type: netInfo.type,
+      quality,
+      consecutiveFailures: connectionState.consecutiveFailures,
+      adaptiveTimeout: connectionState.adaptiveTimeout
+    });
+    
+    return {
+      isConnected: netInfo.isConnected,
+      type: netInfo.type,
+      isInternetReachable: netInfo.isInternetReachable,
+      quality
+    };
       } catch (netInfoError) {
         console.warn('[Enhanced Supabase] NetInfo not available, assuming connection:', netInfoError);
         // Fallback: assume we're connected

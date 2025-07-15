@@ -53,14 +53,15 @@ interface SubscriptionState {
   restorePurchases: () => Promise<boolean>;
   getActiveSubscriptions: () => string[];
   hasActiveSubscription: (tier: MembershipTier) => boolean;
+  syncSubscriptionStatus: () => Promise<void>;
   clearError: () => void;
 }
 
 // RevenueCat configuration
 const REVENUECAT_CONFIG = {
-  // Replace with your actual RevenueCat API keys
-  ios: 'appl_YOUR_IOS_API_KEY_HERE',
-  android: 'goog_YOUR_ANDROID_API_KEY_HERE',
+  // RevenueCat API keys
+  ios: 'appl_KnjmhQaRSNxvFNVzzVkIxqlRAXU',
+  android: 'appl_KnjmhQaRSNxvFNVzzVkIxqlRAXU', // Using same key for both platforms
   // Web doesn't support RevenueCat, so we'll handle it differently
 };
 
@@ -100,10 +101,18 @@ export const useSubscriptionStore = create<SubscriptionState>()((set, get) => ({
             throw new Error('RevenueCat API key not configured. Please add your API keys to the subscription store.');
           }
 
+          console.log('🔧 Configuring RevenueCat with API key:', apiKey);
           await Purchases.configure({ apiKey });
           
-          // Set user ID
+          console.log('🔧 Logging in user:', userId);
           await Purchases.logIn(userId);
+          
+          // Add customer info update listener
+          Purchases.addCustomerInfoUpdateListener((customerInfo: CustomerInfo) => {
+            set({ customerInfo });
+            // Sync subscription status with auth store when customer info changes
+            get().syncSubscriptionStatus();
+          });
           
           // Get initial customer info
           const customerInfo = await Purchases.getCustomerInfo();
@@ -215,10 +224,10 @@ export const useSubscriptionStore = create<SubscriptionState>()((set, get) => ({
         const purchasesError = error as PurchasesError;
         
         switch (purchasesError.code) {
-          case PURCHASES_ERROR_CODE.PURCHASE_CANCELLED:
+          case PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR:
             // User cancelled, don't show error
             return false;
-          case PURCHASES_ERROR_CODE.PAYMENT_PENDING:
+          case PURCHASES_ERROR_CODE.PAYMENT_PENDING_ERROR:
             useNotificationStore.getState().addNotification({
               type: 'info',
               message: 'Payment is pending. You will be notified when it completes.',
@@ -226,7 +235,7 @@ export const useSubscriptionStore = create<SubscriptionState>()((set, get) => ({
               duration: 5000
             });
             return false;
-          case PURCHASES_ERROR_CODE.PRODUCT_NOT_AVAILABLE_FOR_PURCHASE:
+          case PURCHASES_ERROR_CODE.PRODUCT_NOT_AVAILABLE_FOR_PURCHASE_ERROR:
             useNotificationStore.getState().addNotification({
               type: 'error',
               message: 'This subscription is not available for purchase.',
@@ -371,7 +380,7 @@ export const getPackageByTier = (offerings: PurchasesOffering | null, tier: Memb
   const suffix = isAnnual ? '_annual' : '_monthly';
   const productId = `${tier}${suffix}`;
   
-  return offerings.availablePackages.find(pkg => 
+  return offerings.availablePackages.find((pkg: PurchasesPackage) => 
     pkg.product.identifier === productId
   ) || null;
 };

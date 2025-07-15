@@ -6,16 +6,25 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import NotificationProvider from '@/components/NotificationProvider';
 import { useAuthStore } from '@/store/auth-store';
+import { useSubscriptionStore } from '@/store/subscription-store';
 import Colors from '@/constants/colors';
 import { Platform } from 'react-native';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
-  const { checkSession, isReady } = useAuthStore();
+  const { checkSession, isReady, user } = useAuthStore();
+  const { initialize: initializeSubscriptions } = useSubscriptionStore();
   
   useEffect(() => {
     checkSession();
   }, []);
+
+  // Initialize RevenueCat when user is authenticated
+  useEffect(() => {
+    if (isReady && user?.id && Platform.OS !== 'web') {
+      initializeSubscriptions(user.id);
+    }
+  }, [isReady, user?.id, initializeSubscriptions]);
   
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -135,9 +144,9 @@ export default function RootLayout() {
                 headerTintColor: Colors.dark.text,
                 headerTitleStyle: {
                   fontWeight: 'bold',
-                },
-              }} 
-            />
+              },
+            }}
+          />
           </Stack>
         </NotificationProvider>
       </SafeAreaProvider>

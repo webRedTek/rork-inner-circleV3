@@ -24,11 +24,11 @@ export async function checkNetworkStatus(): Promise<{
       try {
         const NetInfo = await import('@react-native-community/netinfo');
         const netInfo = await NetInfo.default.fetch();
-        return {
-          isConnected: netInfo.isConnected,
-          type: netInfo.type,
-          isInternetReachable: netInfo.isInternetReachable,
-        };
+    return {
+      isConnected: netInfo.isConnected,
+      type: netInfo.type,
+      isInternetReachable: netInfo.isInternetReachable,
+    };
       } catch (netInfoError) {
         console.warn('NetInfo not available, assuming connected:', netInfoError);
         return {
