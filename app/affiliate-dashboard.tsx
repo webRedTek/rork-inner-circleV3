@@ -9,6 +9,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { UNIVERSAL_SAFE_AREA_EDGES } from '@/constants/safeArea';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/auth-store';
 import { useAffiliateStore } from '@/store/affiliate-store';
@@ -118,7 +119,7 @@ export default function AffiliateDashboardScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={UNIVERSAL_SAFE_AREA_EDGES}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <Gift size={24} color={Colors.dark.primary} style={styles.icon} />

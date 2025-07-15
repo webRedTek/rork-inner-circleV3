@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, Switch, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { UNIVERSAL_SAFE_AREA_EDGES } from '@/constants/safeArea';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/auth-store';
 import { useDebugStore } from '@/store/debug-store';
@@ -254,7 +255,7 @@ export default function AdminSettingsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={UNIVERSAL_SAFE_AREA_EDGES}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <Shield size={24} color={Colors.dark.primary} style={styles.icon} />

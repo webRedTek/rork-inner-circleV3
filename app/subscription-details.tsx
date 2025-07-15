@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { UNIVERSAL_SAFE_AREA_EDGES } from '@/constants/safeArea';
 import Colors from '@/constants/colors';
 import { useAuthStore } from '@/store/auth-store';
 import { useSubscriptionStore } from '@/store/subscription-store';
@@ -47,7 +48,7 @@ export default function SubscriptionDetailsScreen() {
 
   if (!user) {
     return (
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+      <SafeAreaView style={styles.container} edges={UNIVERSAL_SAFE_AREA_EDGES}>
         <Stack.Screen options={{ title: 'Subscription Details' }} />
         <View style={styles.loadingContainer}>
           <Text style={styles.errorText}>User not found</Text>
@@ -170,7 +171,7 @@ export default function SubscriptionDetailsScreen() {
   const subscriptionInfo = getSubscriptionInfo();
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={UNIVERSAL_SAFE_AREA_EDGES}>
       <Stack.Screen 
         options={{ 
           title: 'Subscription Details',

@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { UNIVERSAL_SAFE_AREA_EDGES } from '@/constants/safeArea';
 import Colors from '@/constants/colors';
 import { useAuthStore } from '@/store/auth-store';
 import { useSubscriptionStore, getPackageByTier, formatPrice, getSubscriptionPeriod } from '@/store/subscription-store';
@@ -59,7 +60,7 @@ export default function MembershipScreen() {
   
   if (tierSettingsLoading) {
     return (
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+      <SafeAreaView style={styles.container} edges={UNIVERSAL_SAFE_AREA_EDGES}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.dark.accent} />
           <Text style={styles.loadingText}>Loading membership plans...</Text>
@@ -70,7 +71,7 @@ export default function MembershipScreen() {
 
   if (!allTierSettings) {
     return (
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+      <SafeAreaView style={styles.container} edges={UNIVERSAL_SAFE_AREA_EDGES}>
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>Error: Membership settings are not available. Please try again later.</Text>
           <Button
@@ -207,7 +208,7 @@ export default function MembershipScreen() {
   };
   
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={UNIVERSAL_SAFE_AREA_EDGES}>
       
       <ScrollView style={styles.scrollView}>
         <View style={styles.header}>
