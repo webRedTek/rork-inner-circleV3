@@ -53,14 +53,15 @@ interface SubscriptionState {
   restorePurchases: () => Promise<boolean>;
   getActiveSubscriptions: () => string[];
   hasActiveSubscription: (tier: MembershipTier) => boolean;
+  syncSubscriptionStatus: () => Promise<void>;
   clearError: () => void;
 }
 
 // RevenueCat configuration
 const REVENUECAT_CONFIG = {
-  // Replace with your actual RevenueCat API keys
-  ios: 'appl_YOUR_IOS_API_KEY_HERE',
-  android: 'goog_YOUR_ANDROID_API_KEY_HERE',
+  // RevenueCat API keys
+  ios: 'appl_KnjmhQaRSNxvFNVzzVkIxqlRAXU',
+  android: 'appl_KnjmhQaRSNxvFNVzzVkIxqlRAXU', // Using same key for both platforms
   // Web doesn't support RevenueCat, so we'll handle it differently
 };
 
@@ -371,7 +372,7 @@ export const getPackageByTier = (offerings: PurchasesOffering | null, tier: Memb
   const suffix = isAnnual ? '_annual' : '_monthly';
   const productId = `${tier}${suffix}`;
   
-  return offerings.availablePackages.find(pkg => 
+  return offerings.availablePackages.find((pkg: PurchasesPackage) => 
     pkg.product.identifier === productId
   ) || null;
 };

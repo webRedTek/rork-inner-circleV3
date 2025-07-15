@@ -37,8 +37,7 @@
         {
           "origin": "https://rork.app/"
         }
-      ],
-      "react-native-purchases"
+      ]
     ],
     "experiments": {
       "typedRoutes": true
