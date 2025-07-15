@@ -136,17 +136,9 @@ const SWIPE_VELOCITY_THRESHOLD = 0.3;
 const SWIPE_OUT_DURATION = 250;
 const CARD_ROTATION_RANGE = 15;
 
-// Card dimensions - responsive with different percentages for different screen sizes
-const getCardWidth = () => {
-  if (SCREEN_WIDTH >= 768) {
-    return SCREEN_WIDTH * 0.6; // 60% for tablets
-  } else {
-    return SCREEN_WIDTH * 0.9; // 90% for phones
-  }
-};
-
-const CARD_WIDTH = getCardWidth();
-const CARD_HEIGHT = CARD_WIDTH * 1.4;
+// Card dimensions - percentage-based with max limits
+const CARD_WIDTH = Math.min(SCREEN_WIDTH * 0.85, 400); // 85% of screen width, max 400px
+const CARD_HEIGHT = CARD_WIDTH * 1.3; // 1.3 aspect ratio
 
 // Optimized spring configurations for natural physics
 const SPRING_CONFIG = {
@@ -854,21 +846,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingBottom: 40,
-    gap: 180, // 60 * 3 = 180
+    paddingBottom: SCREEN_HEIGHT * 0.08, // 8% of screen height
+    gap: SCREEN_WIDTH * 0.25, // 25% of screen width
   },
   actionButton: {
-    width: 132, // 44 * 3 = 132
-    height: 132, // 44 * 3 = 132
-    borderRadius: 24, // 8 * 3 = 24
+    width: Math.min(SCREEN_WIDTH * 0.15, 80), // 15% of screen width, max 80px
+    height: Math.min(SCREEN_WIDTH * 0.15, 80), // 15% of screen width, max 80px
+    borderRadius: Math.min(SCREEN_WIDTH * 0.15, 80) * 0.2, // 20% of button size
     backgroundColor: '#000000',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 }, // 2 * 3 = 6
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.3,
-    shadowRadius: 18, // 6 * 3 = 18
-    elevation: 18, // 6 * 3 = 18
+    shadowRadius: 18,
+    elevation: 18,
   },
   passButton: {
     backgroundColor: '#000000',
@@ -895,7 +887,7 @@ const styles = StyleSheet.create({
   },
   actionButtonText: {
     color: Colors.dark.primary,
-    fontSize: 54, // 18 * 3 = 54
+    fontSize: Math.min(SCREEN_WIDTH * 0.15, 80) * 0.4, // 40% of button size
     fontWeight: 'bold',
   },
   emptyContainer: {

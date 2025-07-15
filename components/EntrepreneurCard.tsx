@@ -46,16 +46,8 @@ interface EntrepreneurCardProps {
 
 const { width } = Dimensions.get('window');
 
-// Card dimensions - responsive with different percentages for different screen sizes
-const getCardWidth = () => {
-  if (width >= 768) {
-    return width * 0.6; // 60% for tablets
-  } else {
-    return width * 0.9; // 90% for phones
-  }
-};
-
-const CARD_WIDTH = getCardWidth();
+// Card dimensions - percentage-based with max limits
+const CARD_WIDTH = Math.min(width * 0.85, 400); // 85% of screen width, max 400px
 
 export const EntrepreneurCard: FC<EntrepreneurCardProps> = ({
   profile,
@@ -293,7 +285,7 @@ export const EntrepreneurCard: FC<EntrepreneurCardProps> = ({
 const styles = StyleSheet.create({
   cardContainer: {
     width: CARD_WIDTH,
-    height: CARD_WIDTH * 1.5,
+    height: CARD_WIDTH * 1.3, // 1.3 aspect ratio
     borderRadius: 20,
     overflow: 'hidden',
     backgroundColor: Colors.dark.card,

@@ -26,7 +26,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { View, Text, StyleSheet, Platform, Modal, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Platform, Modal, TouchableOpacity, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { SwipeCards } from '@/components/SwipeCards';
@@ -450,23 +450,23 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    padding: 15,
-    paddingBottom: 5,
+    padding: Dimensions.get('window').width * 0.04, // 4% of screen width
+    paddingBottom: Dimensions.get('window').height * 0.01, // 1% of screen height
   },
   title: {
-    fontSize: 32,
+    fontSize: Dimensions.get('window').height * 0.04, // 4% of screen height
     fontWeight: 'bold',
     color: Colors.dark.text,
-    marginBottom: 4,
+    marginBottom: Dimensions.get('window').height * 0.005, // 0.5% of screen height
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: Dimensions.get('window').height * 0.02, // 2% of screen height
     color: Colors.dark.textSecondary,
   },
 
   swipeContainer: {
     flex: 1,
-    paddingHorizontal: 20,
+    paddingHorizontal: Dimensions.get('window').width * 0.05, // 5% of screen width
   },
   errorContainer: {
     flex: 1,
