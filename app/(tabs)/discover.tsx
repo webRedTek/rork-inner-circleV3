@@ -35,6 +35,7 @@ import { useMatchesStore } from '@/store/matches-store';
 import { useUsageStore } from '@/store/usage-store';
 import { useAuthStore } from '@/store/auth-store';
 import { useDebugStore } from '@/store/debug-store';
+import { safeStringifyError } from '@/utils/store-auth-utils';
 import { UserProfile } from '@/types/user';
 import Colors from '@/constants/colors';
 import { Heart, X, RotateCcw, AlertCircle, TrendingUp, Users, MessageCircle, Zap } from 'lucide-react-native';
@@ -46,7 +47,7 @@ import { UNIVERSAL_SAFE_AREA_EDGES } from '@/constants/safeArea';
 export default function DiscoverScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const { profiles, isLoading, error, fetchPotentialMatches, cache } = useMatchesStore();
+  const { profiles, isLoading, error, fetchPotentialMatches, cache, addToSwipeQueue } = useMatchesStore();
   const { checkAllLimits } = useUsageStore();
   const { isDebugMode, addDebugLog, useSimpleProfileView } = useDebugStore();
 
@@ -62,7 +63,7 @@ export default function DiscoverScreen() {
   // Use refs to prevent unnecessary re-renders
   const lastProfileCountRef = useRef(profiles.length);
   const lastErrorRef = useRef(error);
-  const limitUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const limitUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Memoize debug logging to prevent excessive calls
   const debugLog = useCallback((event: string, details: string, data?: any) => {
@@ -324,6 +325,66 @@ export default function DiscoverScreen() {
     setSelectedProfile(null);
   }, []);
 
+  // Handle like action
+  const handleLike = useCallback(async (profile: UserProfile) => {
+    if (!user?.id) return;
+    
+    debugLog(
+      'Profile like action',
+      `User ${user.id} liked profile ${profile.name}`,
+      { profileId: profile.id, profileName: profile.name }
+    );
+    
+    try {
+      // Add to swipe queue for processing
+      addToSwipeQueue({
+        swiper_id: user.id,
+        swipee_id: profile.id,
+        direction: 'right',
+        swipe_timestamp: Date.now()
+      });
+      
+      // Close modal - profile will be removed by swipe cards
+      closeProfileModal();
+      
+      notify.success(`Liked ${profile.name}!`);
+    } catch (error) {
+      const errorMessage = safeStringifyError(error);
+      debugLog('Error liking profile', errorMessage);
+      notify.error(`Failed to like profile: ${errorMessage}`);
+    }
+  }, [user?.id, debugLog, addToSwipeQueue, closeProfileModal, notify]);
+
+  // Handle pass action
+  const handlePass = useCallback(async (profile: UserProfile) => {
+    if (!user?.id) return;
+    
+    debugLog(
+      'Profile pass action',
+      `User ${user.id} passed on profile ${profile.name}`,
+      { profileId: profile.id, profileName: profile.name }
+    );
+    
+    try {
+      // Add to swipe queue for processing
+      addToSwipeQueue({
+        swiper_id: user.id,
+        swipee_id: profile.id,
+        direction: 'left',
+        swipe_timestamp: Date.now()
+      });
+      
+      // Close modal - profile will be removed by swipe cards
+      closeProfileModal();
+      
+      notify.info(`Passed on ${profile.name}`);
+    } catch (error) {
+      const errorMessage = safeStringifyError(error);
+      debugLog('Error passing on profile', errorMessage);
+      notify.error(`Failed to pass on profile: ${errorMessage}`);
+    }
+  }, [user?.id, debugLog, addToSwipeQueue, closeProfileModal, notify]);
+
 
 
   // Memoized error state
@@ -426,13 +487,177 @@ export default function DiscoverScreen() {
           {selectedProfile && (
             <View style={styles.modalContent}>
               <Text style={styles.profileName}>{selectedProfile.name}</Text>
-              <Text style={styles.profileBio}>{selectedProfile.bio || 'No bio available'}</Text>
-              <Text style={styles.profileDetails}>
-                {selectedProfile.industry && `Industry: ${selectedProfile.industry}`}
-              </Text>
-              <Text style={styles.profileDetails}>
-                {selectedProfile.location && `Location: ${selectedProfile.location}`}
-              </Text>
+              
+              {/* Basic Info */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>About</Text>
+                <Text style={styles.profileBio}>
+                  {selectedProfile.bio || 'No bio available'}
+                </Text>
+              </View>
+
+              {/* Business Info */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Business</Text>
+                {selectedProfile.businessField && (
+                  <Text style={styles.profileDetails}>
+                    <Text style={styles.label}>Field:</Text> {selectedProfile.businessField}
+                  </Text>
+                )}
+                {selectedProfile.entrepreneurStatus && (
+                  <Text style={styles.profileDetails}>
+                    <Text style={styles.label}>Status:</Text> {selectedProfile.entrepreneurStatus}
+                  </Text>
+                )}
+                {selectedProfile.businessStage && (
+                  <Text style={styles.profileDetails}>
+                    <Text style={styles.label}>Stage:</Text> {selectedProfile.businessStage}
+                  </Text>
+                )}
+                {selectedProfile.industryFocus && (
+                  <Text style={styles.profileDetails}>
+                    <Text style={styles.label}>Industry Focus:</Text> {selectedProfile.industryFocus}
+                  </Text>
+                )}
+              </View>
+
+              {/* Location */}
+              {selectedProfile.location && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Location</Text>
+                  <Text style={styles.profileDetails}>
+                    {selectedProfile.location}
+                    {selectedProfile.timezone && ` • ${selectedProfile.timezone}`}
+                  </Text>
+                </View>
+              )}
+
+              {/* Looking For */}
+              {selectedProfile.lookingFor && selectedProfile.lookingFor.length > 0 && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Looking For</Text>
+                  <View style={styles.tagsContainer}>
+                    {selectedProfile.lookingFor.map((item, index) => (
+                      <View key={index} style={styles.tag}>
+                        <Text style={styles.tagText}>{item}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Skills */}
+              {(selectedProfile.skillsOffered && selectedProfile.skillsOffered.length > 0) || 
+               (selectedProfile.skillsSeeking && selectedProfile.skillsSeeking.length > 0) && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Skills</Text>
+                  {selectedProfile.skillsOffered && selectedProfile.skillsOffered.length > 0 && (
+                    <View style={styles.skillsGroup}>
+                      <Text style={styles.skillsLabel}>Offering:</Text>
+                      <View style={styles.tagsContainer}>
+                        {selectedProfile.skillsOffered.map((skill, index) => (
+                          <View key={index} style={styles.tag}>
+                            <Text style={styles.tagText}>{skill}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+                  {selectedProfile.skillsSeeking && selectedProfile.skillsSeeking.length > 0 && (
+                    <View style={styles.skillsGroup}>
+                      <Text style={styles.skillsLabel}>Seeking:</Text>
+                      <View style={styles.tagsContainer}>
+                        {selectedProfile.skillsSeeking.map((skill, index) => (
+                          <View key={index} style={styles.tag}>
+                            <Text style={styles.tagText}>{skill}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* Availability */}
+              {selectedProfile.availabilityLevel && selectedProfile.availabilityLevel.length > 0 && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Availability</Text>
+                  <View style={styles.tagsContainer}>
+                    {selectedProfile.availabilityLevel.map((level, index) => (
+                      <View key={index} style={styles.tag}>
+                        <Text style={styles.tagText}>{level}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Key Challenge */}
+              {selectedProfile.keyChallenge && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Key Challenge</Text>
+                  <Text style={styles.profileDetails}>{selectedProfile.keyChallenge}</Text>
+                </View>
+              )}
+
+              {/* Success Highlight */}
+              {selectedProfile.successHighlight && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Success Highlight</Text>
+                  <Text style={styles.profileDetails}>{selectedProfile.successHighlight}</Text>
+                </View>
+              )}
+
+              {/* Goals */}
+              {selectedProfile.goals && selectedProfile.goals.length > 0 && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Goals</Text>
+                  {selectedProfile.goals.map((goal, index) => (
+                    <Text key={index} style={styles.profileDetails}>• {goal}</Text>
+                  ))}
+                </View>
+              )}
+
+              {/* Analytics */}
+              {selectedProfile.analytics && Object.keys(selectedProfile.analytics).length > 0 && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Analytics</Text>
+                  {selectedProfile.analytics.revenue && (
+                    <Text style={styles.profileDetails}>
+                      <Text style={styles.label}>Revenue:</Text> {selectedProfile.analytics.revenue}
+                    </Text>
+                  )}
+                  {selectedProfile.analytics.growth && (
+                    <Text style={styles.profileDetails}>
+                      <Text style={styles.label}>Growth:</Text> {selectedProfile.analytics.growth}
+                    </Text>
+                  )}
+                  {selectedProfile.analytics.customers && (
+                    <Text style={styles.profileDetails}>
+                      <Text style={styles.label}>Customers:</Text> {selectedProfile.analytics.customers}
+                    </Text>
+                  )}
+                </View>
+              )}
+
+              {/* Action Buttons */}
+              <View style={styles.actionButtons}>
+                <TouchableOpacity 
+                  style={[styles.actionButton, styles.passButton]} 
+                  onPress={() => handlePass(selectedProfile)}
+                >
+                  <X size={24} color={Colors.dark.text} />
+                  <Text style={styles.actionButtonText}>Pass</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={[styles.actionButton, styles.likeButton]} 
+                  onPress={() => handleLike(selectedProfile)}
+                >
+                  <Heart size={24} color={Colors.dark.background} />
+                  <Text style={[styles.actionButtonText, styles.likeButtonText]}>Like</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           )}
         </SafeAreaView>
@@ -560,5 +785,75 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.dark.textSecondary,
     marginBottom: 8,
+  },
+  // Enhanced modal styles
+  section: {
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: Colors.dark.text,
+    marginBottom: 8,
+  },
+  label: {
+    fontWeight: 'bold',
+    color: Colors.dark.text,
+  },
+  tagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  tag: {
+    backgroundColor: Colors.dark.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  tagText: {
+    fontSize: 12,
+    color: Colors.dark.background,
+    fontWeight: '500',
+  },
+  skillsGroup: {
+    marginBottom: 12,
+  },
+  skillsLabel: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: Colors.dark.text,
+    marginBottom: 6,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 16,
+    marginTop: 20,
+    paddingHorizontal: 20,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    gap: 8,
+  },
+  passButton: {
+    backgroundColor: Colors.dark.border,
+  },
+  likeButton: {
+    backgroundColor: Colors.dark.primary,
+  },
+  actionButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.dark.text,
+  },
+  likeButtonText: {
+    color: Colors.dark.background,
   },
 });
