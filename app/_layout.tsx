@@ -39,7 +39,6 @@ export default function RootLayout() {
               },
               // Global safe area configuration
               statusBarBackgroundColor: Colors.dark.background,
-              statusBarStyle: 'light',
             }}
           >
             <Stack.Screen 

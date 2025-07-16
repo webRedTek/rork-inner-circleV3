@@ -2,7 +2,6 @@ import React from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Colors from '@/constants/colors';
 import { Button } from '@/components/Button';
@@ -12,7 +11,6 @@ export default function WelcomeScreen() {
   
   return (
     <View style={styles.container}>
-      <StatusBar style="light" />
       <Image
         source={{ uri: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?q=80&w=2940&auto=format&fit=crop' }}
         style={styles.backgroundImage}

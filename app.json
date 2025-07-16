@@ -19,10 +19,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.innercircle.myapp",
-      "buildNumber": "4",
-      "infoPlist": {
-        "UIViewControllerBasedStatusBarAppearance": true
-      }
+      "buildNumber": "4"
     },
     "android": {
       "adaptiveIcon": {
