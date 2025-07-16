@@ -472,7 +472,7 @@ export default function DiscoverScreen() {
       <Modal
         visible={showProfileModal}
         animationType="slide"
-        transparent={false}
+        transparent={true}
         onRequestClose={closeProfileModal}
       >
         <SafeAreaView style={styles.modalContainer} edges={MODAL_SAFE_AREA_EDGES}>
