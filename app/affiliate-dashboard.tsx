@@ -29,7 +29,21 @@ export default function AffiliateDashboardScreen() {
 
   useEffect(() => {
     if (user?.membershipTier !== 'silver' && user?.membershipTier !== 'gold') {
-      router.replace('/(tabs)/profile');
+      // Show a more informative message before redirecting
+      Alert.alert(
+        'Affiliate Program Unavailable',
+        'The affiliate program is only available to Silver and Gold tier members. Please upgrade your membership to access this feature.',
+        [
+          {
+            text: 'Upgrade Now',
+            onPress: () => router.push('/membership')
+          },
+          {
+            text: 'Go Back',
+            onPress: () => router.replace('/(tabs)/profile')
+          }
+        ]
+      );
     } else {
       fetchAffiliateData();
       checkExistingReferralLink();

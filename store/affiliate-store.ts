@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { AffiliateStats, ReferralHistory } from '@/types/user';
-import { isSupabaseConfigured, supabase, getReadableError } from '@/lib/supabase';
+import { isSupabaseConfigured, supabase, getReadableError, getAffiliateTierId } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
 import { useNotificationStore } from './notification-store';
 
@@ -134,6 +134,17 @@ export const useAffiliateStore = create<AffiliateState>((set, get) => ({
       return '';
     }
     
+    // Check if user is eligible for affiliate program
+    if (user.membershipTier === 'bronze') {
+      useNotificationStore.getState().addNotification({
+        type: 'error',
+        message: 'Bronze tier users are not eligible for the affiliate program. Please upgrade to Silver or Gold.',
+        displayStyle: 'toast',
+        duration: 5000
+      });
+      throw new Error('Bronze tier users are not eligible for the affiliate program');
+    }
+    
     set({ isLoading: true, error: null });
     try {
       if (isSupabaseConfigured() && supabase) {
@@ -146,6 +157,13 @@ export const useAffiliateStore = create<AffiliateState>((set, get) => ({
         if (linkError) {
           // If no link exists, create one
           if (linkError.code === 'PGRST116') {
+            // Get the proper tier ID for the user's membership
+            const tierId = await getAffiliateTierId(user.membershipTier);
+            
+            if (!tierId) {
+              throw new Error(`No valid affiliate tier found for membership: ${user.membershipTier}`);
+            }
+            
             // Generate simple referral code using username
             const newCode = generateSimpleReferralCode(user.name || user.email || 'user');
             
@@ -183,7 +201,7 @@ export const useAffiliateStore = create<AffiliateState>((set, get) => ({
               .insert({ 
                 user_id: user.id, 
                 referral_code: finalCode,
-                tier_id: '00000000-0000-0000-0000-000000000000' // Placeholder UUID, should be updated based on actual tier
+                tier_id: tierId // Use the proper tier ID from the database function
               });
               
             if (insertError) {

@@ -1090,6 +1090,29 @@ export const fetchUserMatches = async (userId: string): Promise<MatchWithProfile
 };
 
 /**
+ * Get affiliate tier ID for user membership
+ */
+export const getAffiliateTierId = async (membershipTier: string): Promise<string | null> => {
+  if (!supabase) {
+    throw new Error('Supabase client not initialized');
+  }
+  const client = supabase as SupabaseClient<Database>;
+  
+  return retryOperation(async () => {
+    const { data, error } = await client.rpc('get_affiliate_tier_id', {
+      membership: membershipTier,
+    });
+    
+    if (error) {
+      console.error('[Enhanced Supabase] Error getting affiliate tier ID:', error);
+      throw error;
+    }
+    
+    return data as string | null;
+  });
+};
+
+/**
  * Get enhanced connection statistics
  */
 export const getConnectionStats = () => {
