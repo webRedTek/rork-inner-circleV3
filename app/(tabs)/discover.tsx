@@ -42,7 +42,7 @@ import { Heart, X, RotateCcw, AlertCircle, TrendingUp, Users, MessageCircle, Zap
 
 import { notify } from '@/store/notification-store';
 import { handleError, ErrorCodes, ErrorCategory } from '@/utils/error-utils';
-import { UNIVERSAL_SAFE_AREA_EDGES } from '@/constants/safeArea';
+import { UNIVERSAL_SAFE_AREA_EDGES, MODAL_SAFE_AREA_EDGES } from '@/constants/safeArea';
 
 export default function DiscoverScreen() {
   const router = useRouter();
@@ -472,10 +472,10 @@ export default function DiscoverScreen() {
       <Modal
         visible={showProfileModal}
         animationType="slide"
-        presentationStyle="fullScreen"
+        transparent={false}
         onRequestClose={closeProfileModal}
       >
-        <SafeAreaView style={styles.modalContainer} edges={UNIVERSAL_SAFE_AREA_EDGES}>
+        <SafeAreaView style={styles.modalContainer} edges={MODAL_SAFE_AREA_EDGES}>
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={closeProfileModal} style={styles.closeButton}>
               <X size={24} color={Colors.dark.text} />

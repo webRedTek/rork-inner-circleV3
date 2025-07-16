@@ -4,11 +4,15 @@ import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { enableScreens } from 'react-native-screens';
 import NotificationProvider from '@/components/NotificationProvider';
 import { useAuthStore } from '@/store/auth-store';
 import { useSubscriptionStore } from '@/store/subscription-store';
 import Colors from '@/constants/colors';
 import { Platform } from 'react-native';
+
+// Enable react-native-screens
+enableScreens();
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
