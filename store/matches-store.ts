@@ -29,8 +29,8 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { UserProfile } from '@/types/user';
-import { supabase } from '@/lib/supabase';
+import { UserProfile, MatchWithProfile } from '@/types/user';
+import { supabase, fetchUserMatches } from '@/lib/supabase';
 import { createStoreLogger } from '@/utils/debug-utils';
 import { guardStoreOperation, safeStringifyError } from '@/utils/store-auth-utils';
 import { notify } from '@/store/notification-store';
@@ -271,7 +271,7 @@ class EnhancedProfileCache {
 
 export interface MatchesStore {
   profiles: UserProfile[];
-  matches: UserProfile[];
+  matches: MatchWithProfile[];
   currentProfile: UserProfile | null;
   isLoading: boolean;
   error: string | null;
@@ -285,6 +285,7 @@ export interface MatchesStore {
   
   // Core match management without duplicate limit checking
   fetchPotentialMatches: (force?: boolean) => Promise<void>;
+  fetchMatches: () => Promise<void>;
   addMatch: (profile: UserProfile) => Promise<void>;
   removeMatch: (profileId: string) => Promise<void>;
   
@@ -538,6 +539,64 @@ export const useMatchesStore = create<MatchesStore>()(
         }
       },
 
+      fetchMatches: async () => {
+        logger.logFunctionCall('fetchMatches');
+        
+        const guard = guardStoreOperation('fetchMatches');
+        if (!guard) return;
+
+        const { isLoading } = get();
+        if (isLoading) {
+          logger.logDebug('Fetch already in progress, skipping');
+          return;
+        }
+
+        set({ isLoading: true, error: null });
+
+        try {
+          logger.logDebug('Fetching user matches from database');
+          
+          const matchesData = await fetchUserMatches(guard.user.id);
+          
+          if (!matchesData) {
+            logger.logDebug('No matches data received');
+            set({ matches: [], isLoading: false, error: null });
+            return;
+          }
+
+          logger.logDebug('Matches data received', { 
+            count: matchesData.length,
+            matches: matchesData.map(m => ({ id: m.match_id, userId: m.matched_user_id }))
+          });
+
+          set({ 
+            matches: matchesData, 
+            isLoading: false,
+            error: null,
+            lastFetch: Date.now()
+          });
+
+          logger.logDebug('Matches updated successfully', { count: matchesData.length });
+
+        } catch (error) {
+          const errorMessage = safeStringifyError(error);
+          logger.logDebug('Error in fetchMatches', { 
+            error: errorMessage,
+            errorType: typeof error
+          });
+          
+          set({ 
+            isLoading: false, 
+            error: errorMessage
+          });
+          
+          // Throttled error notification
+          notify.error(`Failed to fetch matches: ${errorMessage}`);
+          
+          throw error;
+        }
+      },
+
       addMatch: async (profile: UserProfile) => {
         logger.logFunctionCall('addMatch', { profileId: profile.id });
         
@@ -545,9 +604,18 @@ export const useMatchesStore = create<MatchesStore>()(
         if (!guard) return;
 
         try {
+          // Create a MatchWithProfile object
+          const matchWithProfile: MatchWithProfile = {
+            match_id: `temp_${profile.id}_${Date.now()}`,
+            matched_user_id: profile.id,
+            matched_user_profile: profile,
+            created_at: Date.now(),
+            last_message_at: null
+          };
+
           // Add to matches immediately for optimistic UI
           set(state => ({
-            matches: [...state.matches, profile]
+            matches: [...state.matches, matchWithProfile]
           }));
 
           // Create optimistic update
@@ -570,7 +638,7 @@ export const useMatchesStore = create<MatchesStore>()(
           
           // Remove from matches on error
           set(state => ({
-            matches: state.matches.filter(m => m.id !== profile.id)
+            matches: state.matches.filter(m => m.matched_user_id !== profile.id)
           }));
           
           // Throttled error notification
@@ -587,7 +655,7 @@ export const useMatchesStore = create<MatchesStore>()(
         try {
           // Remove from matches immediately for optimistic UI
           set(state => ({
-            matches: state.matches.filter(m => m.id !== profileId)
+            matches: state.matches.filter(m => m.matched_user_id !== profileId)
           }));
 
           logger.logDebug('Match removed optimistically', { profileId });
@@ -607,7 +675,11 @@ export const useMatchesStore = create<MatchesStore>()(
         
         set(state => ({
           profiles: state.profiles.map(p => p.id === profile.id ? profile : p),
-          matches: state.matches.map(m => m.id === profile.id ? profile : m)
+          matches: state.matches.map(m => 
+            m.matched_user_id === profile.id 
+              ? { ...m, matched_user_profile: profile }
+              : m
+          )
         }));
       },
 
@@ -637,7 +709,7 @@ export const useMatchesStore = create<MatchesStore>()(
         if (update) {
           if (update.type === 'match') {
             set(state => ({
-              matches: state.matches.filter(m => m.id !== update.profileId)
+              matches: state.matches.filter(m => m.matched_user_id !== update.profileId)
             }));
           }
           
