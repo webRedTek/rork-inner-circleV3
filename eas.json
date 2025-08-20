@@ -1,6 +1,6 @@
 {
   "cli": {
-    "version": "16.13.2",
+    "version": "16.17.4",
     "appVersionSource": "local",
     "requireCommit": false
   },
@@ -8,20 +8,17 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "channel": "development",
       "android": {
         "buildType": "apk"
       }
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview",
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
-      "channel": "production",
       "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
