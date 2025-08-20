@@ -75,6 +75,9 @@
     "@babel/core": "^7.25.2",
     "@expo/ngrok": "^4.1.0",
     "@types/react": "~18.2.0",
+    "metro": "0.73.10",
+    "metro-config": "0.73.10",
+    "metro-resolver": "0.73.10",
     "typescript": "~5.8.3"
   },
   "private": true
