@@ -61,7 +61,7 @@ interface SubscriptionState {
 const REVENUECAT_CONFIG = {
   // RevenueCat API keys
   ios: 'appl_KnjmhQaRSNxvFNVzzVkIxqlRAXU',
-  android: 'appl_KnjmhQaRSNxvFNVzzVkIxqlRAXU', // Using same key for both platforms
+  android: 'goog_YOUR_ANDROID_API_KEY_HERE', // Replace with actual Android API key from RevenueCat dashboard
   // Web doesn't support RevenueCat, so we'll handle it differently
 };
 
