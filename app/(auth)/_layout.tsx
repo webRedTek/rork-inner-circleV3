@@ -18,13 +18,6 @@ export default function AuthLayout() {
       }}
     >
       <Stack.Screen 
-        name="index" 
-        options={{ 
-          title: "Inner Circle",
-          headerShown: false,
-        }} 
-      />
-      <Stack.Screen 
         name="login" 
         options={{ 
           title: "Login",

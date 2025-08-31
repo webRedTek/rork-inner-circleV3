@@ -21,7 +21,7 @@ export default function RootLayout() {
   
   useEffect(() => {
     checkSession();
-  }, []);
+  }, [checkSession]);
 
   // Initialize RevenueCat when user is authenticated
   useEffect(() => {
@@ -29,6 +29,11 @@ export default function RootLayout() {
       initializeSubscriptions(user.id);
     }
   }, [isReady, user?.id, initializeSubscriptions]);
+  
+  // Show loading while checking authentication
+  if (!isReady) {
+    return null;
+  }
   
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -41,10 +46,21 @@ export default function RootLayout() {
               contentStyle: {
                 backgroundColor: Colors.dark.background,
               },
-              // Global safe area configuration
               statusBarBackgroundColor: Colors.dark.background,
             }}
           >
+            <Stack.Screen 
+              name="(auth)" 
+              options={{ 
+                headerShown: false,
+              }} 
+            />
+            <Stack.Screen 
+              name="(tabs)" 
+              options={{ 
+                headerShown: false,
+              }} 
+            />
             <Stack.Screen 
               name="membership" 
               options={{ 

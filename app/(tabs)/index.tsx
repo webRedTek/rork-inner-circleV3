@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { Redirect } from 'expo-router';
 import Colors from '@/constants/colors';
 import { useAuthStore } from '@/store/auth-store';
 import { ProfileHeader } from '@/components/ProfileHeader';
@@ -50,17 +51,7 @@ export default function HomeScreen() {
   }
   
   if (!user) {
-    return (
-      <SafeAreaView style={styles.errorContainer} edges={UNIVERSAL_SAFE_AREA_EDGES}>
-        <Text style={styles.errorText}>Not authenticated</Text>
-        <Button
-          title="Login"
-          onPress={() => router.replace('/(auth)')}
-          variant="primary"
-          style={styles.retryButton}
-        />
-      </SafeAreaView>
-    );
+    return <Redirect href="/(auth)/login" />;
   }
   
   return (
