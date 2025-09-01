@@ -5,7 +5,7 @@ import { useColorScheme, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { enableScreens } from 'react-native-screens';
-import { ThemeProvider, DarkTheme, DefaultTheme } from '@react-navigation/native';
+
 import NotificationProvider from '@/components/NotificationProvider';
 import { useAuthStore } from '@/store/auth-store';
 import { useSubscriptionStore } from '@/store/subscription-store';
@@ -38,7 +38,6 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
           <NotificationProvider>
             <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
           <Stack
@@ -169,7 +168,6 @@ export default function RootLayout() {
           />
           </Stack>
           </NotificationProvider>
-        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
