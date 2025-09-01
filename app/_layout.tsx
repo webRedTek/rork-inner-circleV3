@@ -1,15 +1,15 @@
 import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { enableScreens } from 'react-native-screens';
+import { ThemeProvider, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import NotificationProvider from '@/components/NotificationProvider';
 import { useAuthStore } from '@/store/auth-store';
 import { useSubscriptionStore } from '@/store/subscription-store';
 import Colors from '@/constants/colors';
-import { Platform } from 'react-native';
 
 // Enable react-native-screens
 enableScreens();
@@ -38,8 +38,9 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <NotificationProvider>
-          <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <NotificationProvider>
+            <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
           <Stack
             screenOptions={{
               headerShown: false,
@@ -167,7 +168,8 @@ export default function RootLayout() {
             }}
           />
           </Stack>
-        </NotificationProvider>
+          </NotificationProvider>
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
