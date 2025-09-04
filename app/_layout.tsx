@@ -7,6 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
+import { ThemeProvider, DarkTheme, DefaultTheme } from '@react-navigation/native';
 
 import NotificationProvider from '@/components/NotificationProvider';
 import { useAuthStore } from '@/store/auth-store';
@@ -30,27 +31,141 @@ const queryClient = new QueryClient({
 
 
 
+export function RootLayoutNav() {
+  const colorScheme = useColorScheme();
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: {
+          backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
+        },
+      }}
+    >
+      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="membership"
+        options={{
+          headerShown: true,
+          title: 'Membership Plans',
+          headerStyle: {
+            backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
+          },
+          headerTintColor: colorScheme === 'dark' ? Colors.dark.text : Colors.light.text,
+        }}
+      />
+      <Stack.Screen
+        name="edit-profile"
+        options={{
+          headerShown: true,
+          title: 'Edit Profile',
+          headerStyle: {
+            backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
+          },
+          headerTintColor: colorScheme === 'dark' ? Colors.dark.text : Colors.light.text,
+        }}
+      />
+      <Stack.Screen
+        name="affiliate-dashboard"
+        options={{
+          headerShown: true,
+          title: 'Affiliate Dashboard',
+          headerStyle: {
+            backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
+          },
+          headerTintColor: colorScheme === 'dark' ? Colors.dark.text : Colors.light.text,
+        }}
+      />
+      <Stack.Screen
+        name="admin-settings"
+        options={{
+          headerShown: true,
+          title: 'Admin Settings',
+          headerStyle: {
+            backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
+          },
+          headerTintColor: colorScheme === 'dark' ? Colors.dark.text : Colors.light.text,
+        }}
+      />
+      <Stack.Screen
+        name="supabase-setup"
+        options={{
+          headerShown: true,
+          title: 'Supabase Setup',
+          headerStyle: {
+            backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
+          },
+          headerTintColor: colorScheme === 'dark' ? Colors.dark.text : Colors.light.text,
+        }}
+      />
+      <Stack.Screen
+        name="debug"
+        options={{
+          headerShown: true,
+          title: 'Debug',
+          headerStyle: {
+            backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
+          },
+          headerTintColor: colorScheme === 'dark' ? Colors.dark.text : Colors.light.text,
+        }}
+      />
+      <Stack.Screen
+        name="profile/[id]"
+        options={{
+          headerShown: true,
+          title: 'Profile',
+          headerStyle: {
+            backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
+          },
+          headerTintColor: colorScheme === 'dark' ? Colors.dark.text : Colors.light.text,
+        }}
+      />
+      <Stack.Screen
+        name="chat/[id]"
+        options={{
+          headerShown: true,
+          title: 'Chat',
+          headerStyle: {
+            backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
+          },
+          headerTintColor: colorScheme === 'dark' ? Colors.dark.text : Colors.light.text,
+        }}
+      />
+      <Stack.Screen
+        name="group/[id]"
+        options={{
+          headerShown: true,
+          title: 'Group',
+          headerStyle: {
+            backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
+          },
+          headerTintColor: colorScheme === 'dark' ? Colors.dark.text : Colors.light.text,
+        }}
+      />
+    </Stack>
+  );
+}
+
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const { checkSession, isReady, user } = useAuthStore();
   const { initialize: initializeSubscriptions } = useSubscriptionStore();
-  
+
   const [fontsLoaded] = useFonts({});
-  
+
   useEffect(() => {
     const initializeAuth = async () => {
       try {
         await checkSession();
       } catch (error) {
         console.error('Failed to check session:', error);
-        // Don't block the app if session check fails
       }
     };
-    
+
     initializeAuth();
   }, [checkSession]);
 
-  // Initialize RevenueCat when user is authenticated
   useEffect(() => {
     const initSubs = async () => {
       if (isReady && user?.id && Platform.OS !== 'web') {
@@ -58,15 +173,13 @@ export default function RootLayout() {
           await initializeSubscriptions(user.id);
         } catch (error) {
           console.error('Failed to initialize subscriptions:', error);
-          // Don't block the app if subscription initialization fails
         }
       }
     };
-    
+
     initSubs();
   }, [isReady, user?.id, initializeSubscriptions]);
-  
-  // Hide splash screen when ready
+
   useEffect(() => {
     const hideSplash = async () => {
       if (fontsLoaded && isReady) {
@@ -74,15 +187,13 @@ export default function RootLayout() {
           await SplashScreen.hideAsync();
         } catch (error) {
           console.error('Failed to hide splash screen:', error);
-          // Continue anyway
         }
       }
     };
-    
+
     hideSplash();
   }, [fontsLoaded, isReady]);
-  
-  // Show loading while checking authentication or loading fonts
+
   if (!isReady || !fontsLoaded) {
     return (
       <View style={loadingStyles.container}>
@@ -91,7 +202,9 @@ export default function RootLayout() {
       </View>
     );
   }
-  
+
+  const navigationTheme = colorScheme === 'dark' ? DarkTheme : DefaultTheme;
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
@@ -100,116 +213,9 @@ export default function RootLayout() {
             <trpc.Provider client={trpcClient} queryClient={queryClient}>
               <NotificationProvider>
                 <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-                <Stack
-                  screenOptions={{
-                    headerShown: false,
-                    contentStyle: {
-                      backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
-                    },
-                  }}
-                >
-                  <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                  <Stack.Screen 
-                    name="membership" 
-                    options={{ 
-                      headerShown: true,
-                      title: 'Membership Plans',
-                      headerStyle: {
-                        backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
-                      },
-                      headerTintColor: colorScheme === 'dark' ? Colors.dark.text : Colors.light.text,
-                    }} 
-                  />
-                  <Stack.Screen 
-                    name="edit-profile" 
-                    options={{ 
-                      headerShown: true,
-                      title: 'Edit Profile',
-                      headerStyle: {
-                        backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
-                      },
-                      headerTintColor: colorScheme === 'dark' ? Colors.dark.text : Colors.light.text,
-                    }} 
-                  />
-                  <Stack.Screen 
-                    name="affiliate-dashboard" 
-                    options={{ 
-                      headerShown: true,
-                      title: 'Affiliate Dashboard',
-                      headerStyle: {
-                        backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
-                      },
-                      headerTintColor: colorScheme === 'dark' ? Colors.dark.text : Colors.light.text,
-                    }} 
-                  />
-                  <Stack.Screen 
-                    name="admin-settings" 
-                    options={{ 
-                      headerShown: true,
-                      title: 'Admin Settings',
-                      headerStyle: {
-                        backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
-                      },
-                      headerTintColor: colorScheme === 'dark' ? Colors.dark.text : Colors.light.text,
-                    }} 
-                  />
-                  <Stack.Screen 
-                    name="supabase-setup" 
-                    options={{ 
-                      headerShown: true,
-                      title: 'Supabase Setup',
-                      headerStyle: {
-                        backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
-                      },
-                      headerTintColor: colorScheme === 'dark' ? Colors.dark.text : Colors.light.text,
-                    }} 
-                  />
-                  <Stack.Screen 
-                    name="debug" 
-                    options={{ 
-                      headerShown: true,
-                      title: 'Debug',
-                      headerStyle: {
-                        backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
-                      },
-                      headerTintColor: colorScheme === 'dark' ? Colors.dark.text : Colors.light.text,
-                    }} 
-                  />
-                  <Stack.Screen 
-                    name="profile/[id]" 
-                    options={{ 
-                      headerShown: true,
-                      title: 'Profile',
-                      headerStyle: {
-                        backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
-                      },
-                      headerTintColor: colorScheme === 'dark' ? Colors.dark.text : Colors.light.text,
-                    }} 
-                  />
-                  <Stack.Screen 
-                    name="chat/[id]" 
-                    options={{ 
-                      headerShown: true,
-                      title: 'Chat',
-                      headerStyle: {
-                        backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
-                      },
-                      headerTintColor: colorScheme === 'dark' ? Colors.dark.text : Colors.light.text,
-                    }} 
-                  />
-                  <Stack.Screen 
-                    name="group/[id]" 
-                    options={{ 
-                      headerShown: true,
-                      title: 'Group',
-                      headerStyle: {
-                        backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
-                      },
-                      headerTintColor: colorScheme === 'dark' ? Colors.dark.text : Colors.light.text,
-                    }} 
-                  />
-                </Stack>
+                <ThemeProvider value={navigationTheme}>
+                  <RootLayoutNav />
+                </ThemeProvider>
               </NotificationProvider>
             </trpc.Provider>
           </QueryClientProvider>
