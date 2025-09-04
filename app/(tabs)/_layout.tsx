@@ -1,17 +1,21 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
+import { useColorScheme } from 'react-native';
 import Colors from '@/constants/colors';
 import { Home, Users, MessageCircle, User, UsersRound } from 'lucide-react-native';
 
 export default function TabsLayout() {
+  const colorScheme = useColorScheme();
+  const colors = colorScheme === 'dark' ? Colors.dark : Colors.light;
+  
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors.dark.primary,
-        tabBarInactiveTintColor: Colors.dark.textSecondary,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textSecondary,
         tabBarStyle: {
-          backgroundColor: Colors.dark.card,
-          borderTopColor: Colors.dark.border,
+          backgroundColor: colors.card,
+          borderTopColor: colors.border,
         },
         tabBarLabelStyle: {
           fontSize: 12,
