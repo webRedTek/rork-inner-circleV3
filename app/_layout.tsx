@@ -7,7 +7,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
-import { ThemeProvider, DarkTheme, DefaultTheme } from '@react-navigation/native';
+import { ThemeProvider } from 'expo-router';
+import { DarkTheme, DefaultTheme } from '@react-navigation/native';
 
 import NotificationProvider from '@/components/NotificationProvider';
 import { useAuthStore } from '@/store/auth-store';
