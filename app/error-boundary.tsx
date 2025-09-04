@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
+import Colors from '@/constants/colors';
 
 interface Props {
   children: React.ReactNode;
@@ -114,7 +115,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: Colors.dark.background,
   },
   content: {
     flex: 1,
@@ -127,16 +128,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: 'bold',
     marginBottom: 8,
+    color: Colors.dark.text,
   },
   subtitle: {
     fontSize: 14,
-    color: '#666',
+    color: Colors.dark.error,
     marginBottom: 12,
     textAlign: 'center',
   },
   description: {
     fontSize: 14,
-    color: '#666',
+    color: Colors.dark.textSecondary,
     textAlign: 'center',
     marginTop: 8,
   },
